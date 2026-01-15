@@ -39,6 +39,16 @@ A micro-forensics workbench for analyzing artifacts. It combines forensic parsin
 - Security operations centers (SOCs) investigating alerts
 - Researchers exploring forensic automation techniques
 
+## Why Was It Created?
+- Practice interleaving agent/RAG logic
+- Experience building a RAG + ReRanker
+
+## Futures
+- Expand artifact parsers
+- Expand OS compatibility
+- Tune Agent + RAG components
+
+
 ## High-Level Capabilities
 
 ### Query Routing
@@ -161,11 +171,6 @@ GNU General Public License v3.0. See [LICENSE](LICENSE) for full text.
 - Prepared statements prevent SQL injection
 - No plaintext password storage or transmission
 
-### Reporting Vulnerabilities
-
-Report security issues to: [security contact to be added]
-
-Do not open public GitHub issues for security vulnerabilities.
 
 ### Operating Systems
 
@@ -235,4 +240,3 @@ Items requiring investigation or completion:
 ## Contact
 
 - GitHub Issues: https://github.com/eheuser/open-agent-investigation/issues
-- Discussions: https://github.com/eheuser/open-agent-investigation/discussions
