@@ -2,6 +2,10 @@
 
 A micro-forensics workbench for analyzing artifacts. It combines forensic parsing with LLM-driven investigation workflows to reconstruct evidence timelines, identify threats, and document findings.
 
+**Developers Note**
+> This is a work in progress. The requirements, specs and build order were human-generated and then I guided Claude for implementation and intervened manually for many issues (code, structure, etc). I'm intent on refactoring quite a lot of the naive logic and agent code as well as expanding the supported artifacts. Pull requests are welcome, if you'd like to help.
+
+---
 
 **Chat with RAG and agentic functionality**
 ![image](docs/img/chat.png)
@@ -38,6 +42,16 @@ A micro-forensics workbench for analyzing artifacts. It combines forensic parsin
 - Incident response teams triaging security events
 - Security operations centers (SOCs) investigating alerts
 - Researchers exploring forensic automation techniques
+
+## Why Was It Created?
+- Practice interleaving agent/RAG logic
+- Experience building a RAG + ReRanker
+
+## Futures
+- Expand artifact parsers
+- Expand OS compatibility
+- Tune Agent + RAG components
+
 
 ## High-Level Capabilities
 
@@ -161,11 +175,6 @@ GNU General Public License v3.0. See [LICENSE](LICENSE) for full text.
 - Prepared statements prevent SQL injection
 - No plaintext password storage or transmission
 
-### Reporting Vulnerabilities
-
-Report security issues to: [security contact to be added]
-
-Do not open public GitHub issues for security vulnerabilities.
 
 ### Operating Systems
 
@@ -235,4 +244,3 @@ Items requiring investigation or completion:
 ## Contact
 
 - GitHub Issues: https://github.com/eheuser/open-agent-investigation/issues
-- Discussions: https://github.com/eheuser/open-agent-investigation/discussions
