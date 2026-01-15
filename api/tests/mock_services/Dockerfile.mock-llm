@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install FastAPI and Uvicorn
+RUN pip install --no-cache-dir fastapi==0.110.* uvicorn[standard]==0.30.*
+
+# Copy mock service
+COPY mock_llm.py .
+
+# Expose port
+EXPOSE 8000
+
+# Run service
+CMD ["python", "mock_llm.py"]

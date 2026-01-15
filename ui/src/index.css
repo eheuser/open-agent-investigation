@@ -1,0 +1,179 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Global scrollbar styling */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(156 163 175) transparent; /* gray-400 for light mode */
+  }
+
+  .dark * {
+    scrollbar-color: rgb(75 85 99) transparent; /* gray-600 for dark mode */
+  }
+
+  /* Webkit scrollbar styling */
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(209 213 219); /* gray-300 for light mode */
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(156 163 175); /* gray-400 for light mode */
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: rgb(75 85 99); /* gray-600 for dark mode */
+  }
+
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(107 114 128); /* gray-500 for dark mode */
+  }
+}
+
+/* Custom scrollbar */
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-gray-500;
+  }
+
+  .scrollbar-track-transparent::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .scrollbar-thumb-gray-300::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded;
+  }
+
+    .scrollbar-thumb-gray-600::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded;
+  }
+
+    /* Slow pulse animation for confirmation prompts */
+  @keyframes pulse-slow {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Fade-in animation for streaming text */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .fade-in-text {
+    animation: fadeIn 0.15s ease-in;
+  }
+
+    /* Markdown prose styling overrides */
+  .prose code {
+    @apply text-sm;
+  }
+
+  .prose pre {
+    @apply my-2;
+  }
+
+  .prose pre code {
+    @apply text-sm;
+  }
+
+  /* Stabilize table rendering during streaming */
+  .prose table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .prose th,
+  .prose td {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+    /* Prevent layout shifts during content updates */
+  .prose {
+    contain: layout;
+  }
+
+  /* ReactFlow edge label styling for dark mode */
+  .react-flow__edge-text {
+    fill: rgb(31, 41, 55) !important; /* gray-800 for light mode */
+  }
+
+  .dark .react-flow__edge-text {
+    fill: rgb(229, 231, 235) !important; /* gray-200 for dark mode */
+  }
+
+  /* ReactFlow controls styling for dark mode */
+  .dark .react-flow__controls {
+    background: rgb(31, 41, 55) !important;
+    border-color: rgb(55, 65, 81) !important;
+  }
+
+  .dark .react-flow__controls-button {
+    background: rgb(31, 41, 55) !important;
+    border-color: rgb(55, 65, 81) !important;
+    fill: rgb(229, 231, 235) !important;
+  }
+
+  .dark .react-flow__controls-button:hover {
+    background: rgb(55, 65, 81) !important;
+  }
+
+  /* ReactFlow minimap styling for dark mode */
+  .dark .react-flow__minimap {
+    background: rgb(31, 41, 55) !important;
+  }
+
+  .dark .react-flow__minimap-mask {
+    fill: rgb(17, 24, 39, 0.6) !important;
+  }
+
+  /* ReactFlow attribution styling */
+  .react-flow__attribution {
+    opacity: 0.5;
+  }
+
+  .dark .react-flow__attribution {
+    color: rgb(156, 163, 175) !important;
+  }
+}

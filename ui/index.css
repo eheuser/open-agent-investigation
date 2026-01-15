@@ -1,0 +1,10 @@
+@import './src/index.css';
+
+/* Ensure the main flex container stretches */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}

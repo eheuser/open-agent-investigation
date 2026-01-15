@@ -1,0 +1,258 @@
+from typing import Dict, Any, Optional
+from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..crud import chat_history as crud
+
+
+async def persist_user_message(
+    db: AsyncSession,
+    investigation_id: UUID,
+    user_id: int,
+    content: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> int:
+    """
+    Persist a user-originated chat message in the database and return its identifier.
+
+    Args:
+        db: An active asynchronous SQLAlchemy session used for the operation.
+        investigation_id: The unique identifier of the investigation to which the
+            message belongs.
+        user_id: Identifier of the user who authored the message.
+        content: Textual content of the user's message.
+        metadata: Optional dictionary containing additional information such as intent,
+            confidence scores, or other contextual data. If omitted, an empty dict is used.
+
+    Returns:
+        The integer primary-key identifier of the newly created message record.
+    """
+    message = await crud.create_message(
+        db=db,
+        investigation_id=investigation_id,
+        user_id=user_id,
+        role="user",
+        content=content,
+        metadata=metadata or {},
+        include_in_llm_context=True,  # User messages always included
+    )
+    return message.message_id
+
+
+async def persist_assistant_message(
+    db: AsyncSession,
+    investigation_id: UUID,
+    user_id: int,
+    content: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    include_in_llm_context: bool = True,
+    visible_in_ui: bool = True,
+) -> int:
+    """
+    Persist an assistant-role chat message in the database.
+
+    Parameters
+    ----------
+    db : AsyncSession
+        Asynchronous SQLAlchemy session used for the operation.
+    investigation_id : UUID
+        Identifier of the investigation to which the message belongs.
+    user_id : int
+        Identifier of the user performing the action (for audit purposes).
+    content : str
+        Textual content of the assistant's reply.
+    metadata : dict[str, Any] | None, optional
+        Additional information associated with the message such as intent or job identifiers. Defaults to an empty dictionary when omitted.
+    include_in_llm_context : bool, optional
+        Flag indicating whether the stored message should be included in subsequent LLM prompts. Defaults to `True`.
+    visible_in_ui : bool, optional
+        Flag indicating whether the message should be shown in the chat user interface. Defaults to `True`.
+
+    Returns
+    -------
+    int
+        The unique identifier of the newly created message record.
+    """
+    message = await crud.create_message(
+        db=db,
+        investigation_id=investigation_id,
+        user_id=user_id,
+        role="assistant",
+        content=content,
+        metadata=metadata or {},
+        include_in_llm_context=include_in_llm_context,
+        visible_in_ui=visible_in_ui,
+    )
+    return message.message_id
+
+
+async def persist_system_message(
+    db: AsyncSession,
+    investigation_id: UUID,
+    user_id: int,
+    content: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    include_in_llm_context: bool = False,
+    visible_in_ui: bool = True,
+) -> int:
+    """
+    Persist a system-level chat message in the database.
+
+    System messages are internal notifications such as job status updates or error reports. By default they are omitted from the LLM context and hidden from the user interface, but this behavior can be overridden.
+
+    Args:
+        db: An active asynchronous SQLAlchemy session used to execute the insert.
+        investigation_id: The UUID of the investigation to which the message belongs.
+        user_id: Identifier of the user performing the operation (for audit purposes).
+        content: The textual content of the system message.
+        metadata: Optional dictionary containing additional structured data associated with the message. If omitted, an empty dict is stored.
+        include_in_llm_context: Flag indicating whether the message should be included when constructing prompts for LLM calls. Defaults to `False`.
+        visible_in_ui: Flag indicating whether the message should appear in the chat UI. Defaults to `True`.
+
+    Returns:
+        The integer primary key of the newly created message record.
+    """
+    message = await crud.create_message(
+        db=db,
+        investigation_id=investigation_id,
+        user_id=user_id,
+        role="system",
+        content=content,
+        metadata=metadata or {},
+        include_in_llm_context=include_in_llm_context,
+        visible_in_ui=visible_in_ui,
+    )
+    return message.message_id
+
+
+async def persist_tool_call(
+    db: AsyncSession,
+    investigation_id: UUID,
+    user_id: int,
+    tool_calls: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
+) -> int:
+    """
+    Persist a tool-call message generated by the assistant.
+
+    This function records an assistant-originated message that contains one or more tool calls (as defined by the OpenAI API) into the database. The stored record can later be retrieved and included in the conversation context sent to the language model.
+
+    Args:
+        db: An active asynchronous SQLAlchemy session used for the operation.
+        investigation_id: The UUID identifying the investigation to which the message belongs.
+        user_id: The identifier of the user associated with the message.
+        tool_calls: A dictionary representing the tool calls payload in OpenAI format.
+        metadata: Optional additional data to store alongside the message; defaults to an empty dict if omitted.
+
+    Returns:
+        The integer primary key (`message_id`) of the newly created message record.
+    """
+    message = await crud.create_message(
+        db=db,
+        investigation_id=investigation_id,
+        user_id=user_id,
+        role="assistant",
+        content=None,  # Tool calls have no content
+        tool_calls=tool_calls,
+        metadata=metadata or {},
+        include_in_llm_context=True,
+    )
+    return message.message_id
+
+
+async def persist_tool_response(
+    db: AsyncSession,
+    investigation_id: UUID,
+    user_id: int,
+    tool_call_id: str,
+    content: str,
+    name: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> int:
+    """
+    Persist a tool response message in the database and return its identifier.
+
+    This function records the result produced by an external tool after it has been invoked
+    as part of a conversation. The stored message is marked with the role `"tool"`
+    so that it can be included in the LLM context when assembling the chat history.
+
+    Args:
+        db: An active asynchronous SQLAlchemy session used to interact with the database.
+        investigation_id: The UUID identifying the investigation to which the message belongs.
+        user_id: The identifier of the user associated with the conversation.
+        tool_call_id: The unique identifier of the preceding tool call that this response
+            corresponds to.
+        content: The textual content returned by the tool.
+        name: The name of the tool that generated the response.
+        metadata: Optional additional data to store alongside the message; if omitted,
+            an empty dictionary is used.
+
+    Returns:
+        An integer representing the primary key (`message_id`) of the newly created
+        message record.
+    """
+    message = await crud.create_message(
+        db=db,
+        investigation_id=investigation_id,
+        user_id=user_id,
+        role="tool",
+        content=content,
+        name=name,
+        tool_call_id=tool_call_id,
+        metadata=metadata or {},
+        include_in_llm_context=True,
+    )
+    return message.message_id
+
+
+async def build_conversation_context(
+    db: AsyncSession,
+    investigation_id: UUID,
+    max_messages: Optional[int] = 50,
+    system_prompt: Optional[str] = None,
+) -> list:
+    """
+    Builds an OpenAI-compatible conversation context from stored chat messages.
+
+    Retrieves up to `max_messages` messages associated with the given
+    `investigation_id` that are marked for inclusion in LLM prompts,
+    converts them into the dictionary format expected by the OpenAI API, and
+    optionally prepends a system prompt.
+
+    Args:
+        db: An active :class:`sqlalchemy.ext.asyncio.AsyncSession` used to query
+            the message store.
+        investigation_id: The UUID identifying the investigation whose messages
+            should be assembled.
+        max_messages: The maximum number of recent messages to include in the
+            context. If `None` all available messages are returned; defaults
+            to `50`.
+        system_prompt: An optional string that, when provided, is inserted as a
+            `system` role message at the beginning of the context.
+
+    Returns:
+        A list of dictionaries, each containing `"role"` and `"content"`
+        keys formatted for consumption by OpenAI chat completions. The first
+        element will be the system prompt if one was supplied.
+    """
+    messages = await crud.get_llm_context(
+        db=db,
+        investigation_id=investigation_id,
+        max_messages=max_messages,
+    )
+
+    # Prepend system prompt if provided
+    if system_prompt:
+        messages.insert(0, {"role": "system", "content": system_prompt})
+
+    return messages
+
+
+__all__ = [
+    "persist_user_message",
+    "persist_assistant_message",
+    "persist_system_message",
+    "persist_tool_call",
+    "persist_tool_response",
+    "build_conversation_context",
+]

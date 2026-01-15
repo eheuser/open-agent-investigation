@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  db:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: open_agent_inv
+      POSTGRES_USER: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  api:
+    build: ./api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:example@db/open_agent_inv
+      JWT_SECRET: supersecretkey
+      LLM_ENDPOINT: http://llm-service:8000/generate
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api/data/policies:/app/data/policies:ro
+      - ./api/data/agents:/app/data/agents:ro
+      - ./data/investigations:/data/investigations
+
+  worker:
+    build:
+      context: ./api
+      dockerfile: worker/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:example@db/open_agent_inv
+    volumes:
+      - ./api/data/policies:/app/data/policies:ro
+      - ./api/data/agents:/app/data/agents:ro
+      - ./data/investigations:/data/investigations:ro  # Read-only mount
+      - /tmp:/tmp  # Writable temp space
+    restart: unless-stopped
+
+  ui:
+    build: ./ui
+    ports:
+      - "443:443"
+    depends_on:
+      - api
+
+volumes:
+  pg_data:

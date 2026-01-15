@@ -1,0 +1,64 @@
+version: "3.9"
+
+# Docker Compose configuration for running tests
+# Usage: docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+
+services:
+  # Test database - separate from production
+  test-db:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: open_agent_inv_test
+      POSTGRES_USER: postgres
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      timeout: 1s
+      retries: 10
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    tmpfs:
+      - /var/lib/postgresql/data  # Use tmpfs for speed
+
+  # Test runner - runs pytest and exits
+  test-runner:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.test
+    depends_on:
+      test-db:
+        condition: service_healthy
+    environment:
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:testpass@test-db/open_agent_inv_test
+      DATABASE_URL: postgresql+asyncpg://postgres:testpass@test-db/open_agent_inv_test
+      JWT_SECRET: test-secret-key
+      PYTHONPATH: /app
+    volumes:
+      - ./api:/app
+      - ./test-results:/test-results
+      - ./htmlcov:/htmlcov
+    command: >
+      sh -c "
+        echo '=== Installing dependencies ===' &&
+        pip install -r requirements-test-minimal.txt &&
+        pip install -r tests/requirements-test.txt &&
+        echo '=== Running tests ===' &&
+        pytest tests/ -v --cov=app --cov-report=html --cov-report=xml --cov-report=term-missing --junit-xml=/test-results/junit.xml &&
+        echo '=== Tests complete ===' &&
+        cp -r htmlcov/* /htmlcov/ &&
+        cp coverage.xml /test-results/
+      "
+
+  # Mock LLM service for testing
+  mock-llm:
+    build:
+      context: ./api/tests/mock_services
+      dockerfile: Dockerfile.mock-llm
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 5

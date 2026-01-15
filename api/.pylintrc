@@ -1,0 +1,25 @@
+[MASTER]
+# Ignore test files for certain checks
+ignore=tests
+
+[MESSAGES CONTROL]
+# Disable specific warnings
+disable=
+    import-error,
+    no-name-in-module,
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-instance-attributes,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements
+
+[TYPECHECK]
+# List of module names for which member attributes should not be checked
+ignored-modules=factory,faker
+
+# List of classes names for which member attributes should not be checked
+ignored-classes=factory.Factory,factory.DictFactory,factory.Faker,factory.Sequence,factory.LazyFunction

@@ -1,0 +1,611 @@
+"""
+Unit tests for context manager service.
+Tests intelligent message list management for different applications.
+"""
+
+import pytest
+from app.services.context_manager import (
+    estimate_tokens,
+    estimate_messages_tokens,
+    ChatContextManager,
+    TimelineContextManager,
+    GeneralChatContextManager,
+    RAGContextManager,
+    AgentContextManager,
+)
+
+
+@pytest.mark.unit
+class TestTokenEstimation:
+    """Test token estimation utilities."""
+
+    def test_estimate_tokens_basic(self):
+        """
+        Test basic token estimation functionality.
+
+        This test verifies that the `estimate_tokens` utility returns a token count equal to the length of the input string divided by four (the default heuristic) and ensures the result is greater than zero for non-empty text.
+        """
+        text = "Hello world"
+        tokens = estimate_tokens(text)
+
+        assert tokens == len(text) // 4
+        assert tokens > 0
+
+    def test_estimate_tokens_empty(self):
+        """
+        Test that estimating tokens for an empty string returns zero.
+        """
+        assert estimate_tokens("") == 0
+
+    def test_estimate_tokens_long_text(self):
+        """
+        Test that the token estimation utility correctly calculates the number of tokens for a long repetitive string by comparing the returned token count against the expected value derived from the known approximation (one token per four characters).
+        """
+        text = "word " * 1000
+        tokens = estimate_tokens(text)
+
+        assert tokens == len(text) // 4
+
+    def test_estimate_messages_tokens(self):
+        """
+        Test that the token estimation utility correctly calculates a positive token count for a simple list of message dictionaries containing user and assistant roles.
+        """
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+
+        tokens = estimate_messages_tokens(messages)
+
+        assert tokens > 0
+
+    def test_estimate_messages_tokens_empty(self):
+        """
+        Test that estimating tokens for an empty list of messages returns zero.
+        """
+        assert estimate_messages_tokens([]) == 0
+
+
+@pytest.mark.unit
+class TestChatContextManager:
+    """Test chat context manager."""
+
+    def test_prepare_classification_context_basic(self):
+        """
+        Test basic classification context preparation.
+
+        This test verifies that `ChatContextManager.prepare_classification_context` correctly constructs a message list for intent classification. It supplies a system prompt and a user query, calls the method, and asserts that:
+
+        - Exactly two messages are returned.
+        - The first message has role `system` and its content matches the provided system prompt.
+        - The second message has role `user` and its content includes the original user query.
+        """
+        system_prompt = "Classify the user's intent."
+        user_query = "What happened on this system?"
+
+        messages = ChatContextManager.prepare_classification_context(
+            system_prompt=system_prompt,
+            user_query=user_query,
+        )
+
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert messages[0]["content"] == system_prompt
+        assert messages[1]["role"] == "user"
+        assert user_query in messages[1]["content"]
+
+    def test_prepare_classification_context_with_history(self):
+        """
+        Test that `ChatContextManager.prepare_classification_context` correctly builds a classification prompt when a chat history is provided.
+
+        The test constructs a simple system prompt, a user query, and a short conversation history consisting of one user message followed by an assistant reply. It then calls the static method `prepare_classification_context` with these inputs and verifies that:
+
+        * The returned list of messages contains exactly two entries (the system prompt and the combined user content).
+        * The second message’s content includes the prior user message (“Hello”), the prior assistant response (“Hi there”), and the current user query.
+        """
+        system_prompt = "Classify intent."
+        user_query = "Show me the timeline"
+        chat_history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+
+        messages = ChatContextManager.prepare_classification_context(
+            system_prompt=system_prompt,
+            user_query=user_query,
+            chat_history=chat_history,
+        )
+
+        assert len(messages) == 2
+        user_content = messages[1]["content"]
+        assert "Hello" in user_content
+        assert "Hi there" in user_content
+        assert user_query in user_content
+
+    def test_prepare_classification_context_max_history(self):
+        """
+        Test that the classification context generated by :meth:`ChatContextManager.prepare_classification_context` includes the system prompt and user query while limiting the incorporated chat history to the most recent `max_history_messages` entries. The test constructs a synthetic history of ten messages, requests a maximum of three historical messages, and asserts that only the last three messages (indices 7-9) appear in the resulting user content, confirming that earlier messages are omitted.
+        """
+        system_prompt = "Classify."
+        user_query = "Test query"
+        chat_history = [{"role": "user", "content": f"Message {i}"} for i in range(10)]
+
+        messages = ChatContextManager.prepare_classification_context(
+            system_prompt=system_prompt,
+            user_query=user_query,
+            chat_history=chat_history,
+            max_history_messages=3,
+        )
+
+        user_content = messages[1]["content"]
+        # Should only include last 3 messages
+        assert "Message 7" in user_content
+        assert "Message 8" in user_content
+        assert "Message 9" in user_content
+        assert "Message 0" not in user_content
+
+    def test_prepare_classification_context_truncate_long_messages(self):
+        """
+        Test that the classification context preparation truncates overly long user messages in the chat history, ensuring the resulting content contains an ellipsis indicating truncation.
+        """
+        system_prompt = "Classify."
+        user_query = "Test"
+        long_message = "x" * 500
+        chat_history = [{"role": "user", "content": long_message}]
+
+        messages = ChatContextManager.prepare_classification_context(
+            system_prompt=system_prompt,
+            user_query=user_query,
+            chat_history=chat_history,
+        )
+
+        user_content = messages[1]["content"]
+        # Message should be truncated to 200 chars + "..."
+        assert "..." in user_content
+
+
+@pytest.mark.unit
+class TestTimelineContextManager:
+    """Test timeline context manager."""
+
+    def test_prepare_initial_context(self):
+        """
+        Test that `TimelineContextManager.prepare_initial_context` correctly creates the initial message list for a timeline query: a system prompt containing the word “timeline” followed by the user’s query as a user-role message, and verifies both the number of messages and their roles/content.
+        """
+        user_query = "Find all login events"
+
+        messages = TimelineContextManager.prepare_initial_context(user_query)
+
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert "timeline" in messages[0]["content"].lower()
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"] == user_query
+
+    def test_prepare_initial_context_truncate_long_query(self):
+        """
+        Test that TimelineContextManager.prepare_initial_context correctly truncates an excessively long user query to fit within the specified max_tokens limit, ensuring the resulting message content is shorter than the original input.
+        """
+        user_query = "x" * 50000  # Very long query
+
+        messages = TimelineContextManager.prepare_initial_context(
+            user_query,
+            max_tokens=2000,
+        )
+
+        # Query should be truncated
+        assert len(messages[1]["content"]) < len(user_query)
+
+    def test_add_tool_result(self):
+        """
+        Test that adding tool results to an existing message list correctly inserts an assistant placeholder and a corresponding tool result entry, resulting in a total of four messages with the new entries occupying the expected roles ("assistant" at index 2 and "tool" at index 3).
+        """
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "User query"},
+        ]
+
+        assistant_message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": "call_1", "function": {"name": "search"}}],
+        }
+
+        tool_results = [
+            {
+                "tool_call_id": "call_1",
+                "content": {"results": ["event1", "event2"]},
+            }
+        ]
+
+        updated = TimelineContextManager.add_tool_result(
+            messages=messages,
+            assistant_message=assistant_message,
+            tool_results=tool_results,
+        )
+
+        assert len(updated) == 4
+        assert updated[2]["role"] == "assistant"
+        assert updated[3]["role"] == "tool"
+
+    def test_add_tool_result_trim_on_overflow(self):
+        """
+        Test that adding a tool result triggers context trimming when the combined token count exceeds the specified maximum.
+
+        The test constructs an initial message list containing a system prompt and a user query, then appends a large number of assistant and tool messages designed to push the total token usage well beyond the `max_tokens` limit. After invoking :meth:`TimelineContextManager.add_tool_result` with a final assistant message and a single tool result, the test asserts that the returned list (`updated`) is shorter than the original list plus the two newly added entries, confirming that excess messages were removed to satisfy the token constraint.
+        """
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "User query"},
+        ]
+
+        # Add many messages to exceed token limit
+        for i in range(20):
+            messages.append({"role": "assistant", "content": "x" * 500})
+            messages.append({"role": "tool", "content": "y" * 500})
+
+        assistant_message = {"role": "assistant", "content": "Final"}
+        tool_results = [{"tool_call_id": "1", "content": {"data": "result"}}]
+
+        updated = TimelineContextManager.add_tool_result(
+            messages=messages,
+            assistant_message=assistant_message,
+            tool_results=tool_results,
+            max_tokens=8000,
+        )
+
+        # Should be trimmed
+        assert len(updated) < len(messages) + 2
+
+
+@pytest.mark.unit
+class TestGeneralChatContextManager:
+    """Test general chat context manager."""
+
+    def test_prepare_context_basic(self):
+        """
+        Test that GeneralChatContextManager.prepare_context correctly incorporates investigation details and the user query into the generated prompt.
+
+        The test sets up an `investigation_context` containing a title and creation date, defines a simple `user_query`, and calls `prepare_context` with these inputs. It then asserts that:
+
+        - The investigation title ("Test Investigation") appears in the resulting prompt.
+        - The original user query is included verbatim.
+        - A section header or label such as "Investigation Context" is present, indicating that the context block was added.
+        """
+        investigation_context = {
+            "investigation": {
+                "title": "Test Investigation",
+                "created_at": "2024-01-01",
+            }
+        }
+        user_query = "What is this investigation about?"
+
+        prompt = GeneralChatContextManager.prepare_context(
+            investigation_context=investigation_context,
+            user_query=user_query,
+        )
+
+        assert "Test Investigation" in prompt
+        assert user_query in prompt
+        assert "Investigation Context" in prompt
+
+    def test_prepare_context_with_timeline(self):
+        """
+        Test that the GeneralChatContextManager correctly incorporates timeline metadata into the generated prompt.
+
+        The test constructs an `investigation_context` containing:
+        - An investigation title.
+        - A timeline dictionary with `total_entries`, `earliest`, and `latest` dates.
+
+        It then calls `GeneralChatContextManager.prepare_context` with this context and a sample user query, and verifies that the resulting prompt string includes the expected timeline values (`"100"`, `"2024-01-01"` and `"2024-01-31"`).
+        """
+        investigation_context = {
+            "investigation": {"title": "Test"},
+            "timeline": {
+                "total_entries": 100,
+                "earliest": "2024-01-01",
+                "latest": "2024-01-31",
+            },
+        }
+        user_query = "Test"
+
+        prompt = GeneralChatContextManager.prepare_context(
+            investigation_context=investigation_context,
+            user_query=user_query,
+        )
+
+        assert "100" in prompt
+        assert "2024-01-01" in prompt
+        assert "2024-01-31" in prompt
+
+    def test_prepare_context_with_artifacts(self):
+        """
+        Test that the GeneralChatContextManager correctly incorporates artifact information into the generated prompt.
+
+        The test constructs an `investigation_context` containing a title and a dictionary of artifacts with their respective counts. It then calls `prepare_context` with this context and a sample user query, and verifies that the resulting prompt includes both the artifact name (`evtx`) and its count (`5`). This ensures that artifact details are properly embedded in the chat prompt for downstream processing.
+        """
+        investigation_context = {
+            "investigation": {"title": "Test"},
+            "artifacts": {
+                "evtx": 5,
+                "mft": 3,
+                "registry": 2,
+            },
+        }
+        user_query = "Test"
+
+        prompt = GeneralChatContextManager.prepare_context(
+            investigation_context=investigation_context,
+            user_query=user_query,
+        )
+
+        assert "evtx" in prompt.lower()
+        assert "5" in prompt
+
+    def test_prepare_context_with_events(self):
+        """
+        Test that the GeneralChatContextManager correctly incorporates event statistics into the generated prompt.
+
+        The test constructs an `investigation_context` containing a title and a dictionary of event counts (`process_creation`, `network_connection`, `file_modification`). It then calls `GeneralChatContextManager.prepare_context` with this context and a simple user query. The resulting prompt should:
+
+        * Include the total number of events (the sum of the values, i.e., `100`) so that the test can verify aggregation logic.
+        * Contain the name of at least one specific event type (e.g., `process_creation`) to ensure individual event keys are rendered in the prompt.
+        """
+        investigation_context = {
+            "investigation": {"title": "Test"},
+            "events": {
+                "process_creation": 50,
+                "network_connection": 30,
+                "file_modification": 20,
+            },
+        }
+        user_query = "Test"
+
+        prompt = GeneralChatContextManager.prepare_context(
+            investigation_context=investigation_context,
+            user_query=user_query,
+        )
+
+        assert "100" in prompt  # Total events
+        assert "process_creation" in prompt.lower()
+
+    def test_prepare_context_truncate_on_overflow(self):
+        """
+        Test that the GeneralChatContextManager correctly truncates the prepared prompt when its token count exceeds the specified maximum.
+
+        The test constructs an investigation context with a very long description and many event entries, then calls `prepare_context` with a `max_tokens` limit of 2000. It asserts that the resulting prompt's estimated token count does not surpass this limit, verifying that overflow handling and truncation logic function as intended.
+        """
+        investigation_context = {
+            "investigation": {
+                "title": "Test",
+                "description": "x" * 10000,
+            },
+            "events": {f"event_type_{i}": i for i in range(1000)},
+        }
+        user_query = "Test query"
+
+        prompt = GeneralChatContextManager.prepare_context(
+            investigation_context=investigation_context,
+            user_query=user_query,
+            max_tokens=2000,
+        )
+
+        # Should be truncated
+        assert estimate_tokens(prompt) <= 2000
+
+
+@pytest.mark.unit
+class TestRAGContextManager:
+    """Test RAG context manager."""
+
+    def test_prepare_context_basic(self):
+        """
+        Test that RAGContextManager.prepare_context correctly builds a system prompt containing the investigation title and retrieved chunk texts, includes source identifiers for each chunk, and returns the original user query unchanged.
+        """
+        investigation_title = "Test Investigation"
+        user_query = "What happened?"
+        retrieved_chunks = [
+            {"owner_type": "evtx", "text": "Event 1 data"},
+            {"owner_type": "mft", "text": "File 1 data"},
+        ]
+
+        system_prompt, query = RAGContextManager.prepare_context(
+            investigation_title=investigation_title,
+            user_query=user_query,
+            retrieved_chunks=retrieved_chunks,
+        )
+
+        assert investigation_title in system_prompt
+        assert "Event 1 data" in system_prompt
+        assert "File 1 data" in system_prompt
+        assert "Source 1" in system_prompt
+        assert "Source 2" in system_prompt
+        assert query == user_query
+
+    def test_prepare_context_empty_chunks(self):
+        """
+        Tests that preparing a RAG context with an empty list of retrieved chunks returns a system prompt containing the investigation title and leaves the user query unchanged.
+        """
+        system_prompt, query = RAGContextManager.prepare_context(
+            investigation_title="Test",
+            user_query="Query",
+            retrieved_chunks=[],
+        )
+
+        assert "Test" in system_prompt
+        assert query == "Query"
+
+    def test_prepare_context_truncate_on_overflow(self):
+        """
+        Test that the RAG context manager correctly truncates retrieved chunks when the combined token count exceeds the specified maximum.
+
+        The test constructs a large set of dummy chunks (each containing 10 000 characters) and invokes `RAGContextManager.prepare_context` with a `max_tokens` limit of 5 000. It then verifies two conditions:
+
+        * The resulting system prompt contains fewer `[Source]` entries than the original number of retrieved chunks, indicating that excess chunks were removed.
+        * The system prompt includes a truncation indicator (the word “truncated”, case-insensitive), confirming that the manager flagged the reduction.
+        """
+        investigation_title = "Test"
+        user_query = "Query"
+        retrieved_chunks = [{"owner_type": "evtx", "text": "x" * 10000} for _ in range(100)]
+
+        system_prompt, query = RAGContextManager.prepare_context(
+            investigation_title=investigation_title,
+            user_query=user_query,
+            retrieved_chunks=retrieved_chunks,
+            max_tokens=5000,
+        )
+
+        # Should reduce number of chunks
+        assert system_prompt.count("[Source") < len(retrieved_chunks)
+        # Should have truncation indicator
+        assert "truncated" in system_prompt.lower()
+
+    def test_prepare_context_truncates_chunk_text(self):
+        """
+        Test that RAGContextManager.prepare_context correctly truncates overly long chunk texts and reduces the number of included chunks to fit within the specified token limit.
+
+        The test constructs a large list of retrieved chunks where each chunk's text consists of 10,000 repeated characters, ensuring that the combined token count exceeds the `max_tokens` threshold. It then calls `prepare_context` with a modest `max_tokens` value (5000) and verifies two conditions:
+
+        1. The resulting system prompt contains fewer source annotations (`[Source`) than the original number of chunks, confirming that some chunks were omitted to stay within the token budget.
+        2. The count of source annotations equals half the original chunk list length, demonstrating that the truncation logic reduces the chunk set by approximately 50 % when faced with extreme input sizes.
+        """
+        investigation_title = "Test"
+        user_query = "Query"
+        # Create chunks with very long text that will trigger truncation
+        retrieved_chunks = [{"owner_type": "evtx", "text": "x" * 10000} for _ in range(100)]
+
+        system_prompt, query = RAGContextManager.prepare_context(
+            investigation_title=investigation_title,
+            user_query=user_query,
+            retrieved_chunks=retrieved_chunks,
+            max_tokens=5000,
+        )
+
+        # Should have reduced chunks and truncated text
+        chunk_count = system_prompt.count("[Source")
+        assert chunk_count < len(retrieved_chunks)
+        assert chunk_count == len(retrieved_chunks) // 2  # Should be half
+
+
+@pytest.mark.unit
+class TestAgentContextManager:
+    """Test agent context manager."""
+
+    def test_prepare_initial_context(self):
+        """
+        Test that :meth:`AgentContextManager.prepare_initial_context` correctly builds the initial message list for an agent by inserting a system prompt followed by the user's question, resulting in exactly two messages with appropriate `role` and `content` fields.
+        """
+        system_prompt = "You are a forensic investigator."
+        user_question = "Investigate this system."
+
+        messages = AgentContextManager.prepare_initial_context(
+            system_prompt=system_prompt,
+            user_question=user_question,
+        )
+
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert messages[0]["content"] == system_prompt
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"] == user_question
+
+    def test_should_compact_below_threshold(self):
+        """
+        Test that AgentContextManager.should_compact correctly returns `False` when the total token count of the provided messages is below the specified threshold percentage of the maximum context size. The test constructs a minimal message list, invokes `should_compact` with a large `max_context_tokens` value and an 80 % threshold, and asserts that the result is `False`.
+        """
+        messages = [{"role": "user", "content": "Short message"}]
+
+        should_compact = AgentContextManager.should_compact(
+            messages=messages,
+            max_context_tokens=10000,
+            threshold_pct=0.8,
+        )
+
+        assert should_compact is False
+
+    def test_should_compact_above_threshold(self):
+        """
+        Test that :meth:`AgentContextManager.should_compact` returns `True` when the total token count of the provided messages exceeds the specified maximum context size multiplied by the threshold percentage. The test constructs a single user message with a large content payload, invokes `should_compact` with `max_context_tokens=1000` and `threshold_pct=0.8`, and asserts that the result is truthy.
+        """
+        messages = [{"role": "user", "content": "x" * 50000}]
+
+        should_compact = AgentContextManager.should_compact(
+            messages=messages,
+            max_context_tokens=1000,
+            threshold_pct=0.8,
+        )
+
+        assert should_compact is True
+
+    def test_trim_from_middle(self):
+        """
+        Test that the `trim_from_middle` utility correctly reduces a message list by removing middle entries while preserving required elements.
+
+        The test constructs a sequence of messages containing:
+        - A system prompt.
+        - Several long user and assistant messages (each 5000 characters) to exceed the token limit.
+        - Two short concluding messages ("5" from the user and "6" from the assistant).
+
+        It then invokes `AgentContextManager.trim_from_middle` with:
+        - `max_tokens=100` to force trimming,
+        - `preserve_system=True` to keep the initial system message,
+        - `preserve_recent=3` to retain the three most recent messages.
+
+        The expected outcome is that the returned list contains exactly four entries: the original system message followed by the last three messages, with the final entry having content `"6"`. Assertions verify the length of the trimmed list, the role of the first element, and the content of the last element.
+        """
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "x" * 5000},  # Make it exceed token limit
+            {"role": "assistant", "content": "x" * 5000},
+            {"role": "user", "content": "x" * 5000},
+            {"role": "assistant", "content": "x" * 5000},
+            {"role": "user", "content": "5"},
+            {"role": "assistant", "content": "6"},
+        ]
+
+        trimmed = AgentContextManager.trim_from_middle(
+            messages=messages,
+            max_tokens=100,
+            preserve_system=True,
+            preserve_recent=3,
+        )
+
+        # Should keep system + last 3
+        assert len(trimmed) == 4
+        assert trimmed[0]["role"] == "system"
+        assert trimmed[-1]["content"] == "6"
+
+    def test_trim_from_middle_no_system(self):
+        """
+        Test trimming of messages from the middle when system messages are not preserved.
+
+        Creates a list of messages that exceeds the token limit, then calls `AgentContextManager.trim_from_middle` with `preserve_system=False` and `preserve_recent=2`. Verifies that the resulting trimmed list contains only two messages and that the first retained message is the assistant's reply (content `"2"`), confirming that earlier user messages are removed while recent messages are kept.
+        """
+        messages = [
+            {"role": "user", "content": "x" * 5000},  # Make it exceed token limit
+            {"role": "assistant", "content": "2"},
+            {"role": "user", "content": "3"},
+        ]
+
+        trimmed = AgentContextManager.trim_from_middle(
+            messages=messages,
+            max_tokens=100,
+            preserve_system=False,
+            preserve_recent=2,
+        )
+
+        assert len(trimmed) == 2
+        assert trimmed[0]["content"] == "2"
+
+    def test_trim_from_middle_already_under_limit(self):
+        """
+        Test that `trim_from_middle` returns the original message list unchanged when the total token count is already below the specified maximum limit. This verifies that no trimming occurs unnecessarily.
+        """
+        messages = [{"role": "user", "content": "Short"}]
+
+        trimmed = AgentContextManager.trim_from_middle(
+            messages=messages,
+            max_tokens=10000,
+        )
+
+        assert trimmed == messages

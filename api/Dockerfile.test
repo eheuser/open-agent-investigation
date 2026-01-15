@@ -1,0 +1,46 @@
+# Dockerfile for running tests
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    git \
+    curl \
+    libpq-dev \
+    libxml2-dev \
+    libxslt-dev \
+    make \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust (required for pynotatin)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Copy requirements first for layer caching
+COPY requirements-test-minimal.txt .
+COPY tests/requirements-test.txt tests/
+
+# Install Python dependencies (minimal set for testing)
+RUN pip install --no-cache-dir -r requirements-test-minimal.txt
+RUN pip install --no-cache-dir -r tests/requirements-test.txt
+
+# Copy application code
+COPY . .
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Default command runs tests
+CMD ["pytest", "tests/", "-v", "--cov=app", "--cov-report=term-missing"]
