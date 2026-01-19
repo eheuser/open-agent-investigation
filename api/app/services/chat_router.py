@@ -1,11 +1,8 @@
-import logging
-import json
 from typing import Dict, Any, AsyncIterator, Optional, List
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from ..core.config import settings
 from ..schemas.chat_message import IntentType, ClassificationResult
 from ..crud.llm_config import get_active_llm_config
 from ..models.chat_history import ChatMessage
@@ -18,7 +15,9 @@ from .query_expander import expand_query
 from .llm_service import LLMService
 from .context_manager import ChatContextManager
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 # Intent classification prompt - comprehensive forensics context

@@ -41,5 +41,5 @@ COPY . .
 
 EXPOSE 8000
 
-# The package root inside the container is “app”, not “api”
+# The package root inside the container is "app", not "api"
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

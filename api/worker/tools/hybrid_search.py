@@ -1,13 +1,13 @@
-import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-import numpy as np
 
 from app.services.rag.embedding import Embedder
 from app.crud.llm_config import get_active_llm_config
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def hybrid_search(

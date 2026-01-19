@@ -1,12 +1,14 @@
 import json
-import logging
 import subprocess
 import re
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
+
 
 # SQL injection prevention patterns
 DANGEROUS_SQL_PATTERNS = [

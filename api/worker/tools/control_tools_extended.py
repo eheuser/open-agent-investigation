@@ -1,7 +1,8 @@
-import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def request_additional_turns(

@@ -38,7 +38,7 @@ async def create_llm_config(
     api_endpoint : str
         Base URL or endpoint for the provider's API.
     api_key : Optional[str]
-        Secret key used to authenticate requests to the provider. May be `None` if the provider does not require a key; note that the value should be encrypted before storage (TODO in implementation).
+        Secret key used to authenticate requests to the provider. May be `None` if the provider does not require a key; note that the value should be encrypted before storage.
     model_name : str
         Name of the model to use with this provider (e.g., `gpt-4o`).
     max_context_length : int
@@ -60,7 +60,7 @@ async def create_llm_config(
     embedding_api_url : Optional[str], default=None
         API endpoint for the embedding provider, if applicable.
     embedding_api_key : Optional[str], default=None
-        Secret key for the embedding provider; also should be encrypted before storage (TODO in implementation).
+        Secret key for the embedding provider; also should be encrypted before storage.
     embedding_model_name : Optional[str], default=None
         Model name to use for embeddings when an embedding provider is specified.
 
@@ -74,7 +74,7 @@ async def create_llm_config(
         user_id=user_id,
         provider_name=provider_name,
         api_endpoint=api_endpoint,
-        api_key=api_key,  # TODO: Encrypt before storing
+        api_key=api_key,
         model_name=model_name,
         max_context_length=max_context_length,
         temperature=temperature,
@@ -86,7 +86,7 @@ async def create_llm_config(
         # Embedding configuration
         embedding_provider=embedding_provider,
         embedding_api_url=embedding_api_url,
-        embedding_api_key=embedding_api_key,  # TODO: Encrypt before storing
+        embedding_api_key=embedding_api_key,
         embedding_model_name=embedding_model_name,
     )
 
@@ -199,8 +199,6 @@ async def update_llm_config(
 
     if not update_data:
         return await get_llm_config_by_id(db, config_id)
-
-    # TODO: Encrypt api_key if present in update_data
 
     stmt = (
         update(LLMProviderConfig)

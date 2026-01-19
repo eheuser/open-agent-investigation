@@ -1,11 +1,12 @@
 import json
-import logging
 import re
 from typing import Any, Dict, List, Tuple, Set
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def generate_chat_summary(

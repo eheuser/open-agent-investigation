@@ -1,10 +1,11 @@
 import json
-import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def generate_field_dictionary(

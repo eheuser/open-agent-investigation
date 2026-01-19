@@ -271,7 +271,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
   const selectChoice = useCallback(async (choiceId: number) => {
     try {
       const response = await api.post(`/api/v1/investigations/${investigationId}/choices/${choiceId}/select`);
-      console.log('Choice selected, new job created:', response.data);
+      //console.log('Choice selected, new job created:', response.data);
       
       // Clear choices from UI
       setInvestigationChoices([]);
@@ -303,7 +303,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
       const activeJob = response.data.active_job;
       
       if (activeJob && activeJob.status === 'running') {
-        console.log('Active job detected:', activeJob);
+        //console.log('Active job detected:', activeJob);
         setInvestigationState('running');
         return true;
       }
@@ -460,19 +460,19 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
         case 'timeline_updated':
           // Timeline was updated (auto-registration), trigger refresh
           // This will update the timeline tab counter
-          console.log('Timeline updated:', notification.entries_added, 'entries added');
+          //console.log('Timeline updated:', notification.entries_added, 'entries added');
           // Note: The parent component should listen for this and refresh timeline counts
           break;
 
         case 'investigation_choices_available':
           // Investigation continuation choices are available
-          console.log('Investigation choices available:', notification.choices);
+          //console.log('Investigation choices available:', notification.choices);
           setInvestigationChoices(notification.choices || []);
           break;
 
         case 'connected':
           // WebSocket connected
-          console.log('WebSocket connected');
+          //console.log('WebSocket connected');
           break;
 
         case 'error':

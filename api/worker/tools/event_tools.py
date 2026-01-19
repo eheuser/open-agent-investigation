@@ -1,11 +1,12 @@
-import logging
 import json
 from typing import Dict, Any, Optional, List
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from dateutil import parser as date_parser
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def search_events_by_type(

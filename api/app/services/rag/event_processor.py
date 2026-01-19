@@ -1,4 +1,3 @@
-import logging
 from typing import Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +9,9 @@ from .embedding_service import generate_embedding_for_timeline_entry
 from ...crud.llm_config import get_active_llm_config
 from ...models.filter_config import FilterConfig
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def _get_filter_config(db: AsyncSession, investigation_id: UUID) -> Dict[str, Any]:

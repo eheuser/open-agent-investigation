@@ -1,5 +1,5 @@
 """Agent execution framework."""
 
-from .assistant_agent_v2 import AssistantAgentV2
+from .assistant_agent import AssistantAgent
 
-__all__ = ["AssistantAgentV2"]
+__all__ = ["AssistantAgent"]

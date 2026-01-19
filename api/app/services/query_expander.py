@@ -1,15 +1,13 @@
-import logging
-from typing import Dict, Any, Optional
 from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-import aiohttp
 
 from ..crud.chat_history import get_investigation_messages
-from ..crud.llm_config import get_active_llm_config
 from .llm_service import LLMService
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 EXPANSION_PROMPT_TEMPLATE = """You are a query expansion assistant. Your job is to take short, curt user queries and expand them into verbose, detailed instructions that include full context from the ongoing investigation.

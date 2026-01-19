@@ -1,11 +1,13 @@
 import json
-import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
+
 
 # Import embedding service (but handle gracefully if not available)
 try:

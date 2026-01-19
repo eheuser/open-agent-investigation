@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Dict, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +14,9 @@ from . import (
     diagram_tools,
 )
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def search_events_by_type_wrapper(

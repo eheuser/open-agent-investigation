@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
@@ -9,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from mft.mft import PyMftParser
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 def _parse_timestamp(ts_value) -> datetime | None:

@@ -1,7 +1,6 @@
-import logging
 from pathlib import Path
 from datetime import datetime, date
-from typing import Dict, Any, Union
+from typing import Dict, Any
 import uuid
 import json
 
@@ -11,7 +10,9 @@ import LnkParse3
 
 from .utils import flatten_dict
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def parse_lnk(

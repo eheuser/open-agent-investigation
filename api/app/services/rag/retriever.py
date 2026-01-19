@@ -1,11 +1,12 @@
-import logging
 from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
+from sqlalchemy import text
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

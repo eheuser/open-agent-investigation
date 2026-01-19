@@ -1,17 +1,17 @@
-import logging
 import uuid
 from typing import Optional, List
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
-from datetime import datetime
 
 from ..models.investigation import Investigation
 from ..models.user import User
 from ..core.config import settings
 from fastapi import HTTPException, status
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def create_investigation(
@@ -52,11 +52,9 @@ async def create_investigation(
     )
 
     db.add(investigation)
-    await db.flush()  # Get the investigation_id before creating tables
+    await db.flush()
 
-    # Note: Using unified tables (events, timeline_entries) with investigation_id column
-    # No per-investigation tables need to be created
-    logger.info(f"Created investigation {inv_id} (using unified tables)")
+    logger.info(f"Created investigation {inv_id}")
 
     # Create filesystem directory
     try:

@@ -1,4 +1,3 @@
-import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
@@ -15,7 +14,9 @@ from ..services.chat_persistence import (
 )
 from ..crud.investigation import check_investigation_access
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 

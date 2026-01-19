@@ -1,23 +1,8 @@
-"""
-Global pytest configuration and fixtures for Open Agent Investigation tests.
-
-This module provides:
-- Database session fixtures (async)
-- Test client fixtures (FastAPI TestClient and httpx.AsyncClient)
-- Mock LLM client fixtures
-- Data factories
-- Common test utilities
-"""
-
-import asyncio
 import os
 import pytest
 import uuid
-import logging
 from typing import AsyncGenerator, Generator
 from datetime import datetime
-
-logger = logging.getLogger(__name__)
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
@@ -29,12 +14,15 @@ from httpx import AsyncClient
 from app.main import app
 from app.core.database import Base, get_db
 
-from app.core.config import settings
 from app.models.user import User
 from app.models.investigation import Investigation
 from app.auth import create_access_token, hash_password
 from app.models.user import UserRole
 
+
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 # Use a separate test database URL
 TEST_DATABASE_URL = os.getenv(
