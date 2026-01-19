@@ -91,7 +91,7 @@ def _strip_cot_tags(text: str) -> str:
     return cleaned
 
 
-class AssistantAgentV2:
+class AssistantAgent:
     """
     Two-phase forensic analysis agent.
 
@@ -208,7 +208,7 @@ class AssistantAgentV2:
         self.compaction_threshold = int(llm_max_context * 0.8)  # Compact at 80% of max context
 
         logger.info(
-            f"AssistantAgentV2 initialized: investigation={investigation_id}, "
+            f"AssistantAgent initialized: investigation={investigation_id}, "
             f"max_iterations={max_iterations}, max_context={llm_max_context}, "
             f"compaction_threshold={self.compaction_threshold}"
         )
@@ -1430,7 +1430,8 @@ class AssistantAgentV2:
             Any unexpected exception is caught, logged, and results in an `agent_error` event being yielded; the exception is not re-raised.
         """
         try:
-            logger.info(f"AssistantAgentV2 starting: {self.question}")
+            logger.info("AssistantAgent starting")
+            logger.debug(f"AssistantAgent starting: {self.question}")
 
             # Load investigation context with field dictionary
             context = await load_investigation_context(
@@ -1444,7 +1445,7 @@ class AssistantAgentV2:
             # Yield start message
             yield {
                 "type": "agent_started",
-                "agent": "assistant_agent_v2",
+                "agent": "assistant_agent",
                 "question": self.question,
             }
 
@@ -1730,7 +1731,7 @@ class AssistantAgentV2:
                 }
 
         except asyncio.CancelledError:
-            logger.info("AssistantAgentV2 cancelled")
+            logger.info("AssistantAgent cancelled")
             yield {
                 "type": "agent_cancelled",
                 "message": "Investigation stopped by user",
@@ -1746,7 +1747,7 @@ class AssistantAgentV2:
             raise
 
         except Exception as e:
-            logger.error(f"Unexpected error in AssistantAgentV2: {e}", exc_info=True)
+            logger.error(f"Unexpected error in AssistantAgent: {e}", exc_info=True)
             yield {
                 "type": "agent_error",
                 "error": f"Unexpected error: {type(e).__name__}: {str(e)}",
@@ -1812,4 +1813,4 @@ class AssistantAgentV2:
         return "".join(summary_parts)
 
 
-__all__ = ["AssistantAgentV2"]
+__all__ = ["AssistantAgent"]

@@ -16,7 +16,7 @@ from app.models.job_agent import AgentJob
 from app.models.llm_config import LLMProviderConfig
 from app.core.config import settings
 from worker.parsers import parse_artifact
-from worker.agents.assistant_agent_v2 import AssistantAgentV2
+from worker.agents.assistant_agent import AssistantAgent
 from app.crud import investigation as inv_crud
 
 from app.utils.log_setup import get_logger
@@ -519,7 +519,7 @@ async def process_agent_job(
     db: AsyncSession, job: AgentJob, control_queue: Optional[mp.Queue] = None
 ):
     """
-    Process an agent job by retrieving the user's active LLM configuration, initializing an AssistantAgentV2 with parameters derived from the job and configuration, streaming progress updates to WebSocket clients, handling errors, marking the job's final status in the database, and optionally generating continuation choices when the investigation is incomplete.
+    Process an agent job by retrieving the user's active LLM configuration, initializing an AssistantAgent with parameters derived from the job and configuration, streaming progress updates to WebSocket clients, handling errors, marking the job's final status in the database, and optionally generating continuation choices when the investigation is incomplete.
 
     Args:
         db: An asynchronous SQLAlchemy session used for all database queries and commits.
@@ -573,7 +573,7 @@ async def process_agent_job(
             f"(context={llm_max_context}, temp={llm_temperature})"
         )
 
-        # Use AssistantAgentV2 - responsive agent with bounded turns
+        # Use AssistantAgent - responsive agent with bounded turns
         # Map effort to max turns (updated for choice-based continuation)
         effort_to_turns = {
             "low": 3,
@@ -591,7 +591,7 @@ async def process_agent_job(
                 f"(continued from job {job.job_metadata['continued_from']})"
             )
 
-        agent = AssistantAgentV2(
+        agent = AssistantAgent(
             db=db,
             investigation_id=str(job.investigation_id),
             job_id=job.job_id,
@@ -838,7 +838,7 @@ async def recover_stale_jobs(db: AsyncSession):
             f"that were stale (running > 30 minutes)"
         )
     else:
-        logger.info("No stale jobs found")
+        logger.debug("No stale jobs found")
 
 
 def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_index: int):
