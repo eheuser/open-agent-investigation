@@ -1,4 +1,3 @@
-import logging
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..crud import chat_history as crud
 from ..crud.llm_config import get_active_llm_config
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 # Token budget configuration
 MAX_CONTEXT_PERCENT = 0.85  # Use at most 85% of model's max context

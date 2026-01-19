@@ -1,8 +1,9 @@
 import json
-import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 # Token estimation constant
 CHARS_PER_TOKEN = 4

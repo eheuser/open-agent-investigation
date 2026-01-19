@@ -3,7 +3,6 @@ import logging
 import uuid as uuid_pkg
 import multiprocessing as mp
 import signal
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, cast
@@ -20,17 +19,12 @@ from worker.parsers import parse_artifact
 from worker.agents.assistant_agent_v2 import AssistantAgentV2
 from app.crud import investigation as inv_crud
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - [%(processName)s] - %(message)s",
-)
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
 
-# Worker ID (main process)
+logger = get_logger(__name__)
+
 MAIN_WORKER_ID = uuid_pkg.uuid4()
 
-# Number of worker processes (min of CPU count or 4)
 NUM_WORKERS = min(mp.cpu_count(), 4)
 
 

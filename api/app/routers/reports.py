@@ -1,4 +1,3 @@
-import logging
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -19,7 +18,9 @@ from ..crud.llm_config import get_active_llm_config
 from ..crud import report as report_crud
 from worker.core.llm_client import LLMClient
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 

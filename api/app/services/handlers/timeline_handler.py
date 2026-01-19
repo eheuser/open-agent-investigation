@@ -1,6 +1,5 @@
-import logging
 import json
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +9,10 @@ from ...crud.llm_config import get_active_llm_config
 from ..llm_service import LLMService
 from ..context_manager import TimelineContextManager
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
+
 
 # Timeline tools available to LLM
 TIMELINE_TOOLS = [

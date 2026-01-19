@@ -5,7 +5,6 @@ from typing import Dict, Any
 import uuid
 import json
 import calendar
-import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -20,7 +19,9 @@ from notatin import PyNotatinParser
 
 from .utils import flatten_dict
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 # Suppress verbose regipy logging (but allow WARNING and above)
 logging.getLogger("regipy").setLevel(logging.WARNING)

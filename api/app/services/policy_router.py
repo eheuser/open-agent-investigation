@@ -1,4 +1,3 @@
-import logging
 import yaml
 import json
 from pathlib import Path
@@ -12,7 +11,9 @@ from ..crud.job import enqueue_agent_job
 from ..crud.llm_config import get_active_llm_config
 from .llm_auth_helper import prepare_llm_auth
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 POLICIES_DIR = Path("/app/data/policies")

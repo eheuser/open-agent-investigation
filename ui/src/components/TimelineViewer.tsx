@@ -174,7 +174,7 @@ const TimelineViewer: React.FC<TimelineViewerProps> = ({ investigationId }) => {
         
         if (response.data.event_types && response.data.event_types.length > 0) {
           setAvailableEventTypes(response.data.event_types);
-          console.log(`Loaded ${response.data.total_types} event types from timeline`);
+          //console.log(`Loaded ${response.data.total_types} event types from timeline`);
         }
       } catch (err) {
         console.error('Failed to fetch event types:', err);
@@ -217,11 +217,11 @@ const TimelineViewer: React.FC<TimelineViewerProps> = ({ investigationId }) => {
           });
           const fields = Array.from(fieldSet).sort();
           setCommonFields(fields);
-          if (eventTypeFilter) {
-            console.log(`Loaded ${fields.length} unique fields from timeline entries with event type '${eventTypeFilter}'`);
-          } else {
-            console.log(`Loaded ${fields.length} unique fields from ${response.data.entries.length} timeline entries`);
-          }
+          //if (eventTypeFilter) {
+          //  console.log(`Loaded ${fields.length} unique fields from timeline entries with event type '${eventTypeFilter}'`);
+          //} else {
+          //  console.log(`Loaded ${fields.length} unique fields from ${response.data.entries.length} timeline entries`);
+          //}
         } else {
           setCommonFields([]);
         }

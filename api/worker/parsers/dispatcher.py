@@ -1,6 +1,4 @@
-import logging
 from pathlib import Path
-from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
@@ -50,7 +48,9 @@ except ImportError:
     MFT_AVAILABLE = False
     parse_mft = None
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def parse_artifact(

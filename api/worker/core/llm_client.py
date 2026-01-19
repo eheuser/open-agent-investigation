@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import sys
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -15,7 +14,9 @@ from app.services.llm_service import LLMService, LLMConfig
 
 from ..models import AssistantMessage, ToolCall
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 DEBUG = False
 

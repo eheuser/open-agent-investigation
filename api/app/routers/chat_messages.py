@@ -1,4 +1,3 @@
-import logging
 from typing import Dict, Any, Optional, List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
@@ -14,7 +13,9 @@ from ..crud import tool_execution as tool_crud
 from ..crud import investigation as inv_crud
 from .chat import manager  # Import WebSocket manager for notifications
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 

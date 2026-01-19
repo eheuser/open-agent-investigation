@@ -1,14 +1,15 @@
-import logging
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
+from sqlalchemy import text
 import numpy as np
 
 from .embedding import Embedder
 from ...crud.llm_config import get_active_llm_config
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def generate_embeddings_for_events(

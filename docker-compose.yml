@@ -27,6 +27,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:example@db/open_agent_inv
       JWT_SECRET: supersecretkey
       LLM_ENDPOINT: http://llm-service:8000/generate
+      LOG_LEVEL: INFO
+      LOG_FORMAT: "%(asctime)s %(levelname)s %(name)s %(message)s"
+      LOG_DATEFMT: "%Y-%m-%d %H:%M:%S"
+      LOG_FILE: null
+      LOG_JSON: false
     ports:
       - "8000:8000"
     volumes:
@@ -43,6 +48,11 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:example@db/open_agent_inv
+      LOG_LEVEL: INFO
+      LOG_FORMAT: "%(asctime)s %(levelname)s %(name)s %(message)s"
+      LOG_DATEFMT: "%Y-%m-%d %H:%M:%S"
+      LOG_FILE: null
+      LOG_JSON: false
     volumes:
       - ./api/data/policies:/app/data/policies:ro
       - ./api/data/agents:/app/data/agents:ro

@@ -1,10 +1,11 @@
-import logging
 from typing import List, Optional
 import numpy as np
 
 from ..llm_service import EmbeddingService as CentralizedEmbeddingService
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 class Embedder:

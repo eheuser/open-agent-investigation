@@ -1,6 +1,4 @@
 import asyncio
-import logging
-import re
 from typing import Dict, Any
 from uuid import UUID
 from datetime import datetime
@@ -16,7 +14,9 @@ from .chat_persistence import (
 )
 from ..utils.content_sanitizer import sanitize_llm_content
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def handle_broadcast_message(

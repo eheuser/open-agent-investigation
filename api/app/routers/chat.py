@@ -1,4 +1,3 @@
-import logging
 from typing import Dict, Any, Optional
 from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException, Body
@@ -23,7 +22,9 @@ from ..models.chat_history import ChatMessage
 from ..models.job_agent import AgentJob
 from ..models.job_parsing import JobStatus
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 

@@ -134,7 +134,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
       }
 
       const data = await response.json();
-      console.log('Investigation continued:', data);
+      //console.log('Investigation continued:', data);
       
       // The API will broadcast message_updated and job_continuing via WebSocket
       // which will trigger the UI to update automatically
@@ -178,7 +178,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
         }
       });
       
-      console.log(`Found ${results.length} search results`);
+      //console.log(`Found ${results.length} search results`);
       setSearchResults(results);
       setCurrentResultIndex(0);
       
@@ -210,7 +210,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
   const scrollToSearchResult = (searchId: string) => {
     const container = messagesContainerRef.current;
     if (!container) {
-      console.log('No container ref');
+      //console.log('No container ref');
       return;
     }
     
@@ -218,7 +218,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
     const targetElement = container.querySelector(`mark[data-search-id="${searchId}"]`) as HTMLElement;
     
     if (targetElement) {
-      console.log('Scrolling to search result:', searchId);
+      //console.log('Scrolling to search result:', searchId);
       
       // Remove previous highlight
       const previousHighlight = container.querySelector('mark.search-current');
@@ -232,7 +232,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
       // Scroll into view
       targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
-      console.log('Could not find mark element with search ID:', searchId);
+      //console.log('Could not find mark element with search ID:', searchId);
     }
   };
   

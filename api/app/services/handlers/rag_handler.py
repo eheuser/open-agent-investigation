@@ -1,5 +1,4 @@
-import logging
-from typing import Dict, Any, AsyncIterator, List, Optional
+from typing import Dict, Any, AsyncIterator, List
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +10,9 @@ from ...models.tool_execution import ToolExecution
 from ..llm_service import LLMService, LLMConfig
 from ..context_manager import RAGContextManager
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def _expand_query_with_llm(

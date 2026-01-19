@@ -228,11 +228,11 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
         
         if (response.data.fields.length > 0) {
           setCommonFields(response.data.fields);
-          if (eventTypeFilter) {
-            console.log(`Loaded ${response.data.count} unique fields for event type '${eventTypeFilter}'`);
-          } else {
-            console.log(`Loaded ${response.data.count} unique fields from ${response.data.event_types_sampled} event types`);
-          }
+          //if (eventTypeFilter) {
+          //  console.log(`Loaded ${response.data.count} unique fields for event type '${eventTypeFilter}'`);
+          //} else {
+          //  console.log(`Loaded ${response.data.count} unique fields from ${response.data.event_types_sampled} event types`);
+          //}
         } else {
           setCommonFields([]);
         }
@@ -254,7 +254,7 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
         
         if (response.data.event_types.length > 0) {
           setAvailableEventTypes(response.data.event_types);
-          console.log(`Loaded ${response.data.total_types} event types`);
+          //console.log(`Loaded ${response.data.total_types} event types`);
         }
       } catch (err) {
         console.error('Failed to fetch event types:', err);
@@ -269,7 +269,7 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
     const handleEventsMessage = (message: any) => {
       // Listen for events_inserted messages
       if (message.type === 'events_inserted') {
-        console.log(`New events inserted: ${message.count}`);
+        //console.log(`New events inserted: ${message.count}`);
         // Refresh events list
         fetchEvents();
       }

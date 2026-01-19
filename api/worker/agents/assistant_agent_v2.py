@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,16 +8,18 @@ from ..core import LLMClient, ToolExecutor, tool_registry
 from ..models import AssistantMessage, ToolResult
 from ..tools.csv_formatter import events_to_csv
 from .context_manager import estimate_tokens, prune_chat_log, load_investigation_context
-from .tool_categories import filter_tools_for_phase, is_analysis_tool
+from .tool_categories import filter_tools_for_phase
 from .memory_summarizer import generate_chat_summary, load_chat_summary, trim_messages_from_middle
 from .prompts import (
     get_system_prompt,
     get_tool_execution_prompt,
     get_analysis_prompt,
-    get_completion_enforcement_prompt,
 )
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
+
 
 # Constants
 MAX_RETRIES = 3

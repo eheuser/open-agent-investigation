@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import re
@@ -46,7 +45,9 @@ except ImportError:
         return []
 
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 # Token counter (using tiktoken for OpenAI-compatible models)
 try:

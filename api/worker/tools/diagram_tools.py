@@ -1,12 +1,8 @@
-import json
-import logging
-import subprocess
-import tempfile
-import os
-from typing import Dict, Any, Optional
-from pathlib import Path
+from typing import Dict, Any
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def render_diagram(

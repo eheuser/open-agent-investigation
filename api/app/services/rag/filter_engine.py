@@ -1,9 +1,9 @@
-import logging
-import re
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 class FilterEngine:

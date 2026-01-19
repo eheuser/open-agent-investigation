@@ -1,4 +1,3 @@
-import logging
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -24,8 +23,9 @@ from .routers import (
     investigation_choices,
     reports,
 )
+from .utils.log_setup import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Create FastAPI instance
 app = FastAPI(

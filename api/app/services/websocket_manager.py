@@ -1,8 +1,9 @@
-import logging
 from typing import Dict, Any, List
 from fastapi import WebSocket
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 class ConnectionManager:

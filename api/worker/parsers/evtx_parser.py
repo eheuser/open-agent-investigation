@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -11,7 +10,9 @@ from evtx import PyEvtxParser  # type: ignore
 
 from .utils import flatten_dict
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 def _normalize_channel_name(channel: str) -> str:

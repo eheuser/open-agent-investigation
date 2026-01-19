@@ -1,8 +1,9 @@
-import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 class ToolSpec(BaseModel):

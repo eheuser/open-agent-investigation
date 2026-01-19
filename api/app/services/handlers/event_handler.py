@@ -1,4 +1,3 @@
-import logging
 import json
 import csv
 import yaml
@@ -9,11 +8,11 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-from ...core.config import settings
-from ...crud.llm_config import get_active_llm_config
 from ..llm_service import LLMService
 
-logger = logging.getLogger(__name__)
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 async def handle_event_insertion(

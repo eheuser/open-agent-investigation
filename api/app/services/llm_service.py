@@ -1,8 +1,6 @@
 import asyncio
 import json
-import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
-from decimal import Decimal
 
 import aiohttp
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..crud.llm_config import get_active_llm_config
 from .llm_auth_helper import prepare_llm_auth
 
-logger = logging.getLogger(__name__)
+from ..utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 # Constants
 DEFAULT_MAX_RETRIES = 3
