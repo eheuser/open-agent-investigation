@@ -6,8 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from ..core.database import get_db
+from ..deps import get_current_user
 from ..models.chat_history import ChatMessage
 from ..models.tool_execution import ToolExecution
+from ..models.user import User
 from ..crud import chat_history as crud
 from ..crud import tool_execution as tool_crud
 from ..crud import investigation as inv_crud
@@ -278,8 +280,8 @@ async def get_message(
 async def create_message(
     investigation_id: str,
     message: MessageCreate,
-    user_id: int = 1,  # TODO: Get from JWT token
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """
     Create a new chat message for a given investigation and broadcast a notification to connected WebSocket clients.
@@ -307,7 +309,7 @@ async def create_message(
     msg = await crud.create_message(
         db=db,
         investigation_id=inv_uuid,
-        user_id=user_id,
+        user_id=user.user_id,
         role=message.role,
         content=message.content,
         metadata=message.metadata,
