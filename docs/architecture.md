@@ -446,7 +446,7 @@ CREATE TABLE timeline_entries (
 **Workers:**
 - Multiple worker processes can run concurrently
 - Job claiming uses SELECT FOR UPDATE SKIP LOCKED (no conflicts)
-- Scale with: `docker-compose up -d --scale worker=N`
+- Scale with: `docker compose up -d --scale worker=N`
 
 **API Servers:**
 - Multiple API instances behind load balancer
@@ -570,7 +570,7 @@ Suitable for: Production, large teams, > 100k events
 
 - Consistent environments across dev/prod
 - Simplified dependency management
-- Easy scaling with docker-compose
+- Easy scaling with docker compose
 - Isolation between components
 - Portable deployment
 

@@ -43,7 +43,7 @@ Verify installation:
 
 ```bash
 docker --version
-docker-compose --version
+docker compose --version
 ```
 
 #### Step 2: Clone Repository
@@ -53,21 +53,10 @@ git clone https://github.com/eheuser/open-agent-investigation.git
 cd open-agent-investigation
 ```
 
-#### Step 3: Configure Environment
-
-Create environment file (optional, defaults are provided):
+#### Step 3: Start Services
 
 ```bash
-cat > api/.env <<EOF
-DATABASE_URL=postgresql+asyncpg://postgres:example@db/open_agent_inv
-JWT_SECRET=change-this-to-a-secure-random-string-in-production
-EOF
-```
-
-#### Step 4: Start Services
-
-```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This starts four services:
@@ -76,12 +65,12 @@ This starts four services:
 - `worker` - Asynchronous job processor
 - `ui` - React frontend served by nginx
 
-#### Step 5: Verify Installation
+#### Step 4: Verify Installation
 
 Check service status:
 
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 All services should show "Up" status.
@@ -91,11 +80,24 @@ Access the application:
 - API: http://localhost:8000/docs (Swagger documentation)
 - Health check: http://localhost:8000/health
 
-#### Step 6: Login
+#### Step 5: Login
 
 Default credentials (change immediately):
 - Username: `admin`
 - Password: `admin123`
+
+#### Step 6: Configure LLM and (optional) Embeddings
+
+Before adding artifacts or creating investigations you will need to configure the inference API.
+* Click the username in the lower left corner of the screen and select `Settings`.
+* Defaults are provided that will connect to the docker hosting machine (usually your laptop).
+* You will need to configure the LLM API at a minimum in order to use the application. The embedding configuration is optional, but will disable the RAG functionality.
+
+**Note** If you configure an embedding API and model, be sure to select the `Embedding Provider` or the RAG functionality will remain disabled.
+
+![image](./img/configure.png)
+
+**Note** Tested settings for API, local is usable with gpt-oss-20b and a small embedding model.
 
 ### Manual Installation
 
@@ -174,8 +176,8 @@ Before asking questions, configure an LLM provider:
 Provider Name: openai
 API Endpoint: https://api.openai.com/v1/chat/completions
 API Key: sk-your-api-key-here
-Model Name: gpt-4
-Max Context Length: 8192
+Model Name: gpt-4o
+Max Context Length: 128000
 Temperature: 0.7
 ```
 
@@ -186,7 +188,7 @@ Provider Name: ollama
 API Endpoint: http://host.docker.internal:11434/v1/chat/completions
 API Key: (leave empty)
 Model Name: llama3
-Max Context Length: 8192
+Max Context Length: 131072
 Temperature: 0.7
 ```
 
@@ -197,7 +199,6 @@ Embedding Provider: openai
 Embedding API URL: https://api.openai.com/v1/embeddings
 Embedding API Key: sk-your-api-key-here
 Embedding Model: text-embedding-ada-002
-Vector Dimensions: 1536
 ```
 
 4. Click **Save Configuration**
@@ -226,7 +227,7 @@ Role values:
 
 ```bash
 # Via psql
-docker-compose exec db psql -U postgres -d open_agent_inv
+docker compose exec db psql -U postgres -d open_agent_inv
 
 UPDATE users
 SET password_hash = crypt('new-password', gen_salt('bf'))
@@ -238,7 +239,7 @@ WHERE username = 'admin';
 ### Test Database Connection
 
 ```bash
-docker-compose exec api python -c "
+docker compose exec api python -c "
 from app.core.database import engine
 import asyncio
 asyncio.run(engine.connect())
@@ -284,36 +285,36 @@ ports:
 
 ```bash
 # Check database is running
-docker-compose ps db
+docker compose ps db
 
 # View database logs
-docker-compose logs db
+docker compose logs db
 
 # Restart database
-docker-compose restart db
+docker compose restart db
 ```
 
 ### API Not Starting
 
 ```bash
 # View API logs
-docker-compose logs api
+docker compose logs api
 
 # Check for Python errors
-docker-compose exec api python -c "import app.main"
+docker compose exec api python -c "import app.main"
 ```
 
 ### Worker Not Processing Jobs
 
 ```bash
 # View worker logs
-docker-compose logs worker
+docker compose logs worker
 
 # Check worker is running
-docker-compose ps worker
+docker compose ps worker
 
 # Restart worker
-docker-compose restart worker
+docker compose restart worker
 ```
 
 ## Next Steps

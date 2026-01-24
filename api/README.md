@@ -263,17 +263,17 @@ api/
 
 ### Docker (Recommended)
 
-The API runs as a Docker container via `docker-compose`:
+The API runs as a Docker container via `docker compose`:
 
 ```bash
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # View API logs
-docker-compose logs -f api
+docker compose logs -f api
 
 # Restart API only
-docker-compose restart api
+docker compose restart api
 ```
 
 ### Manual Installation
@@ -564,7 +564,7 @@ curl -X POST http://localhost:8000/api/v1/chat/ask \
   -d '{"investigation_id": "...", "question": "Show me timeline entries"}'
 
 # Check logs for routing decision
-docker-compose logs api | grep "CHAT_ROUTER"
+docker compose logs api | grep "CHAT_ROUTER"
 # Output: [CHAT_ROUTER] Classified as: timeline_query (confidence: 0.9)
 # Output: [CHAT_ROUTER] → Route 2: Timeline Handler
 ```
@@ -604,11 +604,11 @@ docker-compose logs api | grep "CHAT_ROUTER"
 export LOG_LEVEL=DEBUG
 
 # Check classification decisions
-docker-compose logs api | grep "\[CHAT_ROUTER\]"
+docker compose logs api | grep "\[CHAT_ROUTER\]"
 
 # Check handler execution
-docker-compose logs api | grep "\[TIMELINE_HANDLER\]"
-docker-compose logs api | grep "\[GENERAL_CHAT\]"
+docker compose logs api | grep "\[TIMELINE_HANDLER\]"
+docker compose logs api | grep "\[GENERAL_CHAT\]"
 ```
 
 ---

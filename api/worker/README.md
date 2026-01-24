@@ -153,17 +153,17 @@ worker/
 The Worker runs as a Docker container:
 
 ```bash
-# Start worker with docker-compose
-docker-compose up -d worker
+# Start worker with docker compose
+docker compose up -d worker
 
 # View worker logs
-docker-compose logs -f worker
+docker compose logs -f worker
 
 # Scale workers (for parallel processing)
-docker-compose up -d --scale worker=3
+docker compose up -d --scale worker=3
 
 # Restart worker
-docker-compose restart worker
+docker compose restart worker
 ```
 
 ### Manual Installation
@@ -739,7 +739,7 @@ Run multiple workers for concurrent job processing:
 
 ```bash
 # Scale to 3 workers
-docker-compose up -d --scale worker=3
+docker compose up -d --scale worker=3
 
 # Each worker polls independently
 # Jobs are claimed atomically (no conflicts)
@@ -808,13 +808,13 @@ WHERE job_id = 42;
 
 ```bash
 # View worker logs
-docker-compose logs -f worker
+docker compose logs -f worker
 
 # Filter for errors
-docker-compose logs worker | grep ERROR
+docker compose logs worker | grep ERROR
 
 # Filter for specific job
-docker-compose logs worker | grep "job_id=42"
+docker compose logs worker | grep "job_id=42"
 ```
 
 ### Job Queue Status
@@ -836,7 +836,7 @@ WHERE status = 'running'
 
 ```bash
 # Check if worker is running
-docker-compose ps worker
+docker compose ps worker
 
 # Check worker resource usage
 docker stats worker
@@ -853,19 +853,19 @@ docker stats worker
 **Diagnosis**:
 ```bash
 # Check worker logs
-docker-compose logs worker
+docker compose logs worker
 
 # Verify worker is running
-docker-compose ps worker
+docker compose ps worker
 
 # Check database connectivity
-docker-compose exec worker python -c "from app.core.database import engine; print('DB OK')"
+docker compose exec worker python -c "from app.core.database import engine; print('DB OK')"
 ```
 
 **Solutions**:
-- Restart worker: `docker-compose restart worker`
+- Restart worker: `docker compose restart worker`
 - Check database connection string
-- Verify PostgreSQL is healthy: `docker-compose ps db`
+- Verify PostgreSQL is healthy: `docker compose ps db`
 
 ### LLM Connection Errors
 
@@ -874,7 +874,7 @@ docker-compose exec worker python -c "from app.core.database import engine; prin
 **Diagnosis**:
 ```bash
 # Check LLM config
-docker-compose exec api psql -U postgres -d open_agent_inv -c "SELECT * FROM llm_provider_config WHERE is_active = true;"
+docker compose exec api psql -U postgres -d open_agent_inv -c "SELECT * FROM llm_provider_config WHERE is_active = true;"
 
 # Test LLM endpoint manually
 curl -X POST https://api.openai.com/v1/chat/completions \
@@ -895,10 +895,10 @@ curl -X POST https://api.openai.com/v1/chat/completions \
 **Diagnosis**:
 ```bash
 # Check error message
-docker-compose exec api psql -U postgres -d open_agent_inv -c "SELECT job_id, error_message FROM jobs_parsing WHERE status = 'failed';"
+docker compose exec api psql -U postgres -d open_agent_inv -c "SELECT job_id, error_message FROM jobs_parsing WHERE status = 'failed';"
 
 # Check artifact classification
-docker-compose exec api psql -U postgres -d open_agent_inv -c "SELECT artifact_id, filename, classification FROM artifacts WHERE artifact_id = 42;"
+docker compose exec api psql -U postgres -d open_agent_inv -c "SELECT artifact_id, filename, classification FROM artifacts WHERE artifact_id = 42;"
 ```
 
 **Solutions**:

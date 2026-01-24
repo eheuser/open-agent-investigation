@@ -4,7 +4,7 @@ Comprehensive test suite for the Open Agent Investigation platform.
 
 **TL:DR;**
 ```shell
-docker-compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
+docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
 ```
 
 ## 📋 Overview
@@ -184,14 +184,14 @@ pytest tests/ -v -m integration
 **With Docker:**
 ```bash
 # Build and run test container
-docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+docker compose -f docker-compose.test.yml up --abort-on-container-exit
 
 # Run specific test type
-docker-compose -f docker-compose.test.yml run --rm test-runner \
+docker compose -f docker-compose.test.yml run --rm test-runner \
     pytest tests/ -v -m unit
 
 # Cleanup
-docker-compose -f docker-compose.test.yml down -v
+docker compose -f docker-compose.test.yml down -v
 ```
 
 ## 📊 Coverage
@@ -517,7 +517,7 @@ When adding new features:
 **Solution**:
 ```bash
 # Ensure PostgreSQL is running
-docker-compose -f docker-compose.test.yml up test-db
+docker compose -f docker-compose.test.yml up test-db
 
 # Check connection
 psql -h localhost -p 5433 -U postgres -d open_agent_inv_test

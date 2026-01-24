@@ -1,28 +1,42 @@
 # Open Agent Investigation
 
+[![CI](https://github.com/eheuser/open-agent-investigation/workflows/CI/badge.svg)](https://github.com/eheuser/open-agent-investigation/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-required-blue.svg)](https://www.docker.com/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 A micro-forensics workbench for analyzing artifacts. It combines forensic parsing with LLM-driven investigation workflows to reconstruct evidence timelines, identify threats, and document findings.
 
-**Developers Note**
-> This is a work in progress. The requirements, specs and build order were human-generated and then I guided Claude for implementation and intervened manually for many issues (code, structure, etc). I'm intent on refactoring quite a lot of the naive logic and agent code as well as expanding the supported artifacts. Pull requests are welcome, if you'd like to help.
+> **Note**: This is a work in progress. See the [Roadmap](ROADMAP.md) for planned features. Contributions welcome!
 
 ---
 
 **Chat with RAG and agentic functionality**
+
+Leverage an inline agent to search through the event data or a similarity with re-ranker to find forensically significant events.
 ![image](docs/img/chat.png)
 
 ---
 
 **Analyze raw events**
+
+Develop compound queries quickly and easily for manual searches.
 ![image](docs/img/events.png)
 
 ---
 
 **Build timelines**
+
+Track investigations by adding events to the investigation timeline.
 ![image](docs/img/timeline.png)
 
 ---
 
 **Generate reports**
+
+Produce PDF documents from the collected evidence.
 ![image](docs/img/report.png)
 
 ---
@@ -109,13 +123,13 @@ Each turn limited to 5 tool executions. Real-time progress streamed via WebSocke
 ```bash
 git clone https://github.com/eheuser/open-agent-investigation.git
 cd open-agent-investigation
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Testing
 
 ```bash
-docker-compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
+docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
 ```
 
 ### Access
@@ -184,8 +198,8 @@ GNU General Public License v3.0. See [LICENSE](LICENSE) for full text.
 
 ### LLM Providers
 
-- OpenAI (GPT-3.5, GPT-4, GPT-4 Turbo)
-- Ollama (Llama 3, Mistral, Mixtral)
+- OpenAI (GPT-5.2, GPT-4o, GPT_4.1)
+- Ollama/LM Studio (Llama 3, Mistral, Mixtral)
 - Azure OpenAI Service
 - LM Studio (OpenAI-compatible endpoint)
 - Custom OpenAI-compatible endpoints
@@ -228,19 +242,31 @@ Yes. Configure Ollama or LM Studio as your LLM provider. Both support OpenAI-com
 Tested with over 1 million events per investigation. Practical limits depend on available RAM and storage. See resource requirements in [docs/getting-started.md](docs/getting-started.md).
 
 
-## TODO
+## Contributing
 
-Items requiring investigation or completion:
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-- Embedding provider configuration validation
-- Cloud deployment templates (AWS, Azure, GCP)
-- Kubernetes manifests
-- Memory forensics integration (Volatility)
-- Network traffic analysis (PCAP parsing)
-- Mobile forensics (Android/iOS)
-- Multi-tenant database isolation strategy
-- Distributed worker architecture
+- 🐛 [Report a bug](https://github.com/eheuser/open-agent-investigation/issues/new?template=bug_report.yml)
+- 💡 [Request a feature](https://github.com/eheuser/open-agent-investigation/issues/new?template=feature_request.yml)
+- 📖 [Improve documentation](CONTRIBUTING.md)
+- 🔒 [Report security issue](SECURITY.md)
 
-## Contact
+## Support
 
-- GitHub Issues: https://github.com/eheuser/open-agent-investigation/issues
+- 📚 [Documentation](docs/index.md)
+- 💬 [GitHub Discussions](https://github.com/eheuser/open-agent-investigation/discussions)
+- 🐛 [Issue Tracker](https://github.com/eheuser/open-agent-investigation/issues)
+
+## Acknowledgments
+
+- Built with [FastAPI](https://fastapi.tiangolo.com/), [React](https://react.dev/), and [PostgreSQL](https://www.postgresql.org/)
+- Forensic parsers: [evtx](https://github.com/omerbenamram/evtx), [regipy](https://github.com/mkorman90/regipy), [LnkParse3](https://github.com/Matmaus/LnkParse3)
+- Vector search powered by [pgvector](https://github.com/pgvector/pgvector)
+
+## License
+
+GNU General Public License v3.0 - see [LICENSE](LICENSE) for details.
+
+---
+
+**Star ⭐ this repo if you find it useful!**

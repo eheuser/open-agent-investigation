@@ -47,7 +47,7 @@ Check parsing job status:
 **Solutions**:
 - Check file format is supported
 - Verify file is not corrupted
-- View worker logs: `docker-compose logs worker`
+- View worker logs: `docker compose logs worker`
 - Check database space: `docker exec db df -h`
 
 **Problem**: Parsing fails with error message
@@ -525,8 +525,8 @@ Result: All 42 failed logon events registered to timeline automatically
 
 1. Check LLM configuration is active
 2. Verify LLM endpoint is reachable
-3. View API logs: `docker-compose logs api`
-4. Check worker is running: `docker-compose ps worker`
+3. View API logs: `docker compose logs api`
+4. Check worker is running: `docker compose ps worker`
 
 ### Timeline Entries Not Appearing
 
