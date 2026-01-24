@@ -18,7 +18,7 @@
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.2.9",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^6.23.0",
+    "react-router-dom": "^7.13.0",
     "reactflow": "^11.11.4",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
