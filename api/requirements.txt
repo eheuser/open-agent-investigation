@@ -10,7 +10,7 @@ psycopg2-binary==2.9.*
 
 # Pydantic for data validation
 pydantic==2.7.*
-pydantic-settings==2.2.*
+pydantic-settings==2.12.*
 
 # Authentication & Security
 PyJWT==2.8.*
