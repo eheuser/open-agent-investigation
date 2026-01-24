@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Install build tools needed for asyncpg, parsers, and git for notatin
 # Also install WeasyPrint dependencies (Cairo, Pango, GDK-PixBuf)
