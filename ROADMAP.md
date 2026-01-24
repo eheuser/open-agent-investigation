@@ -12,19 +12,21 @@
 
 **Refactor Assistant Agent**
 
-- run() is huge, break it up
-- refactor context management
--  
+- The `run()` method is huge, break up the phases and simplify them
+- Refactor context management to supply only needed context to each phase
+- Separate tools into groups, one for each phase
+- Batch timeline events for embedding, it's serial at the moment
+- Remove `auto_register` option from event tool queries
 
 **Refactor `field_dictionary` Logic**
 
 - It takes too long to process
-- find a way to cut this step out
+- find a way to cut this step out or attach it to artifact parsing
 
 **Enhance Investigation Choices**
 
 - Offer suggestions on where to take the investigation next
-- Create Mutable Investigation Templates
+- Create Mutable Investigation Templates the user can execute to "get started"
 
 **Add Parallel Connections Option**
 
@@ -51,6 +53,7 @@
 - Windows PE's
 - Flat Files (apache logs, one entry per line)
 - Binary Files
+- PCAP and PCAPNG files
 
 **Expand OS Support**
 
@@ -63,3 +66,14 @@
 - Resolve Domains -> IP
 - Web Search
 - API integrations w/user supplied API key (VT, PassiveTotal/RiskIQ)
+
+---
+
+# UI/UX
+
+**Chat**
+
+- When agent is active, auto-scroll is too grabby
+- Allow cancelling of jobs from Jobs Queue modal
+- Add Report profile placeholder previews
+- Add new users from admin account

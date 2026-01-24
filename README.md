@@ -3,26 +3,34 @@
 A micro-forensics workbench for analyzing artifacts. It combines forensic parsing with LLM-driven investigation workflows to reconstruct evidence timelines, identify threats, and document findings.
 
 **Developers Note**
-> This is a work in progress. The requirements, specs and build order were human-generated and then I guided Claude for implementation and intervened manually for many issues (code, structure, etc). I'm intent on refactoring quite a lot of the naive logic and agent code as well as expanding the supported artifacts. Pull requests are welcome, if you'd like to help.
+> This is a work in progress. The requirements, specs and build order were human-generated and then I guided Claude for implementation and intervened manually for many issues (code, structure, etc). I'm tracking the refactoring TODO's in the [Roadmap](ROADMAP.md). Pull requests are welcome, if you'd like to help.
 
 ---
 
 **Chat with RAG and agentic functionality**
+
+Leverage an inline agent to search through the event data or a similarity with re-ranker to find forensically significant events.
 ![image](docs/img/chat.png)
 
 ---
 
 **Analyze raw events**
+
+Develop compound queries quickly and easily for manual searches.
 ![image](docs/img/events.png)
 
 ---
 
 **Build timelines**
+
+Track investigations by adding events to the investigation timeline.
 ![image](docs/img/timeline.png)
 
 ---
 
 **Generate reports**
+
+Produce PDF documents from the collected evidence.
 ![image](docs/img/report.png)
 
 ---
@@ -109,13 +117,13 @@ Each turn limited to 5 tool executions. Real-time progress streamed via WebSocke
 ```bash
 git clone https://github.com/eheuser/open-agent-investigation.git
 cd open-agent-investigation
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Testing
 
 ```bash
-docker-compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
+docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
 ```
 
 ### Access
@@ -184,8 +192,8 @@ GNU General Public License v3.0. See [LICENSE](LICENSE) for full text.
 
 ### LLM Providers
 
-- OpenAI (GPT-3.5, GPT-4, GPT-4 Turbo)
-- Ollama (Llama 3, Mistral, Mixtral)
+- OpenAI (GPT-5.2, GPT-4o, GPT_4.1)
+- Ollama/LM Studio (Llama 3, Mistral, Mixtral)
 - Azure OpenAI Service
 - LM Studio (OpenAI-compatible endpoint)
 - Custom OpenAI-compatible endpoints
@@ -227,19 +235,6 @@ Yes. Configure Ollama or LM Studio as your LLM provider. Both support OpenAI-com
 
 Tested with over 1 million events per investigation. Practical limits depend on available RAM and storage. See resource requirements in [docs/getting-started.md](docs/getting-started.md).
 
-
-## TODO
-
-Items requiring investigation or completion:
-
-- Embedding provider configuration validation
-- Cloud deployment templates (AWS, Azure, GCP)
-- Kubernetes manifests
-- Memory forensics integration (Volatility)
-- Network traffic analysis (PCAP parsing)
-- Mobile forensics (Android/iOS)
-- Multi-tenant database isolation strategy
-- Distributed worker architecture
 
 ## Contact
 

@@ -643,26 +643,26 @@ psql -U postgres -d open_agent_inv -c "SELECT * FROM schema_migrations ORDER BY 
 
 ```bash
 # Full database dump
-docker-compose exec db pg_dump -U postgres open_agent_inv > backup.sql
+docker compose exec db pg_dump -U postgres open_agent_inv > backup.sql
 
 # Compressed backup
-docker-compose exec db pg_dump -U postgres open_agent_inv | gzip > backup.sql.gz
+docker compose exec db pg_dump -U postgres open_agent_inv | gzip > backup.sql.gz
 
 # Schema only (no data)
-docker-compose exec db pg_dump -U postgres --schema-only open_agent_inv > schema.sql
+docker compose exec db pg_dump -U postgres --schema-only open_agent_inv > schema.sql
 
 # Data only (no schema)
-docker-compose exec db pg_dump -U postgres --data-only open_agent_inv > data.sql
+docker compose exec db pg_dump -U postgres --data-only open_agent_inv > data.sql
 ```
 
 ### Restore Database
 
 ```bash
 # Restore from dump
-docker-compose exec -T db psql -U postgres open_agent_inv < backup.sql
+docker compose exec -T db psql -U postgres open_agent_inv < backup.sql
 
 # Restore from compressed dump
-gunzip -c backup.sql.gz | docker-compose exec -T db psql -U postgres open_agent_inv
+gunzip -c backup.sql.gz | docker compose exec -T db psql -U postgres open_agent_inv
 ```
 
 ### Automated Backups
@@ -671,7 +671,7 @@ Add to cron:
 
 ```bash
 # Daily backup at 2 AM
-0 2 * * * /usr/bin/docker-compose -f /path/to/docker-compose.yml exec -T db pg_dump -U postgres open_agent_inv | gzip > /backups/open_agent_inv_$(date +\%Y\%m\%d).sql.gz
+0 2 * * * /usr/bin/docker compose -f /path/to/docker-compose.yml exec -T db pg_dump -U postgres open_agent_inv | gzip > /backups/open_agent_inv_$(date +\%Y\%m\%d).sql.gz
 ```
 
 ---
@@ -823,23 +823,23 @@ ssl_key_file = '/path/to/server.key'
 
 ```bash
 # Check if PostgreSQL is running
-docker-compose ps db
+docker compose ps db
 
 # Check logs
-docker-compose logs db
+docker compose logs db
 
 # Test connection
-docker-compose exec db psql -U postgres -d open_agent_inv -c "SELECT 1;"
+docker compose exec db psql -U postgres -d open_agent_inv -c "SELECT 1;"
 ```
 
 ### Disk Space Issues
 
 ```bash
 # Check disk usage
-docker-compose exec db df -h
+docker compose exec db df -h
 
 # Find large tables
-docker-compose exec db psql -U postgres -d open_agent_inv -c "
+docker compose exec db psql -U postgres -d open_agent_inv -c "
 SELECT
     tablename,
     pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
@@ -850,14 +850,14 @@ LIMIT 5;
 "
 
 # Vacuum to reclaim space
-docker-compose exec db psql -U postgres -d open_agent_inv -c "VACUUM FULL;"
+docker compose exec db psql -U postgres -d open_agent_inv -c "VACUUM FULL;"
 ```
 
 ### Corrupted Indexes
 
 ```bash
 # Rebuild all indexes
-docker-compose exec db psql -U postgres -d open_agent_inv -c "REINDEX DATABASE open_agent_inv;"
+docker compose exec db psql -U postgres -d open_agent_inv -c "REINDEX DATABASE open_agent_inv;"
 ```
 
 ---

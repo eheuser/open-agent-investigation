@@ -111,14 +111,14 @@ The UI runs as an nginx container serving static files:
 
 ```bash
 # Build and start UI
-docker-compose up -d ui
+docker compose up -d ui
 
 # View UI logs
-docker-compose logs -f ui
+docker compose logs -f ui
 
 # Rebuild after changes
-docker-compose build ui
-docker-compose up -d ui
+docker compose build ui
+docker compose up -d ui
 ```
 
 ### Manual Installation
