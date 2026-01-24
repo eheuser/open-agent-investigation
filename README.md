@@ -1,9 +1,15 @@
 # Open Agent Investigation
 
+[![CI](https://github.com/eheuser/open-agent-investigation/workflows/CI/badge.svg)](https://github.com/eheuser/open-agent-investigation/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-required-blue.svg)](https://www.docker.com/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 A micro-forensics workbench for analyzing artifacts. It combines forensic parsing with LLM-driven investigation workflows to reconstruct evidence timelines, identify threats, and document findings.
 
-**Developers Note**
-> This is a work in progress. The requirements, specs and build order were human-generated and then I guided Claude for implementation and intervened manually for many issues (code, structure, etc). I'm tracking the refactoring TODO's in the [Roadmap](ROADMAP.md). Pull requests are welcome, if you'd like to help.
+> **Note**: This is a work in progress. See the [Roadmap](ROADMAP.md) for planned features. Contributions welcome!
 
 ---
 
@@ -236,6 +242,31 @@ Yes. Configure Ollama or LM Studio as your LLM provider. Both support OpenAI-com
 Tested with over 1 million events per investigation. Practical limits depend on available RAM and storage. See resource requirements in [docs/getting-started.md](docs/getting-started.md).
 
 
-## Contact
+## Contributing
 
-- GitHub Issues: https://github.com/eheuser/open-agent-investigation/issues
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+- 🐛 [Report a bug](https://github.com/eheuser/open-agent-investigation/issues/new?template=bug_report.yml)
+- 💡 [Request a feature](https://github.com/eheuser/open-agent-investigation/issues/new?template=feature_request.yml)
+- 📖 [Improve documentation](CONTRIBUTING.md)
+- 🔒 [Report security issue](SECURITY.md)
+
+## Support
+
+- 📚 [Documentation](docs/index.md)
+- 💬 [GitHub Discussions](https://github.com/eheuser/open-agent-investigation/discussions)
+- 🐛 [Issue Tracker](https://github.com/eheuser/open-agent-investigation/issues)
+
+## Acknowledgments
+
+- Built with [FastAPI](https://fastapi.tiangolo.com/), [React](https://react.dev/), and [PostgreSQL](https://www.postgresql.org/)
+- Forensic parsers: [evtx](https://github.com/omerbenamram/evtx), [regipy](https://github.com/mkorman90/regipy), [LnkParse3](https://github.com/Matmaus/LnkParse3)
+- Vector search powered by [pgvector](https://github.com/pgvector/pgvector)
+
+## License
+
+GNU General Public License v3.0 - see [LICENSE](LICENSE) for details.
+
+---
+
+**Star ⭐ this repo if you find it useful!**

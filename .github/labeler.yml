@@ -1,0 +1,45 @@
+# Auto-label PRs based on changed files
+
+'backend':
+  - 'api/**/*'
+  - 'api/*'
+
+'frontend':
+  - 'ui/**/*'
+  - 'ui/*'
+
+'database':
+  - 'db/**/*'
+  - 'api/app/models/**/*'
+  - 'api/app/database/**/*'
+
+'documentation':
+  - 'docs/**/*'
+  - '*.md'
+  - 'README.md'
+  - 'CONTRIBUTING.md'
+
+'tests':
+  - 'api/tests/**/*'
+  - '**/test_*.py'
+
+'docker':
+  - '**/Dockerfile*'
+  - 'docker-compose*.yml'
+
+'ci/cd':
+  - '.github/**/*'
+
+'dependencies':
+  - 'api/requirements*.txt'
+  - 'ui/package*.json'
+
+'agent':
+  - 'api/app/agent/**/*'
+
+'parsers':
+  - 'api/app/parsers/**/*'
+
+'security':
+  - 'api/app/auth/**/*'
+  - 'SECURITY.md'

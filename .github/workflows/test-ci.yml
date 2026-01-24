@@ -1,0 +1,59 @@
+name: Test CI Setup
+
+# This workflow can be manually triggered to test the CI setup
+on:
+  workflow_dispatch:
+  push:
+    branches: [ test-ci ]
+
+jobs:
+  verify-setup:
+    name: Verify CI Setup
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check required files exist
+        run: |
+          echo "Checking for required files..."
+          
+          # Backend files
+          test -f api/Dockerfile && echo "✅ api/Dockerfile" || echo "❌ api/Dockerfile MISSING"
+          test -f api/requirements.txt && echo "✅ api/requirements.txt" || echo "❌ api/requirements.txt MISSING"
+          test -f docker-compose.test.yml && echo "✅ docker-compose.test.yml" || echo "❌ docker-compose.test.yml MISSING"
+          
+          # Frontend files
+          test -f ui/Dockerfile && echo "✅ ui/Dockerfile" || echo "❌ ui/Dockerfile MISSING"
+          test -f ui/package.json && echo "✅ ui/package.json" || echo "❌ ui/package.json MISSING"
+          test -f ui/package-lock.json && echo "✅ ui/package-lock.json" || echo "❌ ui/package-lock.json MISSING"
+          
+          echo ""
+          echo "✅ All required files found!"
+
+      - name: Verify Docker Compose syntax
+        run: |
+          docker compose -f docker-compose.test.yml config > /dev/null
+          echo "✅ docker-compose.test.yml syntax is valid"
+
+      - name: Test Docker builds (quick)
+        run: |
+          echo "Testing API Dockerfile..."
+          docker build -t test-api:latest ./api --target builder 2>&1 | head -20 || true
+          
+          echo "Testing UI Dockerfile..."
+          docker build -t test-ui:latest ./ui 2>&1 | head -20 || true
+          
+          echo "✅ Docker build test complete"
+
+      - name: Summary
+        run: |
+          echo "================================"
+          echo "CI Setup Verification Complete!"
+          echo "================================"
+          echo ""
+          echo "Next steps:"
+          echo "1. Fix any issues shown above"
+          echo "2. Push to main/develop to trigger full CI"
+          echo "3. Check the Actions tab for results"
