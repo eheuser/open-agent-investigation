@@ -2,7 +2,7 @@
 pytest==8.2.*
 pytest-asyncio==0.23.*
 pytest-cov==5.0.*
-pytest-mock==3.14.*
+pytest-mock==3.15.*
 pytest-timeout==2.3.*
 
 # HTTP testing
