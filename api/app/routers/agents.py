@@ -118,7 +118,7 @@ async def route_policy(
         logger.error(f"Error in chat router: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chat router error: {str(e)}")
 
-    logger.info(f"Total responses collected: {len(responses)}")
+    logger.info(f"Total responses collected: {len(responses):,}")
 
     # Persist assistant response if we got answer chunks
     if assistant_content_chunks:

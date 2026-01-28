@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core import LLMClient, ToolExecutor, tool_registry
 from ..models import AssistantMessage, ToolResult
 from ..tools.csv_formatter import events_to_csv
-from .context_manager import estimate_tokens, prune_chat_log, load_investigation_context
+from .context_manager import estimate_tokens, prune_chat_log, load_investigation_context, load_execution_phase_context, load_analysis_phase_context
 from .tool_categories import filter_tools_for_phase
 from .memory_summarizer import generate_chat_summary, load_chat_summary, trim_messages_from_middle
 from .prompts import (
@@ -163,7 +163,7 @@ class AssistantAgent:
         * An :class:`LLMClient` instance is created using the supplied endpoint, model and optional API key.
         * A :class:`ToolExecutor` is instantiated with a shared statistics dictionary that tracks events analysed, tools called, timeline entries created and tags applied.
         * Agent state variables such as `iteration` counters, turn-extension tracking, cancellation flag and total tool execution count are initialised.
-        * Context management parameters are derived from the LLM’s maximum context size; the agent will trigger a compaction step once the accumulated token usage exceeds 80 % of this limit.
+        * Context management parameters are derived from the LLM's maximum context size; the agent will trigger a compaction step once the accumulated token usage exceeds 80 % of this limit.
 
         The initialization logs an informational message containing key configuration values for debugging and observability.
         """
@@ -177,6 +177,12 @@ class AssistantAgent:
             endpoint=llm_endpoint,
             model=llm_model,
             api_key=llm_api_key,
+            max_context_length=llm_max_context,
+            temperature=llm_temperature,
+            top_p=llm_top_p,
+            top_k=llm_top_k,
+            min_p=llm_min_p,
+            timeout=llm_timeout,
         )
         self.llm_max_context = llm_max_context
         self.llm_temperature = llm_temperature
@@ -209,7 +215,7 @@ class AssistantAgent:
 
         logger.info(
             f"AssistantAgent initialized: investigation={investigation_id}, "
-            f"max_iterations={max_iterations}, max_context={llm_max_context}, "
+            f"max_iterations={max_iterations}, max_context={llm_max_context} (type: {type(llm_max_context).__name__}), "
             f"compaction_threshold={self.compaction_threshold}"
         )
 
@@ -302,7 +308,7 @@ class AssistantAgent:
                 input_tokens = sum(
                     estimate_tokens(json.dumps(msg, default=str)) for msg in chat_log
                 )
-                logger.info(f"LLM call: {len(chat_log)} messages, ~{input_tokens} input tokens")
+                logger.info(f"LLM call: {len(chat_log):,} messages, ~{input_tokens:,} input tokens")
 
                 # Stream LLM response
                 stream = self.llm_client.stream_chat(
@@ -410,9 +416,9 @@ class AssistantAgent:
                         response_tokens += estimate_tokens(json.dumps(tc, default=str))
 
                 logger.info(
-                    f"LLM response: ~{response_tokens} output tokens, "
-                    f"{len(accumulated_tool_calls)} tool calls, "
-                    f"{len(accumulated_content)} chars content"
+                    f"LLM response: ~{response_tokens:,} output tokens, "
+                    f"{len(accumulated_tool_calls):,} tool calls, "
+                    f"{len(accumulated_content):,} chars content"
                 )
 
                 # Success - return via final yield
@@ -611,6 +617,68 @@ class AssistantAgent:
                     }
                     return
 
+    def _get_execution_phase_tools(self) -> List[Dict[str, Any]]:
+        """
+        Get tools available for Phase 1 (tool execution phase).
+
+        Retrieves data query tools from the registry and optionally includes
+        the `complete_investigation` tool after a minimum number of iterations.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of tool definitions in OpenAI format, filtered for Phase 1.
+        """
+        MIN_ITERATIONS_BEFORE_COMPLETION = 4
+        all_tools = tool_registry.get_openai_format()
+        execution_phase_tools = filter_tools_for_phase(all_tools, "tool_execution")
+
+        # Allow complete_investigation after minimum iterations
+        if self.iteration >= MIN_ITERATIONS_BEFORE_COMPLETION:
+            complete_tool = [
+                t
+                for t in all_tools
+                if t.get("function", {}).get("name") == "complete_investigation"
+            ]
+            if complete_tool:
+                execution_phase_tools.extend(complete_tool)
+                logger.info(
+                    f"Iteration {self.iteration}/{MIN_ITERATIONS_BEFORE_COMPLETION}: "
+                    f"complete_investigation tool ENABLED in Phase 1"
+                )
+
+        return execution_phase_tools
+
+    def _get_analysis_phase_tools(self) -> List[Dict[str, Any]]:
+        """
+        Get tools available for Phase 2 (analysis phase).
+
+        Retrieves analysis tools from the registry and optionally excludes
+        the `complete_investigation` tool before a minimum number of iterations.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of tool definitions in OpenAI format, filtered for Phase 2.
+        """
+        MIN_ITERATIONS_BEFORE_COMPLETION = 4
+        all_tools = tool_registry.get_openai_format()
+        analysis_phase_tools = filter_tools_for_phase(all_tools, "analysis")
+
+        # Remove complete_investigation until minimum iterations
+        if self.iteration < MIN_ITERATIONS_BEFORE_COMPLETION:
+            analysis_phase_tools = [
+                tool
+                for tool in analysis_phase_tools
+                if tool.get("function", {}).get("name") != "complete_investigation"
+            ]
+            logger.info(
+                f"Iteration {self.iteration}/{MIN_ITERATIONS_BEFORE_COMPLETION}: "
+                f"complete_investigation tool DISABLED (need {MIN_ITERATIONS_BEFORE_COMPLETION - self.iteration} more iterations)"
+            )
+
+        return analysis_phase_tools
+
     async def _compact_chat_log(
         self,
         chat_log: List[Dict[str, Any]],
@@ -721,7 +789,7 @@ class AssistantAgent:
 
                 yield {
                     "type": "context_compacted",
-                    "message": f"Chat log trimmed from middle (LLM summary failed): {len(chat_log)} → {len(trimmed_log)} messages",
+                    "message": f"Chat log trimmed from middle (LLM summary failed): {len(chat_log):,} → {len(trimmed_log):,} messages",
                     "messages_removed": len(chat_log) - len(trimmed_log),
                     "tokens_saved": 0,
                 }
@@ -742,8 +810,8 @@ class AssistantAgent:
 
         # Use LLM-generated summary with additional context
         summary = f"{summary_text}\n\n**Progress Stats**:\n"
-        summary += f"- Messages Compacted: {len(messages_to_compact)}\n"
-        summary += f"- Total Tools Executed: {self.total_tools_executed}\n"
+        summary += f"- Messages Compacted: {len(messages_to_compact):,}\n"
+        summary += f"- Total Tools Executed: {self.total_tools_executed:,}\n"
         summary += (
             f"- Timeline Entries Created: {self.stats.get('timeline_entries_created', 0)}\n\n"
         )
@@ -774,8 +842,8 @@ class AssistantAgent:
         new_tokens = sum(estimate_tokens(json.dumps(msg, default=str)) for msg in compacted_log)
 
         logger.info(
-            f"Compacted chat log: {len(chat_log)} -> {len(compacted_log)} messages, "
-            f"{original_tokens_full} -> {new_tokens} tokens (saved {original_tokens_full - new_tokens} tokens, "
+            f"Compacted chat log: {len(chat_log):,} -> {len(compacted_log):,} messages, "
+            f"{original_tokens_full} -> {new_tokens:,} tokens (saved {original_tokens_full - new_tokens:,} tokens, "
             f"{((original_tokens_full - new_tokens)/original_tokens_full)*100:.1f}% reduction)"
         )
 
@@ -791,152 +859,63 @@ class AssistantAgent:
             "chat_log": compacted_log,
         }
 
-    async def execute_tool_phase(
-        self, chat_log: List[Dict[str, Any]]
-    ) -> AsyncIterator[Dict[str, Any]]:
+    def _get_stats(self) -> Dict[str, Any]:
         """
-        Execute Phase 1 of the agent’s workflow - tool execution.
-
-        This coroutine iterates through the following steps while streaming progress updates
-        as dictionaries via an async iterator:
-
-        1. **Context size check** - Calculates the token count of `chat_log` and logs the
-           percentage of the LLM’s maximum context window. If the token count exceeds
-           :attr:`self.compaction_threshold`, the method invokes :meth:`_compact_chat_log`
-           to reduce the log size, yielding any intermediate progress messages.
-
-        2. **Tool selection** - Retrieves all registered tools from `tool_registry` and
-           filters them for the *tool_execution* phase using :func:`filter_tools_for_phase`.
-           After a configurable number of iterations (default 4), the special
-           `complete_investigation` tool is added to the allowed set.
-
-        3. **LLM call** - Calls the language model via :meth:`_call_llm_with_retry` with
-           `tool_choice="required"` so that only tool calls are returned. Progress from
-           this step is yielded directly; on failure a `phase_error` message is emitted
-           and execution stops.
-
-        4. **Tool call processing** - If the LLM response contains `tool_calls`:
-
-           * Enforces :data:`MAX_TOOLS_PER_PHASE` by truncating excess calls.
-           * Deduplicates calls that have identical tool names and argument sets,
-             emitting a `tool_limit_enforced` message for any removed duplicates.
-           * Validates each call against the Phase 1 allow-list; disallowed tools are
-             skipped with a `tool_rejected` entry.
-           * Executes each permitted tool via :meth:`_execute_tool_with_retry`,
-             streaming intermediate progress and collecting results.
-
-        5. **Special tool handling** - Recognises two control tools:
-
-           * `request_additional_turns` - If approved, extends `self.max_iterations`
-             within the hard ceiling, updates counters, and yields a
-             `turn_extension_granted` message.
-           * `complete_investigation` - Marks the investigation as finished,
-             captures the provided summary, and records it for downstream phases.
-
-        6. **Completion** - After all tool calls are processed (or none were returned),
-           yields a final dictionary with type `phase_complete` containing:
-
-           * The original LLM assistant message.
-           * A list of executed tool results (each with call id, name, arguments,
-             and the :class:`ToolResult` object).
-           * Flags indicating whether the investigation was completed in this phase
-             and the accompanying summary.
-
-        Parameters
-        ----------
-        self: Agent
-            Instance of the asynchronous agent managing iteration state.
-        chat_log: List[Dict[str, Any]]
-            The current conversation history to be sent to the LLM. Each entry is a
-            serialisable message dict compatible with OpenAI chat format.
-
-        Yields
-        -----
-        Dict[str, Any]
-            Progress dictionaries whose `type` key indicates the nature of the update,
-            e.g.:
-
-            * `_compacted_chat_log` - intermediate compaction result.
-            * `llm_response` - raw LLM reply (internal handling).
-            * `phase_error` - fatal error in this phase.
-            * `tool_limit_enforced` - when tool count or duplicates are trimmed.
-            * `tool_rejected` - disallowed tool call encountered.
-            * `turn_extension_granted` - successful request for extra turns.
-            * `_internal_tool_result` - internal message containing a :class:`ToolResult`.
-            * `phase_complete` - final payload with all outcomes.
+        Get current investigation statistics.
 
         Returns
         -------
-        None
-            The coroutine yields all information; it does not return a value.
+        Dict[str, Any]
+            Statistics dictionary with turns executed, tool executions, events analyzed,
+            timeline entries created, and tools called.
+        """
+        return {
+            "turns_executed": self.iteration,
+            "tool_executions": self.total_tools_executed,
+            "events_analyzed": self.stats.get("events_analyzed", 0),
+            "timeline_entries_created": self.stats.get("timeline_entries_created", 0),
+            "tools_called": dict(self.stats.get("tools_called", {})),
+        }
+
+    async def execute_tool_phase(
+        self, chat_log: List[Dict[str, Any]], execution_phase_tools: List[Dict[str, Any]]
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Execute Phase 1 (tool execution) of the investigation workflow.
+
+        Prompts the LLM to select and execute data query tools, enforces limits,
+        deduplicates calls, and handles special control tools.
+
+        Parameters
+        ----------
+        chat_log: List[Dict[str, Any]]
+            Current conversation history in OpenAI chat format.
+        execution_phase_tools: List[Dict[str, Any]]
+            Tool definitions available for Phase 1, pre-filtered for this phase.
+
+        Yields
+        ------
+        Dict[str, Any]
+            Progress events including:
+            - `context_compacted`: Chat log compaction result
+            - `llm_response`: LLM response (internal)
+            - `phase_error`: Fatal error in this phase
+            - `tool_limit_enforced`: Tool count/duplicate limit applied
+            - `turn_extension_granted`: Additional turns granted
+            - `_internal_tool_result`: Tool execution result (internal)
+            - `phase_complete`: Final phase result with tool outputs
         """
         logger.info(f"[Iteration {self.iteration}] Phase 1: Tool Execution")
-
-        # Check context length and compact if needed
-        current_tokens = sum(estimate_tokens(json.dumps(msg, default=str)) for msg in chat_log)
-        context_pct = (current_tokens / self.llm_max_context) * 100
-
         logger.info(
-            f"[Iteration {self.iteration}] Current context: {current_tokens} tokens "
-            f"({context_pct:.1f}% of {self.llm_max_context} max)"
+            f"Phase 1 tools available: {len(execution_phase_tools):,} - "
+            f"{[t.get('function', {}).get('name') for t in execution_phase_tools]}"
         )
-
-        if current_tokens > self.compaction_threshold:
-            logger.warning(
-                f"[Iteration {self.iteration}] Context exceeds threshold "
-                f"({current_tokens} > {self.compaction_threshold}), invoking compaction..."
-            )
-
-            compacted_log = None
-            async for progress in self._compact_chat_log(chat_log):
-                if progress.get("type") == "_compacted_chat_log":
-                    compacted_log = progress.get("chat_log")
-                else:
-                    yield progress  # Stream progress to UI
-
-            if compacted_log:
-                chat_log = compacted_log
-            else:
-                logger.warning("Compaction failed, using original chat log")
-
-        # Get Phase 1 tools (data query tools + complete_investigation after iteration 3)
-        all_tools = tool_registry.get_openai_format()
-        logger.info(f"Total tools registered: {len(all_tools)}")
-        logger.info(f"All tool names: {[t.get('function', {}).get('name') for t in all_tools]}")
-        phase1_tools = filter_tools_for_phase(all_tools, "tool_execution")
-        logger.info(
-            f"Phase 1 filtered tools: {[t.get('function', {}).get('name') for t in phase1_tools]}"
-        )
-
-        # Allow complete_investigation in Phase 1 after iteration 3
-        MIN_ITERATIONS_BEFORE_COMPLETION = 4
-        if self.iteration >= MIN_ITERATIONS_BEFORE_COMPLETION:
-            # Add complete_investigation to Phase 1 tools
-            complete_tool = [
-                t
-                for t in all_tools
-                if t.get("function", {}).get("name") == "complete_investigation"
-            ]
-            if complete_tool:
-                phase1_tools.extend(complete_tool)
-                logger.info(
-                    f"Iteration {self.iteration}/{MIN_ITERATIONS_BEFORE_COMPLETION}: "
-                    f"complete_investigation tool ENABLED in Phase 1"
-                )
-
-        logger.info(
-            f"Phase 1 tools available: {len(phase1_tools)} (data query tools + control tools)"
-        )
-
-        # Verify we're only sending data query tools
-        tool_names = [t.get("function", {}).get("name") for t in phase1_tools]
-        logger.debug(f"Phase 1 tools: {tool_names}")
 
         # Call LLM to get tool executions
         # Use tool_choice="required" to force tool calls only (no text output)
         assistant_msg = None
         async for progress in self._call_llm_with_retry(
-            chat_log=chat_log, tools=phase1_tools, tool_choice="required"
+            chat_log=chat_log, tools=execution_phase_tools, tool_choice="required"
         ):
             if progress.get("type") == "llm_response":
                 assistant_msg = progress.get("message")
@@ -961,8 +940,8 @@ class AssistantAgent:
 
         # Execute tools
         tool_results = []
-        investigation_completed_in_phase1 = False
-        completion_summary_phase1 = None
+        investigation_completed_in_execution_phase = False
+        completion_summary_execution_phase = None
 
         if assistant_msg.tool_calls:
             # Enforce tool limit
@@ -1027,22 +1006,6 @@ class AssistantAgent:
 
                 tool_name = tool_call.function.get("name", "")
 
-                # CRITICAL: Validate that the tool is allowed in Phase 1
-                # Reject any analysis tools that the LLM might hallucinate
-                allowed_tool_names = [t.get("function", {}).get("name") for t in phase1_tools]
-                if tool_name not in allowed_tool_names:
-                    logger.warning(
-                        f"Agent attempted to call '{tool_name}' in Phase 1, but it's not allowed. "
-                        f"Allowed tools: {allowed_tool_names}. Skipping this tool call."
-                    )
-                    yield {
-                        "type": "tool_rejected",
-                        "tool": tool_name,
-                        "reason": f"Tool '{tool_name}' is not available in Phase 1 (tool execution phase)",
-                        "allowed_tools": allowed_tool_names,
-                    }
-                    continue
-
                 # Parse arguments
                 try:
                     args_str = tool_call.function.get("arguments", "{}")
@@ -1056,7 +1019,7 @@ class AssistantAgent:
                 async for progress in self._execute_tool_with_retry(
                     tool_name=tool_name,
                     arguments=arguments,
-                    tool_call_id=tool_call.id or f"call_{len(tool_results) + 1}",
+                    tool_call_id=tool_call.id or f"call_{len(tool_results) + 1:,}",
                 ):
                     if progress.get("type") == "_internal_tool_result":
                         # Internal message with actual ToolResult object
@@ -1068,7 +1031,7 @@ class AssistantAgent:
                 if tool_result:
                     tool_results.append(
                         {
-                            "tool_call_id": tool_call.id or f"call_{len(tool_results)}",
+                            "tool_call_id": tool_call.id or f"call_{len(tool_results):,}",
                             "tool_name": tool_name,
                             "arguments": arguments,
                             "result": tool_result,
@@ -1117,12 +1080,12 @@ class AssistantAgent:
 
                     # Check if this was complete_investigation
                     if tool_name == "complete_investigation" and tool_result.status == "ok":
-                        investigation_completed_in_phase1 = True
-                        completion_summary_phase1 = tool_result.result.get(
+                        investigation_completed_in_execution_phase = True
+                        completion_summary_execution_phase = tool_result.result.get(
                             "summary", "Investigation completed"
                         )
                         logger.info(
-                            f"Investigation completed in Phase 1 with summary: {completion_summary_phase1[:100]}..."
+                            f"Investigation completed in Phase 1 with summary: {completion_summary_execution_phase[:100]}..."
                         )
 
         # Return results
@@ -1131,90 +1094,49 @@ class AssistantAgent:
             "phase": "tool_execution",
             "assistant_message": assistant_msg,
             "tool_results": tool_results,
-            "investigation_completed": investigation_completed_in_phase1,
-            "completion_summary": completion_summary_phase1,
+            "investigation_completed": investigation_completed_in_execution_phase,
+            "completion_summary": completion_summary_execution_phase,
         }
 
     async def execute_analysis_phase(
-        self, chat_log: List[Dict[str, Any]], tool_results_summary: str
+        self, chat_log: List[Dict[str, Any]], analysis_phase_tools: List[Dict[str, Any]], tool_results_summary: str
     ) -> AsyncIterator[Dict[str, Any]]:
         """
-        Execute Phase 2 (Result Analysis) of an investigation.
+        Execute Phase 2 (analysis) of the investigation workflow.
 
-        Iteratively calls the LLM with only analysis-phase tools, processes its response,
-        deduplicates and validates any requested tool calls, executes those tools while
-        handling cancellation signals, and yields progress updates throughout the
-        process.  The final yielded dictionary contains a summary of the analysis and
-        indicates whether the investigation was completed.
+        Calls the LLM with analysis tools to interpret tool execution results,
+        register timeline entries, and optionally complete the investigation.
 
         Parameters
         ----------
-        self : object
-            The agent instance containing iteration state, configuration, and helper
-            methods.
-        chat_log : List[Dict[str, Any]]
-            Ordered list of prior messages forming the conversation context to be sent
-            to the LLM.  Each entry follows the OpenAI chat format (role/content).
-        tool_results_summary : str
-            Human-readable summary of results from previous tool executions; included in
-            the analysis prompt.
+        chat_log: List[Dict[str, Any]]
+            Current conversation history in OpenAI chat format.
+        analysis_phase_tools: List[Dict[str, Any]]
+            Tool definitions available for Phase 2, pre-filtered for this phase.
+        tool_results_summary: str
+            Human-readable summary of Phase 1 tool execution results.
 
         Yields
         ------
-        dict
-            Progress updates emitted during execution.  The `type` key determines the
-            meaning of each item, for example:
-
-            - `"llm_response"` - raw LLM response (internal use).
-            - `"phase_error"` - an error occurred in this phase; includes `error`
-              message.
-            - `"tool_limit_enforced"` - duplicate or disallowed tool calls were
-              removed; provides `requested` and `executed` counts.
-            - `"tool_rejected"` - a tool call was not permitted in the analysis phase;
-              includes `tool` name, `reason`, and list of `allowed_tools`.
-            - `"timeline_updated"` - a timeline entry was successfully registered;
-              reports number of entries added.
-            - `"agent_cancelled"` - cancellation signal received; investigation stops.
-            - `"phase_complete"` - final result of the analysis phase; contains
-              `analysis_summary`, `investigation_completed` (bool), and optional
-              `completion_summary`.
-
-        Returns
-        -------
-        None
-            The function is an asynchronous generator; it does not return a value but
-            yields dictionaries as described above.
+        Dict[str, Any]
+            Progress events including:
+            - `llm_response`: LLM response (internal)
+            - `phase_error`: Fatal error in this phase
+            - `tool_limit_enforced`: Duplicate tool calls removed
+            - `timeline_updated`: Timeline entry registered
+            - `agent_cancelled`: Cancellation signal received
+            - `phase_complete`: Final analysis result with completion status
         """
         logger.info(f"[Iteration {self.iteration}] Phase 2: Result Analysis")
-
-        # Get ONLY Phase 2 tools (analysis tools)
-        all_tools = tool_registry.get_openai_format()
-        phase2_tools = filter_tools_for_phase(all_tools, "analysis")
-
-        # CRITICAL: Remove complete_investigation from available tools until iteration 4+
-        # This forces the agent to gather more data before completing
-        MIN_ITERATIONS_BEFORE_COMPLETION = 4
-        if self.iteration < MIN_ITERATIONS_BEFORE_COMPLETION:
-            phase2_tools = [
-                tool
-                for tool in phase2_tools
-                if tool.get("function", {}).get("name") != "complete_investigation"
-            ]
-            logger.info(
-                f"Iteration {self.iteration}/{MIN_ITERATIONS_BEFORE_COMPLETION}: "
-                f"complete_investigation tool DISABLED (need {MIN_ITERATIONS_BEFORE_COMPLETION - self.iteration} more iterations)"
-            )
-
-        logger.info(f"Phase 2 tools available: {len(phase2_tools)} (analysis tools only)")
-
-        # Verify we're only sending analysis tools
-        tool_names = [t.get("function", {}).get("name") for t in phase2_tools]
-        logger.info(f"Phase 2 tools: {tool_names}")
+        logger.info(
+            f"Phase 2 tools available: {len(analysis_phase_tools):,} - "
+            f"{[t.get('function', {}).get('name') for t in analysis_phase_tools]}"
+        )
 
         # Call LLM to get analysis
         assistant_msg = None
         async for progress in self._call_llm_with_retry(
-            chat_log=chat_log, tools=phase2_tools, tool_choice="auto"
+            chat_log=chat_log, tools=analysis_phase_tools, tool_choice="auto"
         ):
             if progress.get("type") == "llm_response":
                 assistant_msg = progress.get("message")
@@ -1286,18 +1208,18 @@ class AssistantAgent:
             if complete_calls:
                 if len(complete_calls) > 1:
                     logger.warning(
-                        f"Agent called complete_investigation {len(complete_calls)} times in analysis phase, will only execute once"
+                        f"Agent called complete_investigation {len(complete_calls):,} times in analysis phase, will only execute once"
                     )
                     yield {
                         "type": "tool_limit_enforced",
-                        "message": f"complete_investigation called {len(complete_calls)} times - will only execute once at the end",
+                        "message": f"complete_investigation called {len(complete_calls):,} times - will only execute once at the end",
                         "requested": len(complete_calls),
                         "executed": 1,
                     }
 
                 # Execute other tools first, then complete_investigation last
                 logger.info(
-                    f"Reordering analysis tools: executing {len(other_calls)} tools first, then complete_investigation last"
+                    f"Reordering analysis tools: executing {len(other_calls):,} tools first, then complete_investigation last"
                 )
                 tool_calls_to_execute = other_calls + [
                     complete_calls[0]
@@ -1311,22 +1233,6 @@ class AssistantAgent:
                     return
 
                 tool_name = tool_call.function.get("name", "")
-
-                # CRITICAL: Validate that the tool is allowed in Phase 2
-                # Reject any data query tools that the LLM might hallucinate
-                allowed_tool_names = [t.get("function", {}).get("name") for t in phase2_tools]
-                if tool_name not in allowed_tool_names:
-                    logger.warning(
-                        f"Agent attempted to call '{tool_name}' in Phase 2, but it's not allowed. "
-                        f"Allowed tools: {allowed_tool_names}. Skipping this tool call."
-                    )
-                    yield {
-                        "type": "tool_rejected",
-                        "tool": tool_name,
-                        "reason": f"Tool '{tool_name}' is not available in Phase 2 (analysis phase)",
-                        "allowed_tools": allowed_tool_names,
-                    }
-                    continue
 
                 # Parse arguments
                 try:
@@ -1389,45 +1295,454 @@ class AssistantAgent:
             "completion_summary": completion_summary,
         }
 
-    async def run(self) -> AsyncIterator[Dict[str, Any]]:
+    async def _run_execution_phase(
+        self, chat_log: List[Dict[str, Any]], execution_phase_tools: List[Dict[str, Any]]
+    ) -> AsyncIterator[Dict[str, Any]]:
         """
-        Run the assistant agent loop, yielding incremental progress events.
+        Run Phase 1 (tool execution) and return results.
 
-        This coroutine orchestrates the full investigation lifecycle using a two-phase architecture:
-        1. **Tool Execution Phase** - prompts the LLM to select and run data-query tools, collects their results, and records any tool output in the chat log.
-        2. **Analysis Phase** - asks the LLM to analyse the aggregated tool results, decide whether the investigation is complete, and optionally produce a final summary.
-
-        The method:
-        - Loads the investigation context (including field dictionary) from the database.
-        - Emits an `agent_started` event containing the original question.
-        - Builds the initial system-prompt + user message chat log.
-        - Enters a loop that continues until the agent is cancelled, the maximum number of iterations is reached, or the investigation finishes successfully.
-          - Handles cancellation signals each iteration.
-          - Retries an entire iteration up to two times when **all** tools fail.
-          - Prunes or compacts the chat log when token usage exceeds `self.compaction_threshold`.
-          - Emits `iteration_complete` and `turn_complete` events after each successful turn.
-        - When either phase signals that the investigation is complete, yields an `agent_completed` event with a summary and statistics, then returns.
-        - If the maximum iteration count is hit without completion, forces termination by yielding an `agent_completed` event marked as incomplete.
-        - Catches `asyncio.CancelledError` to emit an `agent_cancelled` event before re-raising.
-        - Catches any other exception, logs it, and yields an `agent_error` event describing the failure.
-
-        Yielded dictionaries have a mandatory `type` key indicating the event kind (e.g., `agent_started`, `phase_complete`, `iteration_complete`, `turn_complete`, `agent_completed`, `agent_cancelled`, `agent_error`) and additional fields specific to each event such as `summary`, `stats`, `message` or progress details.
+        Loads Phase 1 context (event types, JSONB fields) and executes tools.
 
         Parameters
         ----------
-        None (the method operates on the instance attributes of the agent, including `self.question`, `self.db`, `self.llm_client`, `self.max_iterations` and others).
+        chat_log: List[Dict[str, Any]]
+            Current conversation history.
+        execution_phase_tools: List[Dict[str, Any]]
+            Pre-filtered tools for Phase 1.
+
+        Yields
+        ------
+        Dict[str, Any]
+            Progress events and final phase_complete event.
+        """
+        # Load Phase 1 context (event types and JSONB fields)
+        execution_phase_context = await load_execution_phase_context(
+            db=self.db,
+            investigation_id=self.investigation_id,
+            llm_client=self.llm_client,
+            use_field_dictionary=True,
+            llm_max_context=self.llm_max_context,
+        )
+
+        # Build Phase 1 prompt with context
+        tool_execution_prompt = get_tool_execution_prompt(self.question, self.iteration)
+        full_prompt = f"{execution_phase_context}\n{tool_execution_prompt}"
+        chat_log.append({"role": "user", "content": full_prompt})
+
+        async for progress in self.execute_tool_phase(chat_log, execution_phase_tools):
+            yield progress
+
+    async def _run_analysis_phase(
+        self, chat_log: List[Dict[str, Any]], analysis_phase_tools: List[Dict[str, Any]], tool_results_summary: str
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Run Phase 2 (analysis) and return results.
+
+        Loads Phase 2 context (timeline entries) and performs analysis.
+
+        Parameters
+        ----------
+        chat_log: List[Dict[str, Any]]
+            Current conversation history.
+        analysis_phase_tools: List[Dict[str, Any]]
+            Pre-filtered tools for Phase 2.
+        tool_results_summary: str
+            Summary of Phase 1 results.
+
+        Yields
+        ------
+        Dict[str, Any]
+            Progress events and final phase_complete event.
+        """
+        # Load Phase 2 context (timeline entries)
+        analysis_phase_context = await load_analysis_phase_context(
+            db=self.db,
+            investigation_id=self.investigation_id,
+        )
+
+        # Build Phase 2 prompt with context
+        analysis_prompt = get_analysis_prompt(self.question, self.iteration, tool_results_summary)
+        full_prompt = f"{analysis_phase_context}\n{analysis_prompt}"
+        chat_log.append({"role": "user", "content": full_prompt})
+
+        async for progress in self.execute_analysis_phase(chat_log, analysis_phase_tools, tool_results_summary):
+            yield progress
+
+    def _add_tool_results_to_chat(
+        self, chat_log: List[Dict[str, Any]], assistant_msg: Optional[AssistantMessage], tool_results: Optional[List[Dict[str, Any]]]
+    ) -> None:
+        """
+        Add Phase 1 tool results to chat log in CSV format.
+
+        Parameters
+        ----------
+        chat_log: List[Dict[str, Any]]
+            Chat log to modify in-place.
+        assistant_msg: Optional[AssistantMessage]
+            Assistant message containing tool calls, or None.
+        tool_results: Optional[List[Dict[str, Any]]]
+            Tool execution results to add, or None.
+        """
+        if not tool_results or not assistant_msg or not assistant_msg.tool_calls:
+            return
+
+        # Add assistant's tool calls (strip content - Phase 1 is silent)
+        execution_phase_msg = assistant_msg.model_dump(exclude_none=True)
+        execution_phase_msg.pop("content", None)
+        chat_log.append(execution_phase_msg)
+
+        # Add tool results (CSV format for efficiency)
+        for tr in tool_results:
+            if tr["result"].status == "ok" and tr["result"].result:
+                events = tr["result"].result.get("events", [])
+                if events and isinstance(events, list) and len(events) > 0:
+                    csv_data = events_to_csv(events)
+                    count = tr["result"].result.get("count", len(events))
+                    content = f"Found {count} events:\n\n{csv_data}"
+                else:
+                    content = _compact_serialize(tr["result"].result)
+            else:
+                content = _compact_serialize({"error": tr["result"].error_msg})
+
+            chat_log.append({
+                "role": "tool",
+                "tool_call_id": tr["tool_call_id"],
+                "name": tr["tool_name"],
+                "content": content,
+            })
+
+    async def _batch_generate_embeddings(self) -> None:
+        """
+        Batch generate embeddings for timeline entries created in this iteration.
+
+        More efficient than generating embeddings serially during registration.
+        Called at the end of each iteration.
+        """
+        try:
+            from ..tools.timeline_tools import batch_generate_embeddings
+
+            count = await batch_generate_embeddings(
+                db=self.db,
+                investigation_id=self.investigation_id,
+                user_id=self.user_id or 1,
+            )
+            if count > 0:
+                logger.info(f"Batch generated {count} embeddings for timeline entries")
+        except Exception as e:
+            logger.warning(f"Failed to batch generate embeddings: {e}")
+
+    async def _compact_chat_if_needed(self, chat_log: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Compact or prune chat log if it exceeds threshold.
+
+        Parameters
+        ----------
+        chat_log: List[Dict[str, Any]]
+            Chat log to check and potentially compact.
+
+        Yields
+        ------
+        Dict[str, Any]
+            Progress events from compaction process.
+        """
+        current_tokens = sum(estimate_tokens(json.dumps(msg, default=str)) for msg in chat_log)
+        
+        if current_tokens > self.compaction_threshold:
+            logger.info(
+                f"Chat log exceeds threshold ({current_tokens} > {self.compaction_threshold}), "
+                f"compacting..."
+            )
+            compacted_log = None
+            async for progress in self._compact_chat_log(chat_log):
+                if progress.get("type") == "_compacted_chat_log":
+                    compacted_log = progress.get("chat_log")
+                else:
+                    yield progress
+
+            if compacted_log:
+                chat_log[:] = compacted_log
+            else:
+                logger.warning("Compaction failed, using prune_chat_log")
+                chat_log[:] = prune_chat_log(chat_log, max_tokens=MAX_CHAT_LOG_TOKENS)
+        else:
+            chat_log[:] = prune_chat_log(chat_log, max_tokens=MAX_CHAT_LOG_TOKENS)
+
+    def _check_investigation_complete(
+        self, 
+        investigation_completed: bool,
+        investigation_completed_execution_phase: bool,
+        completion_summary: Optional[str],
+        completion_summary_execution_phase: Optional[str]
+    ) -> Optional[str]:
+        """
+        Check if investigation completed and return final summary.
+
+        Parameters
+        ----------
+        investigation_completed: bool
+            Whether Phase 2 completed the investigation.
+        investigation_completed_execution_phase: bool
+            Whether Phase 1 completed the investigation.
+        completion_summary: Optional[str]
+            Summary from Phase 2.
+        completion_summary_execution_phase: Optional[str]
+            Summary from Phase 1.
+
+        Returns
+        -------
+        Optional[str]
+            Final summary if completed, None otherwise.
+        """
+        if investigation_completed or investigation_completed_execution_phase:
+            return completion_summary or completion_summary_execution_phase or "Investigation completed"
+        return None
+
+    async def _execute_iteration(
+        self, chat_log: List[Dict[str, Any]]
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Execute a single investigation iteration (both phases).
+
+        Runs Phase 1 (tool execution) followed by Phase 2 (analysis), handling
+        retries when all tools fail, and updating the chat log with results.
+
+        Parameters
+        ----------
+        chat_log: List[Dict[str, Any]]
+            Current conversation history, modified in-place.
+
+        Yields
+        ------
+        Dict[str, Any]
+            Progress events from both phases, plus:
+            - `iteration_complete`: Iteration finished successfully
+            - `turn_complete`: Turn finished (UI compatibility)
+            - `agent_completed`: Investigation completed (triggers return)
+        """
+        max_iteration_retries = 2
+        iteration_retry_count = 0
+
+        while iteration_retry_count <= max_iteration_retries:
+            if iteration_retry_count > 0:
+                logger.warning(
+                    f"Retrying iteration {self.iteration} "
+                    f"(attempt {iteration_retry_count + 1}/{max_iteration_retries + 1}) "
+                    f"due to all tools failing"
+                )
+                chat_log[:] = prune_chat_log(chat_log, max_tokens=MAX_CHAT_LOG_TOKENS, preserve_recent=5)
+
+            # === PHASE 1: Tool Execution ===
+            execution_phase_tools = self._get_execution_phase_tools()
+            tool_results = None
+            assistant_msg_execution_phase = None
+            investigation_completed_execution_phase = False
+            completion_summary_execution_phase = None
+
+            async for progress in self._run_execution_phase(chat_log, execution_phase_tools):
+                if progress.get("type") == "phase_complete":
+                    assistant_msg_execution_phase = progress.get("assistant_message")
+                    tool_results = progress.get("tool_results", [])
+                    investigation_completed_execution_phase = progress.get("investigation_completed", False)
+                    completion_summary_execution_phase = progress.get("completion_summary")
+                elif progress.get("type") == "phase_error":
+                    yield progress
+                    return
+                else:
+                    yield progress
+
+            if tool_results is None:
+                logger.error("Phase 1 returned no tool results")
+                yield {"type": "agent_error", "error": "Tool execution phase failed"}
+                return
+
+            # Check if all tools failed - retry if needed
+            all_tools_failed = not tool_results or all(tr["result"].status == "error" for tr in tool_results)
+            if all_tools_failed and iteration_retry_count < max_iteration_retries:
+                logger.warning(f"All {len(tool_results) if tool_results else 0:,} tools failed. Retrying...")
+                iteration_retry_count += 1
+                if chat_log and chat_log[-1].get("role") == "user":
+                    chat_log.pop()
+                continue
+
+            if all_tools_failed:
+                logger.error(f"All tools failed after {max_iteration_retries + 1} attempts. Continuing with errors.")
+
+            # Add tool results to chat log
+            self._add_tool_results_to_chat(chat_log, assistant_msg_execution_phase, tool_results)
+
+            # Build summary for Phase 2
+            tool_results_summary = self._build_tool_results_summary(tool_results if tool_results else [])
+
+            if investigation_completed_execution_phase:
+                logger.info("Investigation completed in Phase 1. Running Phase 2 for final analysis.")
+
+            # === PHASE 2: Result Analysis ===
+            analysis_phase_tools = self._get_analysis_phase_tools()
+            analysis_summary = None
+            investigation_completed = False
+            completion_summary = None
+
+            async for progress in self._run_analysis_phase(chat_log, analysis_phase_tools, tool_results_summary):
+                if progress.get("type") == "phase_complete":
+                    analysis_summary = progress.get("analysis_summary")
+                    investigation_completed = progress.get("investigation_completed", False)
+                    completion_summary = progress.get("completion_summary")
+
+                    # Check if investigation completed
+                    final_summary = self._check_investigation_complete(
+                        investigation_completed, investigation_completed_execution_phase,
+                        completion_summary, completion_summary_execution_phase
+                    )
+                    if final_summary:
+                        logger.info(f"Investigation completed! Summary: {final_summary[:100]}...")
+                        yield {
+                            "type": "agent_completed",
+                            "summary": final_summary,
+                            "stats": self._get_stats(),
+                        }
+                        return
+                elif progress.get("type") == "phase_error":
+                    yield progress
+                    return
+                else:
+                    yield progress
+
+            # Add analysis summary to chat log
+            if analysis_summary:
+                chat_log.append({"role": "assistant", "content": analysis_summary})
+
+            # Batch generate embeddings for any new timeline entries
+            await self._batch_generate_embeddings()
+
+            # Compact chat log if needed
+            async for progress in self._compact_chat_if_needed(chat_log):
+                yield progress
+
+            # Yield iteration complete
+            yield {
+                "type": "iteration_complete",
+                "iteration": self.iteration,
+                "tools_executed": len(tool_results) if tool_results else 0,
+                "total_tools": self.total_tools_executed,
+            }
+            yield {
+                "type": "turn_complete",
+                "turn_number": self.iteration,
+                "tools_executed": len(tool_results) if tool_results else 0,
+                "total_tools": self.total_tools_executed,
+            }
+
+            return
+
+    def _remove_tool_messages_from_chat(self, chat_log: List[Dict[str, Any]]) -> None:
+        """
+        Remove tool-related messages from chat log to prevent unbounded growth.
+
+        Removes:
+        - Assistant messages with tool_calls
+        - Tool result messages (role="tool")
+
+        Preserves:
+        - System messages
+        - User messages
+        - Assistant messages with content only (analysis summaries)
+
+        Parameters
+        ----------
+        chat_log: List[Dict[str, Any]]
+            Chat log to modify in-place.
+        """
+        messages_to_keep = []
+        removed_count = 0
+
+        for msg in chat_log:
+            role = msg.get("role")
+            
+            # Keep system and user messages
+            if role in ["system", "user"]:
+                messages_to_keep.append(msg)
+            # Keep assistant messages that only have content (analysis summaries)
+            elif role == "assistant" and "tool_calls" not in msg:
+                messages_to_keep.append(msg)
+            # Remove tool result messages and assistant messages with tool_calls
+            elif role == "tool" or (role == "assistant" and "tool_calls" in msg):
+                removed_count += 1
+            else:
+                # Keep anything else (shouldn't happen, but be safe)
+                messages_to_keep.append(msg)
+
+        if removed_count > 0:
+            logger.info(f"Removed {removed_count} tool-related messages from chat log")
+            chat_log[:] = messages_to_keep
+
+    async def _refresh_timeline_context_if_needed(
+        self, chat_log: List[Dict[str, Any]], previous_timeline_count: int
+    ) -> int:
+        """
+        Refresh timeline context in system prompt if timeline entries changed.
+
+        Parameters
+        ----------
+        chat_log: List[Dict[str, Any]]
+            Chat log to potentially update.
+        previous_timeline_count: int
+            Number of timeline entries from previous iteration.
+
+        Returns
+        -------
+        int
+            Current number of timeline entries.
+        """
+        current_timeline_count = self.stats.get("timeline_entries_created", 0)
+
+        # Only refresh if timeline changed
+        if current_timeline_count != previous_timeline_count:
+            logger.info(
+                f"Timeline changed: {previous_timeline_count} -> {current_timeline_count} entries. "
+                f"Refreshing context..."
+            )
+
+            # Reload full investigation context with updated timeline
+            context = await load_investigation_context(
+                db=self.db,
+                investigation_id=self.investigation_id,
+                llm_client=self.llm_client,
+                use_field_dictionary=True,
+                llm_max_context=self.llm_max_context,
+            )
+
+            # Update system prompt (first message in chat log)
+            system_prompt = get_system_prompt(context)
+            if chat_log and chat_log[0].get("role") == "system":
+                chat_log[0]["content"] = system_prompt
+                logger.info("Updated system prompt with refreshed timeline context")
+
+        return current_timeline_count
+
+    async def run(self) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Run the assistant agent investigation loop.
+
+        Orchestrates the full investigation lifecycle using a two-phase architecture:
+        1. **Tool Execution Phase** - LLM selects and executes data query tools
+        2. **Analysis Phase** - LLM analyzes results and updates timeline
 
         Yields
         ------
         AsyncIterator[Dict[str, Any]]
-            Progress events as described above. The iterator yields intermediate UI-friendly messages during tool execution, analysis, compaction, retries, cancellation, and final completion.
+            Progress events including:
+            - `agent_started`: Investigation started
+            - `phase_complete`: Phase finished
+            - `iteration_complete`: Iteration finished
+            - `turn_complete`: Turn finished (UI compatibility)
+            - `agent_completed`: Investigation completed or max iterations reached
+            - `agent_cancelled`: User cancelled investigation
+            - `agent_error`: Unexpected error occurred
 
         Raises
         ------
         asyncio.CancelledError
-            Propagated after emitting an `agent_cancelled` event when the coroutine is externally cancelled.
-        Exception
-            Any unexpected exception is caught, logged, and results in an `agent_error` event being yielded; the exception is not re-raised.
+            Propagated after emitting `agent_cancelled` event.
         """
         try:
             logger.info("AssistantAgent starting")
@@ -1456,12 +1771,12 @@ class AssistantAgent:
                 {"role": "user", "content": self.question},
             ]
 
+            # Track timeline count for refresh detection
+            timeline_count = 0
+
             # Main iteration loop
             while not self.cancelled and self.iteration < self.max_iterations:
                 self.iteration += 1
-                iteration_retry_count = 0
-                max_iteration_retries = 2  # Retry failed iterations up to 2 times
-
                 logger.info(f"=== Iteration {self.iteration}/{self.max_iterations} ===")
 
                 # Check cancellation
@@ -1469,264 +1784,36 @@ class AssistantAgent:
                     yield {"type": "agent_cancelled", "message": "Investigation stopped"}
                     break
 
-                # Iteration retry loop (for when all tools fail)
-                iteration_successful = False
+                # Remove tool calls and results from previous iteration
+                self._remove_tool_messages_from_chat(chat_log)
 
-                while not iteration_successful and iteration_retry_count <= max_iteration_retries:
-                    if iteration_retry_count > 0:
-                        logger.warning(
-                            f"Retrying iteration {self.iteration} (attempt {iteration_retry_count + 1}/{max_iteration_retries + 1}) "
-                            f"due to all tools failing"
-                        )
-                        # Remove the failed tool execution prompt and results from chat log
-                        # Keep only messages up to the last assistant analysis
-                        chat_log = prune_chat_log(
-                            chat_log, max_tokens=MAX_CHAT_LOG_TOKENS, preserve_recent=5
-                        )
+                # Refresh timeline context if timeline entries changed
+                timeline_count = await self._refresh_timeline_context_if_needed(
+                    chat_log, timeline_count
+                )
 
-                    # === PHASE 1: Tool Execution ===
-                    tool_execution_prompt = get_tool_execution_prompt(self.question, self.iteration)
-                    chat_log.append({"role": "user", "content": tool_execution_prompt})
-
-                    tool_results = None
-                    assistant_msg_phase1 = None
-                    investigation_completed_phase1 = False
-                    completion_summary_phase1 = None
-
-                    async for progress in self.execute_tool_phase(chat_log):
-                        if progress.get("type") == "phase_complete":
-                            assistant_msg_phase1 = progress.get("assistant_message")
-                            tool_results = progress.get("tool_results", [])
-                            investigation_completed_phase1 = progress.get(
-                                "investigation_completed", False
-                            )
-                            completion_summary_phase1 = progress.get("completion_summary")
-                        elif progress.get("type") == "phase_error":
-                            # Phase 1 failed
-                            yield progress
-                            return
-                        else:
-                            yield progress  # Stream to UI
-
-                    if tool_results is None:
-                        logger.error("Phase 1 returned no tool results")
-                        yield {"type": "agent_error", "error": "Tool execution phase failed"}
+                # Execute iteration (both phases)
+                async for progress in self._execute_iteration(chat_log):
+                    yield progress
+                    # If investigation completed, _execute_iteration already yielded agent_completed
+                    if progress.get("type") == "agent_completed":
+                        return
+                    if progress.get("type") == "agent_error":
                         return
 
-                    # Check if ALL tools failed
-                    all_tools_failed = False
-                    if tool_results is not None and len(tool_results) > 0:
-                        all_tools_failed = all(
-                            tr["result"].status == "error" for tr in tool_results
-                        )
-                    elif tool_results is None or len(tool_results) == 0:
-                        # No tools executed at all - treat as failure
-                        all_tools_failed = True
-
-                    if all_tools_failed and iteration_retry_count < max_iteration_retries:
-                        # All tools failed - retry this iteration without showing to UI
-                        logger.warning(
-                            f"All {len(tool_results) if tool_results else 0} tools failed in iteration {self.iteration}. "
-                            f"Retrying iteration (attempt {iteration_retry_count + 1}/{max_iteration_retries + 1})..."
-                        )
-                        iteration_retry_count += 1
-
-                        # Remove the failed prompt from chat log before retrying
-                        if chat_log and chat_log[-1].get("role") == "user":
-                            chat_log.pop()
-
-                        # Continue to retry loop
-                        continue
-
-                    # If we get here, either some tools succeeded OR we've exhausted retries
-                    if all_tools_failed and iteration_retry_count >= max_iteration_retries:
-                        logger.error(
-                            f"All tools failed in iteration {self.iteration} after {max_iteration_retries + 1} attempts. "
-                            f"Continuing with errors visible to user."
-                        )
-
-                    # Add assistant message and tool results to chat log (if any tools were called)
-                    if (
-                        tool_results is not None
-                        and assistant_msg_phase1
-                        and assistant_msg_phase1.tool_calls
-                    ):
-                        # Add assistant's tool calls to chat log (strip any content - Phase 1 should be silent)
-                        phase1_msg = assistant_msg_phase1.model_dump(exclude_none=True)
-                        # Remove content field - Phase 1 should only have tool calls
-                        phase1_msg.pop("content", None)
-                        chat_log.append(phase1_msg)
-
-                        # Add tool results to chat log (CSV format for agent efficiency)
-                        for tr in tool_results:
-                            if tr["result"].status == "ok" and tr["result"].result:
-                                # Check if result contains events list
-                                events = tr["result"].result.get("events", [])
-                                if events and isinstance(events, list) and len(events) > 0:
-                                    # Convert events to CSV for token efficiency
-                                    csv_data = events_to_csv(events)
-                                    count = tr["result"].result.get("count", len(events))
-
-                                    # Format as CSV with metadata
-                                    content = f"Found {count} events:\n\n{csv_data}"
-                                else:
-                                    # No events, just serialize the result
-                                    content = _compact_serialize(tr["result"].result)
-                            else:
-                                # Error result
-                                content = _compact_serialize({"error": tr["result"].error_msg})
-
-                            tool_msg = {
-                                "role": "tool",
-                                "tool_call_id": tr["tool_call_id"],
-                                "name": tr["tool_name"],
-                                "content": content,
-                            }
-                            chat_log.append(tool_msg)
-
-                    # Build tool results summary for Phase 2
-                    tool_results_summary = self._build_tool_results_summary(
-                        tool_results if tool_results is not None else []
-                    )
-
-                    # Check if investigation was completed in Phase 1
-                    if investigation_completed_phase1:
-                        logger.info(
-                            "Investigation completed in Phase 1. Running Phase 2 for final analysis, then exiting."
-                        )
-
-                    # === PHASE 2: Result Analysis ===
-                    analysis_prompt = get_analysis_prompt(
-                        self.question, self.iteration, tool_results_summary
-                    )
-                    chat_log.append({"role": "user", "content": analysis_prompt})
-
-                    analysis_summary = None
-                    investigation_completed = False
-                    completion_summary = None  # Initialize here to avoid UnboundLocalError
-
-                    async for progress in self.execute_analysis_phase(
-                        chat_log, tool_results_summary
-                    ):
-                        if progress.get("type") == "phase_complete":
-                            analysis_summary = progress.get("analysis_summary")
-                            investigation_completed = progress.get("investigation_completed", False)
-                            completion_summary = progress.get("completion_summary")  # May be None
-
-                            # Check if investigation was completed in either phase
-                            if investigation_completed or investigation_completed_phase1:
-                                final_summary = (
-                                    completion_summary
-                                    or completion_summary_phase1
-                                    or "Investigation completed"
-                                )
-                                logger.info(
-                                    f"Investigation completed! Yielding final results and exiting. Summary: {final_summary[:100]}..."
-                                )
-                                yield {
-                                    "type": "agent_completed",
-                                    "summary": final_summary,
-                                    "stats": {
-                                        "turns_executed": self.iteration,
-                                        "tool_executions": self.total_tools_executed,
-                                        "events_analyzed": self.stats.get("events_analyzed", 0),
-                                        "timeline_entries_created": self.stats.get(
-                                            "timeline_entries_created", 0
-                                        ),
-                                        "tools_called": dict(self.stats.get("tools_called", {})),
-                                    },
-                                }
-                                return
-                            else:
-                                logger.info(
-                                    f"Investigation NOT completed. investigation_completed={investigation_completed}"
-                                )
-                        elif progress.get("type") == "phase_error":
-                            yield progress
-                            return
-                        else:
-                            yield progress
-
-                    logger.info("Finished processing analysis phase results.")
-
-                    # Add analysis summary to chat log
-                    logger.info(
-                        f"Adding analysis summary to chat log: {len(analysis_summary) if analysis_summary else 0} chars"
-                    )
-                    if analysis_summary:
-                        chat_log.append({"role": "assistant", "content": analysis_summary})
-
-                    # Check context and compact if needed (before next iteration)
-                    current_tokens = sum(
-                        estimate_tokens(json.dumps(msg, default=str)) for msg in chat_log
-                    )
-                    if current_tokens > self.compaction_threshold:
-                        logger.info(
-                            f"Chat log exceeds threshold ({current_tokens} > {self.compaction_threshold}), "
-                            f"compacting before next iteration..."
-                        )
-
-                        compacted_log = None
-                        async for progress in self._compact_chat_log(chat_log):
-                            if progress.get("type") == "_compacted_chat_log":
-                                compacted_log = progress.get("chat_log")
-                            else:
-                                yield progress  # Stream progress to UI
-
-                        if compacted_log:
-                            chat_log = compacted_log
-                        else:
-                            logger.warning("Compaction failed, using prune_chat_log as fallback")
-                            chat_log = prune_chat_log(chat_log, max_tokens=MAX_CHAT_LOG_TOKENS)
-                    else:
-                        # Standard pruning to remove obvious duplicates/noise
-                        chat_log = prune_chat_log(chat_log, max_tokens=MAX_CHAT_LOG_TOKENS)
-
-                    # Yield iteration complete (also send as turn_complete for UI compatibility)
-                    yield {
-                        "type": "iteration_complete",
-                        "iteration": self.iteration,
-                        "tools_executed": len(tool_results) if tool_results is not None else 0,
-                        "total_tools": self.total_tools_executed,
-                    }
-                    yield {
-                        "type": "turn_complete",
-                        "turn_number": self.iteration,
-                        "tools_executed": len(tool_results) if tool_results is not None else 0,
-                        "total_tools": self.total_tools_executed,
-                    }
-
-                    # Break out of iteration retry loop
-                    iteration_successful = True
-                    break
-
-            # Check if we should continue to next iteration
-            logger.info(f"Iteration {self.iteration} complete. Continuing to next iteration...")
-
-            # End of main iteration loop - continue to next iteration
-
             # Max iterations reached without completion
-            # Ensure we send a completion event before exiting
-            logger.info(
-                f"Agent exiting run loop. Cancelled: {self.cancelled}, Iteration: {self.iteration}/{self.max_iterations}"
-            )
-
             if not self.cancelled:
-                # Force completion with a summary
                 logger.warning(
-                    "Agent reached max iterations without calling complete_investigation. Forcing completion."
+                    "Agent reached max iterations without completing. Forcing completion."
                 )
                 yield {
                     "type": "agent_completed",
-                    "summary": f"Investigation reached maximum iterations ({self.max_iterations}) without explicit completion. "
-                    f"Executed {self.total_tools_executed} tools and created {self.stats.get('timeline_entries_created', 0)} timeline entries.",
-                    "stats": {
-                        "turns_executed": self.iteration,
-                        "tool_executions": self.total_tools_executed,
-                        "events_analyzed": self.stats.get("events_analyzed", 0),
-                        "timeline_entries_created": self.stats.get("timeline_entries_created", 0),
-                        "tools_called": dict(self.stats.get("tools_called", {})),
-                    },
+                    "summary": (
+                        f"Investigation reached maximum iterations ({self.max_iterations}) "
+                        f"without explicit completion. Executed {self.total_tools_executed} tools "
+                        f"and created {self.stats.get('timeline_entries_created', 0)} timeline entries."
+                    ),
+                    "stats": self._get_stats(),
                     "incomplete": True,
                 }
 
@@ -1736,13 +1823,7 @@ class AssistantAgent:
                 "type": "agent_cancelled",
                 "message": "Investigation stopped by user",
                 "summary": "Investigation stopped by user",
-                "stats": {
-                    "turns_executed": self.iteration,
-                    "tool_executions": self.total_tools_executed,
-                    "events_analyzed": self.stats.get("events_analyzed", 0),
-                    "timeline_entries_created": self.stats.get("timeline_entries_created", 0),
-                    "tools_called": dict(self.stats.get("tools_called", {})),
-                },
+                "stats": self._get_stats(),
             }
             raise
 

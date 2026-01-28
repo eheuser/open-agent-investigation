@@ -386,7 +386,7 @@ async def _handle_question(
                         metadata=final_metadata,
                     )
                     await db.commit()
-                    logger.info(f"Updated event_sequence with {len(execution_ids)} execution_ids")
+                    logger.info(f"Updated event_sequence with {len(execution_ids):,} execution_ids")
 
             # Broadcast message update
             await manager.broadcast(

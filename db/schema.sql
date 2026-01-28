@@ -369,24 +369,30 @@ COMMENT ON COLUMN chat_log_summaries.tools_executed IS 'Array of tool names exec
 -- Stores LLM-generated descriptions for forensic JSONB fields, organized by event type
 CREATE TABLE IF NOT EXISTS field_dictionary (
     field_id BIGSERIAL PRIMARY KEY,
+    investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,
     field_name TEXT NOT NULL,
-    description TEXT NOT NULL,
+    description TEXT,  -- Nullable until LLM generates it
     sample_values TEXT[],  -- Example values to help with context
+    cached_markdown TEXT,  -- Pre-formatted markdown for this field
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_field_dict_event_field UNIQUE (event_type, field_name)
+    CONSTRAINT uq_field_dict_investigation_event_field UNIQUE (investigation_id, event_type, field_name)
 );
 
-CREATE INDEX idx_field_dict_event_type ON field_dictionary(event_type);
+CREATE INDEX idx_field_dict_investigation ON field_dictionary(investigation_id);
+CREATE INDEX idx_field_dict_event_type ON field_dictionary(investigation_id, event_type);
 CREATE INDEX idx_field_dict_field_name ON field_dictionary(field_name);
 CREATE INDEX idx_field_dict_updated ON field_dictionary(updated_at DESC);
+CREATE INDEX idx_field_dict_pending ON field_dictionary(investigation_id) WHERE description IS NULL;
 
-COMMENT ON TABLE field_dictionary IS 'Permanent storage of JSONB field descriptions for all event types. LLM-generated descriptions help agents understand available fields.';
+COMMENT ON TABLE field_dictionary IS 'Permanent storage of JSONB field descriptions per investigation. LLM-generated descriptions help agents understand available fields.';
+COMMENT ON COLUMN field_dictionary.investigation_id IS 'Investigation this field dictionary entry belongs to';
 COMMENT ON COLUMN field_dictionary.event_type IS 'Event type this field belongs to (e.g., evtx_security_4624, mft_entry)';
 COMMENT ON COLUMN field_dictionary.field_name IS 'JSONB field name (e.g., TargetUserName, system.Computer)';
-COMMENT ON COLUMN field_dictionary.description IS 'Brief forensic description of what this field represents (5-10 words)';
+COMMENT ON COLUMN field_dictionary.description IS 'Brief forensic description of what this field represents (5-10 words) - NULL until LLM generates';
 COMMENT ON COLUMN field_dictionary.sample_values IS 'Example values from actual events to provide context';
+COMMENT ON COLUMN field_dictionary.cached_markdown IS 'Pre-formatted markdown for efficient context loading (e.g., "- `TargetUserName` - Account targeted by operation")';
 
 -- ============================================================================
 -- RAG & EMBEDDING TABLES
@@ -521,6 +527,11 @@ INSERT INTO schema_migrations (version, description, checksum)
 VALUES (10, 'Add field_dictionary table for permanent storage of JSONB field descriptions', '010_add_field_dictionary')
 ON CONFLICT (version) DO NOTHING;
 
+-- Record field dictionary optimization as version 13
+INSERT INTO schema_migrations (version, description, checksum)
+VALUES (13, 'Add investigation_id to field_dictionary, add cached_markdown column, add trigger for auto-population', '013_optimize_field_dictionary')
+ON CONFLICT (version) DO NOTHING;
+
 -- Record chat log summaries as version 11
 INSERT INTO schema_migrations (version, description, checksum)
 VALUES (11, 'Add chat_log_summaries table for token-efficient context management (Feature 5)', '011_add_chat_summaries')
@@ -637,6 +648,10 @@ CREATE TRIGGER update_field_dictionary_updated_at
     BEFORE UPDATE ON field_dictionary
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- NOTE: No trigger on events table - field discovery happens in batch after parsing
+-- This avoids massive performance degradation during bulk event inserts
+-- See: field_dictionary_finalizer.discover_and_populate_fields()
 
 -- ============================================================================
 -- DEFAULT DATA

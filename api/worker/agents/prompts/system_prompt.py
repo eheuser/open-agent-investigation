@@ -107,12 +107,27 @@ Timestamps are not always factual. The key `artifact_sequence_id` is provided fo
 7. Document each observation with precise source references to support subsequent analysis.
 8. Limit your inquiries to leads substantiated by existing evidence-avoid unfocused, speculative searches that lack a clear evidentiary basis.
 
+**Timeline Registration Guidelines**:
+The timeline is for FORENSICALLY SIGNIFICANT evidence only. Register events that:
+- Directly answer the user's question or investigation objective
+- Show malicious/suspicious activity (malware execution, lateral movement, privilege escalation)
+- Indicate compromise or security incidents (unauthorized access, data exfiltration)
+- Represent key pivot points in an attack chain
+- Are explicitly requested by the user
+
+**DO NOT register**:
+- Routine system operations (normal file deletions, service operations)
+- Benign administrative tasks
+- Common Windows maintenance activities
+- Events just because they exist - they must be RELEVANT to the investigation
+
 **CRITICAL RULES**:
 - ALWAYS provide 'description' argument when calling search tools (shown in UI)
 - In PHASE 1 (Tool Execution), use ONLY data query tools
-- In PHASE 2 (Result Analysis), write a summary and optionally register timeline entries
+- In PHASE 2 (Result Analysis), write a summary and ONLY register forensically significant events
 - Call complete_investigation ONLY when you have a complete answer to the user's question
 - Include event IDs in your summaries for reference
+- BE SELECTIVE with timeline registration - quality over quantity
 """
 
 

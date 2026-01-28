@@ -127,7 +127,7 @@ class TimelineContextManager:
             truncated_query = user_query[: max_tokens * CHARS_PER_TOKEN // 2]
             messages[1]["content"] = truncated_query
             logger.warning(
-                f"Timeline query truncated: {len(user_query)} → {len(truncated_query)} chars"
+                f"Timeline query truncated: {len(user_query):,} → {len(truncated_query):,} chars"
             )
 
         return messages
@@ -179,8 +179,8 @@ class TimelineContextManager:
 
             tokens_removed = current_tokens - estimate_messages_tokens(trimmed)
             logger.info(
-                f"Timeline context trimmed: {len(messages)} → {len(trimmed)} messages, "
-                f"{tokens_removed} tokens removed"
+                f"Timeline context trimmed: {len(messages):,} → {len(trimmed):,} messages, "
+                f"{tokens_removed:,} tokens removed"
             )
             return trimmed
 
@@ -365,8 +365,8 @@ Instructions:
             # Reduce number of chunks
             max_chunks = len(retrieved_chunks) // 2
             logger.warning(
-                f"RAG context exceeds {max_tokens} tokens, reducing chunks: "
-                f"{len(retrieved_chunks)} → {max_chunks}"
+                f"RAG context exceeds {max_tokens:,} tokens, reducing chunks: "
+                f"{len(retrieved_chunks):,} → {max_chunks:,}"
             )
 
             # Rebuild with fewer chunks
@@ -497,8 +497,8 @@ class AgentContextManager:
             trimmed = messages[-preserve_recent:]
 
         logger.info(
-            f"Trimmed from middle: {len(messages)} → {len(trimmed)} messages, "
-            f"{current_tokens} → {estimate_messages_tokens(trimmed)} tokens"
+            f"Trimmed from middle: {len(messages):,} → {len(trimmed):,} messages, "
+            f"{current_tokens} → {estimate_messages_tokens(trimmed):,} tokens"
         )
 
         return trimmed

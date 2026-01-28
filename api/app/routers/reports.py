@@ -449,7 +449,7 @@ async def _convert_markdown_to_pdf(markdown_content: str) -> bytes:
 
     pdf_bytes = pdf_file.getvalue()
 
-    logger.info(f"Generated PDF: {len(pdf_bytes)} bytes")
+    logger.info(f"Generated PDF: {len(pdf_bytes):,} bytes")
 
     return pdf_bytes
 

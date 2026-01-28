@@ -16,13 +16,17 @@ try:
 
     # Add parent directory to path for imports when running as worker
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-    from app.services.rag.embedding_service import generate_embedding_for_timeline_entry
+    from app.services.rag.embedding_service import (
+        generate_embedding_for_timeline_entry,
+        generate_embeddings_for_timeline_entries,
+    )
 
     EMBEDDINGS_AVAILABLE = True
 except ImportError:
     logger.warning("Embedding service not available - embeddings will not be generated")
     EMBEDDINGS_AVAILABLE = False
     generate_embedding_for_timeline_entry = None  # type: ignore
+    generate_embeddings_for_timeline_entries = None  # type: ignore
 
 
 async def register_timeline_entry(
@@ -234,21 +238,8 @@ async def register_timeline_entry(
         f"(type={entry_type}, event_id={event_id}, description={description is not None}, tags={parsed_tags})"
     )
 
-    # Generate embedding for timeline entry (async, non-blocking)
-    if EMBEDDINGS_AVAILABLE and generate_embedding_for_timeline_entry and entry_id is not None:
-        try:
-            # Note: We pass user_id=1 (admin) for now - in production, get from context
-            embedding_id = await generate_embedding_for_timeline_entry(
-                db=db,
-                entry_id=int(entry_id),
-                title=title,
-                description=description,
-                user_id=1,  # TODO: Get from agent context
-            )
-            if embedding_id:
-                logger.info(f"Generated embedding {embedding_id} for timeline entry {entry_id}")
-        except Exception as e:
-            logger.warning(f"Failed to generate embedding for timeline entry {entry_id}: {e}")
+    # NOTE: Embeddings are now generated in batch at the end of each iteration
+    # See batch_generate_embeddings() - called after all timeline entries are registered
 
     return {
         "entry_id": entry_id,
@@ -376,21 +367,8 @@ async def register_finding(
         f"(severity={severity}, evidence_count={len(evidence_event_ids) if evidence_event_ids else 0})"
     )
 
-    # Generate embedding for finding (async, non-blocking)
-    if EMBEDDINGS_AVAILABLE and generate_embedding_for_timeline_entry and entry_id is not None:
-        try:
-            # Note: We pass user_id=1 (admin) for now - in production, get from context
-            embedding_id = await generate_embedding_for_timeline_entry(
-                db=db,
-                entry_id=int(entry_id),
-                title=title,
-                description=description,
-                user_id=1,  # TODO: Get from agent context
-            )
-            if embedding_id:
-                logger.info(f"Generated embedding {embedding_id} for finding {entry_id}")
-        except Exception as e:
-            logger.warning(f"Failed to generate embedding for finding {entry_id}: {e}")
+    # NOTE: Embeddings are now generated in batch at the end of each iteration
+    # See batch_generate_embeddings() - called after all timeline entries are registered
 
     return {
         "entry_id": entry_id,
@@ -399,6 +377,75 @@ async def register_finding(
         "entry_type": "finding",
         "severity": severity,
     }
+
+
+async def batch_generate_embeddings(
+    db: AsyncSession,
+    investigation_id: str,
+    user_id: int = 1,
+) -> int:
+    """
+    Generate embeddings for all timeline entries without embeddings in batch.
+
+    Called at the end of each iteration to batch-process all newly created
+    timeline entries, which is much more efficient than generating embeddings
+    serially during registration.
+
+    Parameters
+    ----------
+    db: AsyncSession
+        Database session.
+    investigation_id: str
+        Investigation identifier.
+    user_id: int, default 1
+        User ID for LLM configuration.
+
+    Returns
+    -------
+    int
+        Number of embeddings successfully created.
+    """
+    if not EMBEDDINGS_AVAILABLE or not generate_embeddings_for_timeline_entries:
+        return 0
+
+    try:
+        # Find all timeline entries without embeddings for this investigation
+        result = await db.execute(
+            text(
+                """
+                SELECT entry_id
+                FROM timeline_entries
+                WHERE investigation_id = :investigation_id
+                AND embedding_id IS NULL
+                ORDER BY entry_id
+            """
+            ),
+            {"investigation_id": investigation_id},
+        )
+        rows = result.fetchall()
+        entry_ids = [row[0] for row in rows]
+
+        if not entry_ids:
+            return 0
+
+        logger.info(
+            f"Batch generating embeddings for {len(entry_ids)} timeline entries "
+            f"in investigation {investigation_id}"
+        )
+
+        # Generate embeddings in batch
+        count = await generate_embeddings_for_timeline_entries(
+            db=db,
+            entry_ids=entry_ids,
+            user_id=user_id,
+        )
+
+        logger.info(f"Successfully generated {count} embeddings in batch")
+        return count
+
+    except Exception as e:
+        logger.error(f"Failed to batch generate embeddings: {e}", exc_info=True)
+        return 0
 
 
 async def link_to_event(

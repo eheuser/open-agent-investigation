@@ -27,77 +27,35 @@ async def search_events_by_type_wrapper(
     limit: int = 50,
     offset: int = 0,
     description: str = "",
-    auto_register: bool = False,
 ) -> Dict[str, Any]:
     """
-    Search events by type with optional automatic timeline registration.
+    Search events by type.
 
     Parameters
     ----------
-    db : AsyncSession
-        Asynchronous database session used for queries and registrations.
-    investigation_id : str
-        Identifier of the investigation context in which to search.
-    stats : Dict[str, Any]
-        Dictionary for collecting statistics about the operation (e.g., execution time).
-    event_type : str
-        Event type pattern to match; supports wildcard characters such as `*`.
-    limit : int, optional
-        Maximum number of events to return. Defaults to 50.
-    offset : int, optional
-        Number of matching events to skip before returning results. Defaults to 0.
-    description : str, optional
-        Optional description applied to automatically created timeline entries. If omitted,
-        a generic description based on the search pattern is used.
-    auto_register : bool, optional
-        When `True` and at least one event is found, each event is registered as a timeline
-        entry using `timeline_tools.register_timeline_entry`. Failures during registration are
-        logged but do not abort the search. Defaults to `False`.
+    db: AsyncSession
+        Asynchronous database session.
+    investigation_id: str
+        Investigation identifier.
+    stats: Dict[str, Any]
+        Statistics dictionary.
+    event_type: str
+        Event type pattern (supports * wildcards).
+    limit: int, default 50
+        Maximum number of events to return.
+    offset: int, default 0
+        Pagination offset.
+    description: str, default ""
+        Brief description shown in UI.
 
     Returns
     -------
     Dict[str, Any]
-        A dictionary containing the search results under the key `"events"`. If
-        `auto_register` is enabled and registrations succeed, additional keys
-        `"auto_registered"` (the number of events registered) and
-        `"auto_registration_description"` (the description used for registration) are added.
-
-    Raises
-    ------
-    None explicitly; any exception raised during timeline registration is caught,
-    logged as a warning, and the function proceeds to return the search result.
+        Search results with events list.
     """
-    result = await event_tools.search_events_by_type(
+    return await event_tools.search_events_by_type(
         db, investigation_id, event_type, limit, offset, stats
     )
-
-    # OPTIONAL AUTOMATIC TIMELINE REGISTRATION (only if auto_register=True)
-    if auto_register and result.get("events") and len(result["events"]) > 0:
-        # Extract event IDs
-        event_ids = [e["event_id"] for e in result["events"]]
-
-        # Auto-register each event to timeline
-        for event_id in event_ids:
-            try:
-                await timeline_tools.register_timeline_entry(
-                    db=db,
-                    investigation_id=investigation_id,
-                    event_id=event_id,
-                    title=f"{event_type} event",
-                    entry_type="event",
-                    description=description or f"Registered from search: {event_type}",
-                    tags=["agent-registered", event_type.replace("*", "all")],
-                    stats=stats,
-                )
-            except Exception as e:
-                # Don't fail the search if timeline registration fails
-                logger.warning(f"Failed to register event {event_id}: {e}")
-
-        # Add metadata about registration
-        result["auto_registered"] = len(event_ids)
-        result["auto_registration_description"] = description
-
-    return result
 
 
 async def search_events_by_timerange_wrapper(
@@ -110,58 +68,39 @@ async def search_events_by_timerange_wrapper(
     limit: int = 50,
     offset: int = 0,
     description: str = "",
-    auto_register: bool = False,
 ) -> Dict[str, Any]:
     """
-    Searches for events within a given time range and optionally registers each found event in the investigation timeline.
+    Search events within a time range.
 
-    Args:
-        db: Asynchronous SQLAlchemy session used for database operations.
-        investigation_id: Identifier of the investigation to which the search belongs.
-        stats: Dictionary used to collect statistical information about the operation.
-        start_time: ISO-8601 formatted timestamp marking the beginning of the time range; if `None` the lower bound is unbounded.
-        end_time: ISO-8601 formatted timestamp marking the end of the time range; if `None` the upper bound is unbounded.
-        event_type: Optional filter to restrict results to a specific type of event.
-        limit: Maximum number of events to return (default 50).
-        offset: Number of events to skip before starting to collect results (default 0).
-        description: Textual description used when automatically registering timeline entries; defaults to an empty string.
-        auto_register: When `True` each returned event is added to the investigation timeline via :func:`timeline_tools.register_timeline_entry`. Failures are logged but do not abort the search.
+    Parameters
+    ----------
+    db: AsyncSession
+        Asynchronous database session.
+    investigation_id: str
+        Investigation identifier.
+    stats: Dict[str, Any]
+        Statistics dictionary.
+    start_time: Optional[str], default None
+        Start time (ISO-8601 format).
+    end_time: Optional[str], default None
+        End time (ISO-8601 format).
+    event_type: Optional[str], default None
+        Optional event type filter.
+    limit: int, default 50
+        Maximum number of events to return.
+    offset: int, default 0
+        Pagination offset.
+    description: str, default ""
+        Brief description shown in UI.
 
-    Returns:
-        A dictionary containing the raw result from :func:`event_tools.search_events_by_timerange`. If `auto_register` is enabled and events were found, the dictionary is augmented with:
-            - `auto_registered`: Count of events successfully added to the timeline.
-            - `auto_registration_description`: The description supplied for the registration.
-
-    Raises:
-        Propagates any exception raised by the underlying search operation; exceptions occurring during automatic timeline registration are caught and logged.
+    Returns
+    -------
+    Dict[str, Any]
+        Search results with events list.
     """
-    result = await event_tools.search_events_by_timerange(
+    return await event_tools.search_events_by_timerange(
         db, investigation_id, start_time, end_time, event_type, limit, offset, stats
     )
-
-    # OPTIONAL timeline registration (only if auto_register=True)
-    if auto_register and result.get("events") and len(result["events"]) > 0:
-        event_ids = [e["event_id"] for e in result["events"]]
-
-        for event_id in event_ids:
-            try:
-                await timeline_tools.register_timeline_entry(
-                    db=db,
-                    investigation_id=investigation_id,
-                    event_id=event_id,
-                    title=f"Event in timerange {start_time or 'start'} to {end_time or 'end'}",
-                    entry_type="event",
-                    description=description or f"Registered from timerange search",
-                    tags=["agent-registered", "timerange"],
-                    stats=stats,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to register event {event_id}: {e}")
-
-        result["auto_registered"] = len(event_ids)
-        result["auto_registration_description"] = description
-
-    return result
 
 
 async def search_events_by_content_wrapper(
@@ -173,49 +112,35 @@ async def search_events_by_content_wrapper(
     limit: int = 50,
     offset: int = 0,
     description: str = "",
-    auto_register: bool = False,
 ) -> Dict[str, Any]:
     """
-    Search event payloads for content and optionally register matching events in the investigation timeline.
+    Search event payloads for text content.
 
     Parameters
     ----------
     db: AsyncSession
-        Asynchronous database session used for all queries.
+        Asynchronous database session.
     investigation_id: str
-        Identifier of the investigation to which the search belongs.
+        Investigation identifier.
     stats: Dict[str, Any]
-        Dictionary for collecting statistical information about the operation; passed through to underlying tools.
+        Statistics dictionary.
     search_text: str
-        Text pattern to look for inside event payloads.
-    event_type: Optional[str], optional
-        Filter results by a specific event type. If `None` (default), all types are considered.
-    limit: int, optional
-        Maximum number of events to return. Defaults to 50.
-    offset: int, optional
-        Number of events to skip before returning results. Defaults to 0.
-    description: str, optional
-        Human-readable description used when automatically registering timeline entries. If omitted,
-        a default description based on `search_text` is generated.
-    auto_register: bool, optional
-        When `True`, each event found by the search is registered as a timeline entry. Defaults to `False`.
+        Text to search for in payloads.
+    event_type: Optional[str], default None
+        Optional event type filter.
+    limit: int, default 50
+        Maximum number of events to return.
+    offset: int, default 0
+        Pagination offset.
+    description: str, default ""
+        Brief description shown in UI.
 
     Returns
     -------
     Dict[str, Any]
-        The raw result from :func:`event_tools.search_events_by_content`.  If `auto_register` is enabled and events are found,
-        the dictionary also contains:
-
-        - `auto_registered` (int): Number of events that were successfully added to the timeline.
-        - `auto_registration_description` (str): Description used for the automatic registrations.
-
-    Raises
-    ------
-    Exception
-        Any exception raised by the underlying search or registration calls is propagated, except for registration failures,
-        which are logged as warnings and do not abort the function.
+        Search results with events list.
     """
-    result = await event_tools.search_events_by_content(
+    return await event_tools.search_events_by_content(
         db,
         investigation_id,
         search_text=search_text,
@@ -224,30 +149,6 @@ async def search_events_by_content_wrapper(
         offset=offset,
         stats=stats,
     )
-
-    # OPTIONAL timeline registration (only if auto_register=True)
-    if auto_register and result.get("events") and len(result["events"]) > 0:
-        event_ids = [e["event_id"] for e in result["events"]]
-
-        for event_id in event_ids:
-            try:
-                await timeline_tools.register_timeline_entry(
-                    db=db,
-                    investigation_id=investigation_id,
-                    event_id=event_id,
-                    title=f"Event containing '{search_text[:50]}'",
-                    entry_type="event",
-                    description=description or f"Registered from content search: {search_text}",
-                    tags=["agent-registered", "content-match"],
-                    stats=stats,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to register event {event_id}: {e}")
-
-        result["auto_registered"] = len(event_ids)
-        result["auto_registration_description"] = description
-
-    return result
 
 
 async def get_event_by_id_wrapper(
@@ -318,77 +219,41 @@ async def query_jsonb_field_wrapper(
     limit: int = 50,
     offset: int = 0,
     description: str = "",
-    auto_register: bool = False,
 ) -> Dict[str, Any]:
     """
-    Query events using JSONB path expressions and optionally register matching events in the investigation timeline.
+    Query events using JSONB path expressions.
 
     Parameters
     ----------
     db: AsyncSession
-        Asynchronous SQLAlchemy session used for database operations.
+        Asynchronous database session.
     investigation_id: str
-        Identifier of the investigation to which the query belongs.
+        Investigation identifier.
     stats: Dict[str, Any]
-        Dictionary collecting statistics about the operation (e.g., execution time, counts).
+        Statistics dictionary.
     jsonb_path: str
-        JSONB path expression targeting a field inside the `data` column of events.
-    operator: str, optional
-        Comparison operator to apply between the extracted value and `value`. Defaults to `"="`.
-    value: Optional[str], optional
-        Value to compare against the extracted JSONB field. If omitted, the query checks for existence of the path.
-    event_type: Optional[str], optional
-        Filter results by a specific event type; if `None` all types are included.
-    limit: int, optional
-        Maximum number of events to return. Defaults to `50`.
-    offset: int, optional
-        Number of events to skip before returning results. Defaults to `0`.
-    description: str, optional
-        Human-readable description used when automatically registering timeline entries. If empty, a default description is generated.
-    auto_register: bool, optional
-        When `True`, each event returned by the query is registered as a timeline entry using :func:`timeline_tools.register_timeline_entry`. Defaults to `False`.
+        JSONB path expression (e.g., 'event_data.TargetUserName').
+    operator: str, default "="
+        Comparison operator (=, !=, >, <, >=, <=, LIKE, ILIKE, CONTAINS).
+    value: Optional[str], default None
+        Value to compare against.
+    event_type: Optional[str], default None
+        Optional event type filter.
+    limit: int, default 50
+        Maximum number of events to return.
+    offset: int, default 0
+        Pagination offset.
+    description: str, default ""
+        Brief description shown in UI.
 
     Returns
     -------
     Dict[str, Any]
-        The raw result from :func:`event_tools.query_jsonb_field`.  When `auto_register` is enabled and events are found, additional keys are added:
-
-        * `"auto_registered"` - the number of events successfully registered.
-        * `"auto_registration_description"` - the description supplied (or generated) for the registration.
-
-    Raises
-    ------
-    Exception
-        Any exception raised by :func:`event_tools.query_jsonb_field` propagates to the caller. Exceptions occurring during automatic timeline registration are caught and logged; they do not interrupt the main query result.
+        Query results with events list.
     """
-    result = await event_tools.query_jsonb_field(
+    return await event_tools.query_jsonb_field(
         db, investigation_id, jsonb_path, operator, value, event_type, limit, offset, stats
     )
-
-    # OPTIONAL timeline registration (only if auto_register=True)
-    if auto_register and result.get("events") and len(result["events"]) > 0:
-        event_ids = [e["event_id"] for e in result["events"]]
-
-        for event_id in event_ids:
-            try:
-                await timeline_tools.register_timeline_entry(
-                    db=db,
-                    investigation_id=investigation_id,
-                    event_id=event_id,
-                    title=f"Event with {jsonb_path} {operator} {value or 'exists'}",
-                    entry_type="event",
-                    description=description
-                    or f"Registered from field query: {jsonb_path} {operator} {value}",
-                    tags=["agent-registered", "field-match"],
-                    stats=stats,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to register event {event_id}: {e}")
-
-        result["auto_registered"] = len(event_ids)
-        result["auto_registration_description"] = description
-
-    return result
 
 
 async def aggregate_jsonb_field_wrapper(
@@ -814,13 +679,13 @@ def register_all_tools():
     tool_registry.register(
         ToolSpec(
             name="search_events_by_type",
-            description="Search events by type (supports * wildcards). Returns paginated results (default 50 events). Use offset for pagination to explore more results. Set auto_register=true to register ALL results to timeline.",
+            description="Search events by event type only (supports * wildcards). For time-based filtering, use search_events_by_timerange instead. Returns paginated results (default 50 events). Use offset for pagination.",
             parameters={
                 "type": "object",
                 "properties": {
                     "event_type": {
                         "type": "string",
-                        "description": "Event type pattern (e.g., 'evtx_security_4624', 'evtx_*', 'registry_*')",
+                        "description": "Event type pattern (e.g., 'evtx_security_4624', 'evtx_*', 'registry_*'). This is the ONLY filter - no time filtering available.",
                     },
                     "limit": {
                         "type": "integer",
@@ -830,15 +695,11 @@ def register_all_tools():
                     "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
                     "description": {
                         "type": "string",
-                        "description": "Brief description of what you're searching for (shown in UI and used for timeline entries)",
-                    },
-                    "auto_register": {
-                        "type": "boolean",
-                        "description": "If true, automatically register ALL matching events to timeline (use when user asks to 'find and register')",
-                        "default": False,
+                        "description": "Brief description of what you're searching for (shown in UI)",
                     },
                 },
                 "required": ["event_type", "description"],
+                "additionalProperties": False,
             },
             impl=search_events_by_type_wrapper,
         )
@@ -847,38 +708,35 @@ def register_all_tools():
     tool_registry.register(
         ToolSpec(
             name="search_events_by_timerange",
-            description="Search events within a time range. Returns paginated results (default 50 events). Use offset for pagination to explore more results. Set auto_register=true to register ALL results to timeline.",
+            description="Search events within a time range. Optionally filter by event type. Returns paginated results (default 50 events). Use offset for pagination to explore more results.",
             parameters={
                 "type": "object",
                 "properties": {
                     "start_time": {
                         "type": "string",
-                        "description": "Start time (ISO format)",
+                        "description": "Start time (ISO-8601 format, e.g., '2021-05-08T08:18:53+00:00')",
                     },
                     "end_time": {
                         "type": "string",
-                        "description": "End time (ISO format)",
+                        "description": "End time (ISO-8601 format, e.g., '2023-03-08T03:19:30+00:00')",
                     },
                     "event_type": {
                         "type": "string",
-                        "description": "Optional event type filter (supports wildcards)",
+                        "description": "Optional event type filter (supports wildcards like 'evtx_sysmon_*')",
                     },
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of events to return",
                         "default": 50,
                     },
+                    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
                     "description": {
                         "type": "string",
-                        "description": "Brief description of what you're searching for (shown in UI and used for timeline entries)",
-                    },
-                    "auto_register": {
-                        "type": "boolean",
-                        "description": "If true, automatically register ALL matching events to timeline",
-                        "default": False,
+                        "description": "Brief description of what you're searching for (shown in UI)",
                     },
                 },
                 "required": ["description"],
+                "additionalProperties": False,
             },
             impl=search_events_by_timerange_wrapper,
         )
@@ -887,7 +745,7 @@ def register_all_tools():
     tool_registry.register(
         ToolSpec(
             name="search_events_by_content",
-            description="Full-text search in event payloads. Returns paginated results (default 50 events). Use offset for pagination to explore more results. Set auto_register=true to register ALL results to timeline.",
+            description="Full-text search in event payloads. Returns paginated results (default 50 events). Use offset for pagination to explore more results.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -901,17 +759,14 @@ def register_all_tools():
                         "description": "Maximum number of events to return",
                         "default": 50,
                     },
+                    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
                     "description": {
                         "type": "string",
-                        "description": "Brief description of what you're searching for (shown in UI and used for timeline entries)",
-                    },
-                    "auto_register": {
-                        "type": "boolean",
-                        "description": "If true, automatically register ALL matching events to timeline",
-                        "default": False,
+                        "description": "Brief description of what you're searching for (shown in UI)",
                     },
                 },
                 "required": ["search_text", "description"],
+                "additionalProperties": False,
             },
             impl=search_events_by_content_wrapper,
         )
@@ -960,7 +815,7 @@ def register_all_tools():
     tool_registry.register(
         ToolSpec(
             name="query_jsonb_field",
-            description="Query specific JSONB fields in event payloads. Returns paginated results (default 50 events). Use offset for pagination to explore more results. Set auto_register=true to register ALL results to timeline.",
+            description="Query specific JSONB fields in event payloads. Returns paginated results (default 50 events). Use offset for pagination to explore more results.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -980,17 +835,14 @@ def register_all_tools():
                         "description": "Maximum number of events to return",
                         "default": 50,
                     },
+                    "offset": {"type": "integer", "description": "Pagination offset", "default": 0},
                     "description": {
                         "type": "string",
-                        "description": "Brief description of what you're searching for (shown in UI and used for timeline entries)",
-                    },
-                    "auto_register": {
-                        "type": "boolean",
-                        "description": "If true, automatically register ALL matching events to timeline",
-                        "default": False,
+                        "description": "Brief description of what you're searching for (shown in UI)",
                     },
                 },
                 "required": ["jsonb_path", "description"],
+                "additionalProperties": False,
             },
             impl=query_jsonb_field_wrapper,
         )
@@ -1033,14 +885,17 @@ def register_all_tools():
     tool_registry.register(
         ToolSpec(
             name="register_timeline_entry",
-            description="Add an event to the evidence timeline. System auto-fetches complete event data.",
+            description="Register FORENSICALLY SIGNIFICANT events to timeline. ONLY use for: malicious activity, security incidents, attack indicators, compromise evidence, or user-requested events. DO NOT register routine system operations, benign tasks, or normal maintenance activities. Quality over quantity - be highly selective.",
             parameters={
                 "type": "object",
                 "properties": {
-                    "event_id": {"type": "integer", "description": "Event ID to add to timeline"},
+                    "event_id": {
+                        "type": "integer", 
+                        "description": "Event ID to register. MUST be forensically significant - not routine system activity."
+                    },
                     "title": {
                         "type": "string",
-                        "description": "Brief title for this timeline entry",
+                        "description": "Brief forensic title explaining WHY this event is significant (not just what happened)",
                     },
                     "entry_type": {
                         "type": "string",
@@ -1049,15 +904,15 @@ def register_all_tools():
                     },
                     "description": {
                         "type": "string",
-                        "description": "Description of what happened (factual observation)",
+                        "description": "Detailed forensic analysis: WHY is this significant? What does it indicate? How does it relate to the investigation?",
                     },
                     "tags": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Tags for categorization (neutral terms)",
+                        "description": "Forensic tags (e.g., 'malware', 'lateral-movement', 'privilege-escalation', 'suspicious', 'persistence')",
                     },
                 },
-                "required": ["event_id", "title"],
+                "required": ["event_id", "title", "description"],
             },
             impl=register_timeline_entry_wrapper,
         )

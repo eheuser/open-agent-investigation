@@ -119,10 +119,20 @@ User's Question: "{user_question}"
    - What specific events or patterns are significant?
    - What do you need to investigate next?
    
-4. **Register timeline entries** (if you found significant events):
-   - Use register_timeline_entry for events that directly relate to the investigation
-   - Include event_id, title, description, and relevant tags
-   - Only register events you've actually examined, not just search results
+4. **Register timeline entries** (ONLY if forensically significant):
+   - **BE HIGHLY SELECTIVE** - Timeline is for KEY EVIDENCE only
+   - Register ONLY events that:
+     * Directly answer the investigation question
+     * Show malicious/suspicious activity
+     * Indicate compromise or security incidents
+     * Represent pivot points in an attack chain
+     * Are explicitly requested by the user
+   - **DO NOT register**:
+     * Routine system operations (file deletions, service operations)
+     * Benign administrative tasks
+     * Normal Windows maintenance
+     * Events just because they exist
+   - Quality over quantity - a timeline with 5-10 key events is better than 50 routine ones
 
 **CRITICAL REQUIREMENTS**:
 - Your summary will be added to the conversation history

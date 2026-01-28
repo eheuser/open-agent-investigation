@@ -35,9 +35,8 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
     This coroutine is invoked after parsing has finished for a given
     investigation. It retrieves the investigation’s owner, obtains the
     owner’s active LLM provider configuration, creates an `LLMClient`,
-    and calls :func:`worker.agents.field_dictionary_db.generate_field_dictionary`
-    to pre-populate the `field_dictionary` table with LLM-generated
-    descriptions for each JSONB field discovered in the investigation.
+    and calls :func:`worker.agents.field_dictionary_finalizer.finalize_field_dictionary`
+    to generate LLM descriptions for pending fields discovered during parsing.
     A rough count of processed fields is logged and a WebSocket notification
     is sent to inform connected clients that the dictionary is ready.
 
@@ -111,27 +110,26 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
                 api_key=llm_api_key,
             )
 
-            # Generate field dictionary
-            from worker.agents.field_dictionary_db import generate_field_dictionary
+            # OPTIMIZED: Use new finalizer that only processes pending fields
+            from worker.agents.field_dictionary_finalizer import finalize_field_dictionary
 
             logger.info(
-                f"Generating field dictionary for investigation {investigation_id} using {llm_model}..."
+                f"Finalizing field dictionary for investigation {investigation_id} using {llm_model}..."
             )
 
-            field_dict = await generate_field_dictionary(
+            stats = await finalize_field_dictionary(
                 db=db,
                 investigation_id=str(investigation_id),
                 llm_client=llm_client,
-                max_fields_per_type=30,
-                llm_max_context=llm_max_context,
+                max_output_tokens=min(16_384, int(llm_max_context * 0.75)),
             )
 
-            # Count how many fields were processed
-            field_count = field_dict.count("`") // 2  # Rough estimate
+            fields_processed = stats.get("fields_processed", 0)
+            event_types = stats.get("event_types_processed", 0)
 
             logger.info(
-                f"Field dictionary generation complete for investigation {investigation_id}. "
-                f"Processed ~{field_count} fields."
+                f"Field dictionary finalization complete for investigation {investigation_id}. "
+                f"Processed {fields_processed:,} fields across {event_types:,} event types."
             )
 
             # Notify WebSocket clients that field dictionary is ready
@@ -140,7 +138,8 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
                 message={
                     "type": "field_dictionary_ready",
                     "investigation_id": str(investigation_id),
-                    "field_count": field_count,
+                    "field_count": fields_processed,
+                    "event_types": event_types,
                 },
             )
 
@@ -205,7 +204,7 @@ async def check_and_clear_parsing_lock(db: AsyncSession, investigation_id: uuid_
         asyncio.create_task(generate_field_dictionary_background(investigation_id))
     else:
         logger.debug(
-            f"Investigation {investigation_id} still has {len(remaining_jobs)} parsing job(s) pending/running"
+            f"Investigation {investigation_id} still has {len(remaining_jobs):,} parsing job(s) pending/running"
         )
 
 
@@ -560,6 +559,7 @@ async def process_agent_job(
         llm_api_key = cast(str, api_key_raw) if api_key_raw is not None else None
         llm_max_context = cast(int, llm_config.max_context_length)
         llm_temperature = float(cast(float, llm_config.temperature))
+        
         llm_top_p = float(cast(float, llm_config.top_p)) if llm_config.top_p is not None else None
         llm_top_k = cast(int, llm_config.top_k) if llm_config.top_k is not None else None
         llm_min_p = float(cast(float, llm_config.min_p)) if llm_config.min_p is not None else None
@@ -724,7 +724,7 @@ async def process_agent_job(
                     created_choices = await create_investigation_choices_bulk(db, choices_to_create)
 
                     logger.info(
-                        f"Created {len(created_choices)} continuation choices for job {job.job_id} "
+                        f"Created {len(created_choices):,} continuation choices for job {job.job_id} "
                         f"(investigation {job.investigation_id})"
                     )
 

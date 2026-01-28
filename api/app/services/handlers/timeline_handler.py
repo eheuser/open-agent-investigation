@@ -326,7 +326,7 @@ async def _execute_timeline_llm_loop(
                 summary = _generate_timeline_summary(tools_used)
 
                 logger.info(
-                    f"[TIMELINE_HANDLER] Completed in {iteration} iterations with {len(tools_used)} tools"
+                    f"[TIMELINE_HANDLER] Completed in {iteration} iterations with {len(tools_used):,} tools"
                 )
 
                 return {
@@ -398,12 +398,12 @@ async def _execute_timeline_llm_loop(
         if tools_used:
             summary = _generate_timeline_summary(tools_used)
             logger.warning(
-                f"[TIMELINE_HANDLER] Hit max iterations ({max_iterations}) with {len(tools_used)} tools executed"
+                f"[TIMELINE_HANDLER] Hit max iterations ({max_iterations}) with {len(tools_used):,} tools executed"
             )
             return {
                 "type": "timeline_answer",
                 "success": True,
-                "message": f"Timeline operation completed {len(tools_used)} operations but reached complexity limit. Results may be incomplete.",
+                "message": f"Timeline operation completed {len(tools_used):,} operations but reached complexity limit. Results may be incomplete.",
                 "summary": summary,
                 "tools_used": len(tools_used),
                 "incomplete": True,

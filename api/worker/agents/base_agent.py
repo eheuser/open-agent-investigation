@@ -219,7 +219,7 @@ class BaseAgent:
                     self.db, self.investigation_id
                 )
                 logger.info(
-                    f"Loaded {len(self._available_fields)} available JSONB fields "
+                    f"Loaded {len(self._available_fields):,} available JSONB fields "
                     f"for investigation {self.investigation_id}"
                 )
             except Exception as e:
@@ -282,8 +282,8 @@ class BaseAgent:
 
         # Log detailed breakdown
         logger.info(
-            f"Sending to LLM: {current_tokens} tokens "
-            f"({len(messages)} messages, {current_tokens/self.max_context_tokens*100:.1f}% of max context)"
+            f"Sending to LLM: {current_tokens:,} tokens "
+            f"({len(messages):,} messages, {current_tokens/self.max_context_tokens*100:.1f}% of max context)"
         )
 
         # Log per-message breakdown if in debug mode
@@ -640,7 +640,7 @@ class BaseAgent:
         summary_parts = [f"\n## Loop {loop_num} Summary\n"]
 
         if tools_executed:
-            summary_parts.append(f"**Tools executed**: {len(tools_executed)}\n")
+            summary_parts.append(f"**Tools executed**: {len(tools_executed):,}\n")
 
             # Group by tool type
             tool_counts = {}
@@ -678,10 +678,10 @@ class BaseAgent:
                     summary_parts.append(f"  - {edge_desc}\n")
 
             if events_found > 0:
-                summary_parts.append(f"\n**Events found**: {events_found}\n")
+                summary_parts.append(f"\n**Events found**: {events_found:,}\n")
 
         if events_seen:
-            summary_parts.append(f"\n**Events analyzed**: {len(events_seen)}\n")
+            summary_parts.append(f"\n**Events analyzed**: {len(events_seen):,}\n")
 
             # Summarize event types
             event_types = {}
@@ -806,9 +806,9 @@ This step is critical, losing control of your investigation due to omission is a
             )
 
             logger.info(
-                f"Compacted {len(messages_to_compact)} messages "
-                f"from {original_tokens} to {summary_tokens} tokens "
-                f"(saved {original_tokens - summary_tokens} tokens, {(1 - summary_tokens/original_tokens)*100:.1f}% reduction)"
+                f"Compacted {len(messages_to_compact):,} messages "
+                f"from {original_tokens:,} to {summary_tokens:,} tokens "
+                f"(saved {original_tokens - summary_tokens:,} tokens, {(1 - summary_tokens/original_tokens)*100:.1f}% reduction)"
             )
 
             return summary
@@ -882,7 +882,7 @@ This step is critical, losing control of your investigation due to omission is a
                 [
                     "[Previous investigation loops summary]",
                     *loop_summaries,
-                    f"\nTotal loops completed: {len(loop_summaries)}",
+                    f"\nTotal loops completed: {len(loop_summaries):,}",
                     f"Continue investigation with remaining loops.",
                 ]
             )
@@ -898,7 +898,7 @@ This step is critical, losing control of your investigation due to omission is a
         # Log initial context composition
         logger.debug(
             f"rebuild_messages_with_summary: {total_tokens} tokens "
-            f"(system+question + {len(loop_summaries)} summaries + {len(recent_exchanges)} exchanges)"
+            f"(system+question + {len(loop_summaries):,} summaries + {len(recent_exchanges):,} exchanges)"
         )
 
         # If over compaction threshold, use LLM to intelligently compact

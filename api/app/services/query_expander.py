@@ -138,7 +138,7 @@ async def expand_query(
 
         # Sanity check: don't return absurdly long expansions
         if len(expanded_query) > len(user_query) * 100:
-            logger.warning(f"Expansion too long ({len(expanded_query)} chars), using original")
+            logger.warning(f"Expansion too long ({len(expanded_query):,} chars), using original")
             return user_query
 
         logger.info(f"Query expanded: {user_query[:50]}... -> {expanded_query[:100]}...")
@@ -251,7 +251,7 @@ async def _get_graph_context(db: AsyncSession, investigation_id: UUID) -> str:
         for _, entry_type, _, _, _, _ in entries:
             type_counts[entry_type] = type_counts.get(entry_type, 0) + 1
 
-        lines = [f"**Timeline Entries**: {len(entries)} entries documented"]
+        lines = [f"**Timeline Entries**: {len(entries):,} entries documented"]
         lines.append(f"**Types**: {', '.join(f'{k}={v}' for k, v in type_counts.items())}")
 
         # Add most recent entries (these are what user might be referencing)
@@ -264,7 +264,7 @@ async def _get_graph_context(db: AsyncSession, investigation_id: UUID) -> str:
             lines.append(f"  - [{time_str}] {title}{tags_str}")
 
         if len(entries) > 5:
-            lines.append(f"  ...and {len(entries) - 5} more entries")
+            lines.append(f"  ...and {len(entries) - 5:,} more entries")
 
         return "\n".join(lines)
 
@@ -335,7 +335,7 @@ async def _get_investigation_context(db: AsyncSession, investigation_id: UUID) -
         if not event_counts:
             return "No events in this investigation yet."
 
-        lines = [f"**Total Event Types**: {len(event_counts)}"]
+        lines = [f"**Total Event Types**: {len(event_counts):,}"]
 
         # Add event type summary
         total_events = sum(count for _, count in event_counts)
@@ -347,7 +347,7 @@ async def _get_investigation_context(db: AsyncSession, investigation_id: UUID) -
 
         if len(event_counts) > 5:
             remaining = sum(count for _, count in event_counts[5:])
-            lines.append(f"  - ...and {len(event_counts) - 5} more types ({remaining} events)")
+            lines.append(f"  - ...and {len(event_counts) - 5:,} more types ({remaining} events)")
 
         # Add time range
         if time_row and time_row[0] and time_row[1]:

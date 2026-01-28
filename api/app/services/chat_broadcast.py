@@ -1513,7 +1513,7 @@ async def _handle_investigation_incomplete(
             choices = message.get("choices", [])
             if choices:
                 logger.info(
-                    f"[INVESTIGATION_INCOMPLETE] Storing {len(choices)} investigation choices in metadata"
+                    f"[INVESTIGATION_INCOMPLETE] Storing {len(choices):,} investigation choices in metadata"
                 )
                 current_metadata["investigation_choices"] = choices
 

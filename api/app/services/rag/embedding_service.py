@@ -109,7 +109,7 @@ async def generate_embeddings_for_events(
             texts.append(text_content)
             entry_ids.append(entry_id)
 
-        logger.info(f"Generating embeddings for {len(texts)} events")
+        logger.info(f"Generating embeddings for {len(texts):,} events")
 
         # Generate embeddings in batches
         batch_size = 100  # Adjust based on API limits
@@ -155,9 +155,9 @@ async def generate_embeddings_for_events(
                     created_count += 1
 
             await db.commit()
-            logger.info(f"Created {len(batch_entry_ids)} embeddings (batch {i//batch_size + 1})")
+            logger.info(f"Created {len(batch_entry_ids):,} embeddings (batch {i//batch_size + 1})")
 
-        logger.info(f"Successfully created {created_count} embeddings for timeline entries")
+        logger.info(f"Successfully created {created_count:,} embeddings for timeline entries")
         return created_count
 
     except Exception as e:
@@ -399,8 +399,153 @@ async def generate_embedding_for_timeline_entry(
         return None
 
 
+async def generate_embeddings_for_timeline_entries(
+    db: AsyncSession,
+    entry_ids: List[int],
+    user_id: int,
+) -> int:
+    """
+    Generate embeddings for multiple timeline entries in batch.
+
+    More efficient than calling generate_embedding_for_timeline_entry serially,
+    as it batches the embedding API calls.
+
+    Parameters
+    ----------
+    db: AsyncSession
+        Database session.
+    entry_ids: List[int]
+        List of timeline entry IDs to generate embeddings for.
+    user_id: int
+        User ID for LLM configuration.
+
+    Returns
+    -------
+    int
+        Number of embeddings successfully created.
+    """
+    if not entry_ids:
+        return 0
+
+    # Get user's LLM configuration
+    llm_config = await get_active_llm_config(db, user_id)
+    if not llm_config:
+        logger.warning(f"No active LLM config for user {user_id}, skipping embeddings")
+        return 0
+
+    # Check if embeddings are configured
+    embedding_provider = getattr(llm_config, "embedding_provider", None)
+    if not embedding_provider:
+        logger.info(f"No embedding provider configured for user {user_id}, skipping embeddings")
+        return 0
+
+    # Extract embedding config
+    embedding_api_url = str(getattr(llm_config, "embedding_api_url", ""))
+    embedding_api_key_val = getattr(llm_config, "embedding_api_key", None)
+    embedding_api_key = str(embedding_api_key_val) if embedding_api_key_val else None
+    embedding_model_name = str(
+        getattr(llm_config, "embedding_model_name", "text-embedding-ada-002")
+    )
+
+    if not embedding_api_url:
+        logger.warning("No embedding API URL configured, skipping embeddings")
+        return 0
+
+    try:
+        # Initialize embedder
+        embedder = Embedder(
+            provider=embedding_provider,
+            api_url=embedding_api_url,
+            api_key=embedding_api_key,
+            model_name=embedding_model_name,
+        )
+
+        # Fetch timeline entries that need embeddings
+        result = await db.execute(
+            text(
+                """
+                SELECT entry_id, title, COALESCE(description, '')
+                FROM timeline_entries
+                WHERE entry_id = ANY(:entry_ids)
+                AND embedding_id IS NULL
+            """
+            ),
+            {"entry_ids": entry_ids},
+        )
+        rows = result.fetchall()
+
+        if not rows:
+            logger.info("All timeline entries already have embeddings")
+            return 0
+
+        # Prepare texts for embedding
+        texts = []
+        entry_id_list = []
+        for entry_id, title, description in rows:
+            text_content = f"{title}\n{description}"
+            texts.append(text_content)
+            entry_id_list.append(entry_id)
+
+        logger.info(f"Generating embeddings for {len(texts):,} timeline entries in batch")
+
+        # Generate embeddings in batches
+        batch_size = 100
+        created_count = 0
+
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i : i + batch_size]
+            batch_entry_ids = entry_id_list[i : i + batch_size]
+
+            # Generate embeddings (batched API call)
+            embeddings = await embedder.embed(batch_texts)
+
+            # Insert embeddings and update timeline entries
+            for entry_id, embedding_vec in zip(batch_entry_ids, embeddings):
+                vec_list = embedding_vec.tolist()
+                vec_str = "[" + ",".join(map(str, vec_list)) + "]"
+
+                result = await db.execute(
+                    text(
+                        """
+                        INSERT INTO embeddings (owner_type, owner_id, model_name, vector)
+                        VALUES ('timeline', :entry_id, :model_name, CAST(:vec_str AS vector))
+                        ON CONFLICT DO NOTHING
+                        RETURNING id
+                    """
+                    ),
+                    {
+                        "entry_id": entry_id,
+                        "model_name": embedding_model_name,
+                        "vec_str": vec_str,
+                    },
+                )
+                row = result.fetchone()
+                if row:
+                    embedding_id = row[0]
+                    # Update timeline entry with embedding_id
+                    await db.execute(
+                        text(
+                            "UPDATE timeline_entries SET embedding_id = :emb_id WHERE entry_id = :entry_id"
+                        ),
+                        {"emb_id": embedding_id, "entry_id": entry_id},
+                    )
+                    created_count += 1
+
+            await db.commit()
+            logger.info(f"Created {len(batch_entry_ids):,} embeddings (batch {i//batch_size + 1})")
+
+        logger.info(f"Successfully created {created_count} embeddings for timeline entries")
+        return created_count
+
+    except Exception as e:
+        logger.error(f"Error generating embeddings for timeline entries: {e}", exc_info=True)
+        await db.rollback()
+        return 0
+
+
 __all__ = [
     "generate_embeddings_for_events",
     "generate_embedding_for_chat_message",
     "generate_embedding_for_timeline_entry",
+    "generate_embeddings_for_timeline_entries",
 ]

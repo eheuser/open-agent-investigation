@@ -41,7 +41,7 @@ def prepare_llm_auth(api_key: Optional[str]) -> Tuple[Dict[str, str], Dict[str, 
                 cookies[name.strip()] = value.strip()
 
         logger.debug(
-            f"Using cookie-based authentication with {len(cookies)} cookie(s): {list(cookies.keys())}"
+            f"Using cookie-based authentication with {len(cookies):,} cookie(s): {list(cookies.keys())}"
         )
     else:
         # Bearer token authentication (OpenAI, OpenRouter, etc.)

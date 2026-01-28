@@ -126,7 +126,7 @@ async def _batch_create_embeddings(
         try:
             # Generate embeddings for the batch
             logger.info(
-                f"Generating embeddings for batch {i//batch_size + 1} ({len(texts)} events)"
+                f"Generating embeddings for batch {i//batch_size + 1} ({len(texts):,} events)"
             )
             embeddings = await embedder.embed(texts)
 
@@ -807,7 +807,7 @@ async def process_interesting_events(
 
         events = result.fetchall()
         logger.info(
-            f"Processing {len(events)} events for embedding generation (artifact {artifact_id})"
+            f"Processing {len(events):,} events for embedding generation (artifact {artifact_id})"
         )
 
         # First pass: filter for interesting events
@@ -841,7 +841,7 @@ async def process_interesting_events(
                 logger.debug(f"Failed to filter event {event_id}: {e}")
                 continue
 
-        logger.info(f"Found {len(interesting_events)} interesting events")
+        logger.info(f"Found {len(interesting_events):,} interesting events")
 
         # Second pass: batch generate embeddings
         created_count = await _batch_create_embeddings(db, interesting_events, user_id, llm_config)
@@ -858,8 +858,8 @@ async def process_interesting_events(
             await db.rollback()
 
         logger.info(
-            f"Processed {len(events)} events from artifact {artifact_id}: "
-            f"{len(interesting_events)} interesting, {created_count} embeddings created"
+            f"Processed {len(events):,} events from artifact {artifact_id}: "
+            f"{len(interesting_events):,} interesting, {created_count:,} embeddings created"
         )
         return created_count
 

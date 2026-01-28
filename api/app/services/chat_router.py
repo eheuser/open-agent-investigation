@@ -474,7 +474,7 @@ async def route_chat_message(
     # Step 1: Fetch chat history for context (if not provided)
     if chat_history is None:
         chat_history = await _fetch_recent_chat_history(db, investigation_id, limit=10)
-        logger.info(f"[CHAT_ROUTER] Fetched {len(chat_history)} messages for context")
+        logger.info(f"[CHAT_ROUTER] Fetched {len(chat_history):,} messages for context")
 
     # Step 2: Expand query with context (for short/curt queries)
     expanded_query = await expand_query(db, investigation_id, user_query, user_id)
