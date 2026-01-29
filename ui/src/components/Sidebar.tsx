@@ -13,7 +13,8 @@ import {
   BeakerIcon,
   ArrowRightOnRectangleIcon,
   UserIcon,
-  QueueListIcon
+  QueueListIcon,
+  BookOpenIcon,
 } from '@heroicons/react/24/outline';
 import { 
   getInvestigations, 
@@ -351,9 +352,24 @@ const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, 
             <span className="text-sm truncate flex-1 text-left font-medium">{user?.username}</span>
                     </button>
 
-          {/* User Dropdown Menu */}
+                    {/* User Dropdown Menu */}
           {userMenuOpen && (
             <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
+              <NavLink
+                to="/playbooks"
+                onClick={() => setUserMenuOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 transition-colors text-sm ${
+                    isActive 
+                      ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' 
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`
+                }
+              >
+                <BookOpenIcon className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm">Playbooks</span>
+              </NavLink>
+              
               <NavLink
                 to="/settings"
                 onClick={() => setUserMenuOpen(false)}

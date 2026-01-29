@@ -26,6 +26,13 @@ Develop compound queries quickly and easily for manual searches.
 
 ---
 
+**Agents use Playbooks**
+
+Based on your query the agent will load a Playbook, similar to SKILLS.md.
+![image](docs/img/playbooks.png)
+
+---
+
 **Build timelines**
 
 Track investigations by adding events to the investigation timeline.
@@ -40,11 +47,19 @@ Produce PDF documents from the collected evidence.
 
 ---
 
+**Monitor**
+
+Monitor the application with streamed logs.
+![image](docs/img/logging.png)
+
+---
+
 ## What It Does
 
 - Parses Windows forensic artifacts (EVTX logs, registry hives, MFT, prefetch, LNK files)
 - Routes natural language queries to specialized handlers using LLM-based intent classification
 - Executes autonomous agent investigations with 16+ forensic tools
+- **Provides 20+ built-in investigation playbooks with custom playbook creation**
 - Builds chronological evidence timelines with automatic event deduplication
 - Generates investigation reports with PDF and Markdown export
 - Provides semantic search over embedded event data using hybrid BM25 and vector similarity
@@ -111,12 +126,19 @@ Each turn limited to 5 tool executions. Real-time progress streamed via WebSocke
 
 ### Investigation Playbooks
 
-21 built-in playbooks provide strategic guidance for common attack scenarios:
+**Built-in Playbooks**: 20 immutable YAML playbooks provide strategic guidance for common attack scenarios:
 
 - **MITRE ATT&CK Tactics**: Complete coverage of all 14 attack lifecycle phases
-- **Attack Techniques**: 7 focused playbooks for specific methods (Living off the Land, Fileless Attacks, Kerberoasting, etc.)
+- **Attack Techniques**: 6 focused playbooks for specific methods (Living off the Land, Fileless Attacks, Kerberoasting, etc.)
 - **LLM-Driven Selection**: System automatically selects most relevant playbook based on investigation question
-- **Dynamic Loading**: Add/modify/delete playbooks without code changes
+
+**Custom Playbooks**: Create, edit, and manage your own investigation playbooks:
+
+- **Full CRUD Operations**: Create, view, edit, delete, and clone playbooks via UI
+- **Clone Base Playbooks**: Start from built-in playbooks and customize for your needs
+- **Per-Investigation Control**: Enable/disable playbooks for specific investigations
+- **Database-Backed**: Custom playbooks persist across sessions and users
+- **Markdown Support**: Rich formatting with code blocks and syntax highlighting
 
 See [Investigation Playbooks](docs/playbooks.md) for complete list and usage guide.
 
@@ -154,7 +176,7 @@ docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit
 - [Getting Started](docs/getting-started.md) - Installation and configuration
 - [Architecture](docs/architecture.md) - System design and data flow
 - [User Guide](docs/user-guide.md) - Common workflows
-- [Investigation Playbooks](docs/playbooks.md) - Built-in attack scenario guidance
+- [Investigation Playbooks](docs/playbooks.md) - Built-in and custom playbook management
 
 ## Architecture
 

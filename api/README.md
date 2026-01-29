@@ -393,6 +393,21 @@ WORKER_TIMEOUT=30
 | PUT | `/api/v1/llm-config/{id}` | Update LLM config |
 | DELETE | `/api/v1/llm-config/{id}` | Delete LLM config |
 
+### Playbooks
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/playbooks/list` | Get all playbooks (base + user) |
+| GET | `/api/v1/playbooks/user` | Get user playbooks only |
+| GET | `/api/v1/playbooks/base` | Get base YAML playbooks |
+| POST | `/api/v1/playbooks/create` | Create new user playbook |
+| PUT | `/api/v1/playbooks/{id}` | Update user playbook |
+| DELETE | `/api/v1/playbooks/{id}` | Delete user playbook |
+| POST | `/api/v1/playbooks/clone/{name}` | Clone base playbook to user playbooks |
+| GET | `/api/v1/playbooks/investigation/{id}` | Get enabled playbooks for investigation |
+| POST | `/api/v1/playbooks/investigation/{id}/enable` | Enable playbook for investigation |
+| DELETE | `/api/v1/playbooks/investigation/{id}/disable/{playbook_id}` | Disable playbook for investigation |
+
 ### Reports
 
 | Method | Endpoint | Description |
@@ -402,12 +417,140 @@ WORKER_TIMEOUT=30
 | GET | `/api/v1/reports/latest/{investigation_id}` | Get most recent report |
 | GET | `/api/v1/reports/latest/{investigation_id}/metadata` | Get report metadata only |
 
+## Playbook Management
+
+### Overview
+
+The playbook system provides investigation guidance through two types of playbooks:
+
+1. **Base Playbooks**: Immutable YAML files loaded from `api/worker/agents/playbooks/`
+   - 20 built-in playbooks covering MITRE ATT&CK tactics and common attack techniques
+   - Always enabled for all investigations
+   - Cannot be modified or deleted
+   - Can be cloned to create custom versions
+
+2. **User Playbooks**: Mutable database records
+   - Created, edited, and deleted via API
+   - Stored in `playbooks` table
+   - Can be enabled/disabled globally or per-investigation
+   - Full CRUD operations available
+
+### Playbook Structure
+
+```yaml
+name: lateral_movement
+description: Investigation strategies for detecting lateral movement - attackers moving from one system to another
+playbook: |
+  ## LATERAL MOVEMENT INVESTIGATION PLAYBOOK
+  
+  ### What is Lateral Movement?
+  Attackers moving from one system to another within a network.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Network Logons (Event ID 4624 Type 10)**
+     - Fields: EventData.TargetUserName, EventData.IpAddress
+     - Query: `query_jsonb_field` with jsonb_path='EventData.LogonType', value='10'
+  
+  2. **Explicit Credential Usage (Event ID 4648)**
+     - Indicates "Run As" or explicit credential use
+     - Query: Search for event_type='evtx_security_4648'
+```
+
+### API Usage Examples
+
+**List all playbooks**:
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/playbooks/list
+```
+
+**Clone a base playbook**:
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/playbooks/clone/lateral_movement
+```
+
+**Create custom playbook**:
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my_custom_playbook",
+    "description": "Custom investigation workflow",
+    "playbook": "## My Custom Playbook\n\n### Steps\n1. Check logs\n2. Analyze events",
+    "is_enabled": true
+  }' \
+  http://localhost:8000/api/v1/playbooks/create
+```
+
+**Enable playbook for investigation**:
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"playbook_id": 1, "is_enabled": true}' \
+  http://localhost:8000/api/v1/playbooks/investigation/{investigation_id}/enable
+```
+
+### Database Schema
+
+**playbooks table**:
+```sql
+CREATE TABLE playbooks (
+    playbook_id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (length(name) > 0),
+    description TEXT NOT NULL CHECK (length(description) > 0),
+    playbook TEXT NOT NULL CHECK (length(playbook) > 0),
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**investigation_playbooks table**:
+```sql
+CREATE TABLE investigation_playbooks (
+    id BIGSERIAL PRIMARY KEY,
+    investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
+    playbook_id BIGINT NOT NULL REFERENCES playbooks(playbook_id) ON DELETE CASCADE,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    enabled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_investigation_playbook UNIQUE (investigation_id, playbook_id)
+);
+```
+
 ### Embeddings (RAG)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/v1/embeddings/generate/investigation/{id}` | Backfill embeddings for investigation |
 | GET | `/api/v1/embeddings/stats/{investigation_id}` | Get embedding statistics |
+
+### How Playbooks Work with Agents
+
+When an agent job is created, the system:
+
+1. **Loads Available Playbooks**:
+   - All base playbooks (always enabled)
+   - User playbooks where `is_enabled=true` globally
+   - User playbooks enabled for the specific investigation (via `investigation_playbooks` table)
+
+2. **LLM Selection** (optional):
+   - Agent can call `select_playbook_for_query()` with the user's question
+   - LLM analyzes the question and selects most relevant playbook
+   - Returns playbook object or None
+
+3. **Playbook Injection**:
+   - Selected playbook content is injected into agent's system prompt
+   - Provides strategic guidance and suggested tools/queries
+   - Agent follows playbook recommendations during investigation
+
+**Example**: User asks "Find lateral movement"
+- System selects `lateral_movement` playbook
+- Agent receives guidance on Event IDs 4624, 4648, 5140
+- Agent uses recommended `query_jsonb_field` queries
+- Follows investigation workflow from playbook
 
 ---
 
@@ -613,11 +756,76 @@ docker compose logs api | grep "\[GENERAL_CHAT\]"
 
 ---
 
+## Playbook Best Practices
+
+### Creating Effective Playbooks
+
+1. **Clear Structure**:
+   ```markdown
+   ## PLAYBOOK TITLE
+   
+   ### What is [Attack/Technique]?
+   Brief explanation
+   
+   ### Key Indicators to Investigate:
+   1. **Indicator Name (Event ID)**
+      - Fields: List relevant JSONB fields
+      - Query: Specific tool and parameters
+      - Red flags: What to look for
+   ```
+
+2. **Specific Tool Recommendations**:
+   - Reference exact tool names: `query_jsonb_field`, `search_events_by_type`
+   - Provide example JSONB paths: `EventData.LogonType`, `system.Computer`
+   - Include expected values: `LogonType='10'`, `ServiceName LIKE '%PSEXE%'`
+
+3. **Progressive Investigation Flow**:
+   - Start with broad queries (count events)
+   - Narrow to specific patterns (aggregate by field)
+   - End with timeline registration (significant events)
+
+4. **Contextual Guidance**:
+   - Explain *why* each indicator matters
+   - Link to MITRE ATT&CK techniques
+   - Provide forensic context
+
+### Example: Well-Structured Playbook
+
+```yaml
+name: kerberoasting
+description: Detect Kerberoasting attacks - extracting service account credentials via TGS requests
+playbook: |
+  ## KERBEROASTING INVESTIGATION PLAYBOOK
+  
+  ### What is Kerberoasting?
+  Attackers request TGS tickets for service accounts, then crack offline.
+  
+  ### Key Indicators:
+  
+  1. **TGS Requests (Event ID 4769)**
+     - Fields: EventData.ServiceName, EventData.TicketEncryptionType
+     - Query: `search_events_by_type` with event_type='evtx_security_4769'
+     - Red flags: RC4 encryption (0x17), unusual service accounts
+     - Follow-up: `aggregate_field` on ServiceName to find targeted accounts
+  
+  2. **Pattern Analysis**
+     - Look for: Multiple TGS requests from single source
+     - Timeline: Cluster of requests within short timeframe
+     - Action: Register high-volume requesters to timeline
+  
+  ### Investigation Workflow:
+  1. Count 4769 events: `search_events_by_type`
+  2. Check encryption types: `query_jsonb_field` for TicketEncryptionType=0x17
+  3. Aggregate by source: `aggregate_field` on IpAddress
+  4. Register suspicious patterns: `register_timeline_entry`
+```
+
 ## Further Reading
 
 - [Main README](../README.md) - Platform overview and usage
 - [Worker Documentation](worker/README.md) - Agent execution and parsing
 - [Database Schema](../db/README.md) - PostgreSQL table definitions
+- [Investigation Playbooks](../docs/playbooks.md) - Complete playbook list
 - [FastAPI Documentation](https://fastapi.tiangolo.com/) - Framework reference
 
 ---

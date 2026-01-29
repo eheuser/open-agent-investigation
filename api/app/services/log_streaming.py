@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import Dict, List
+from typing import Dict, List, Optional
 from datetime import datetime
 from collections import deque
 
@@ -73,7 +73,7 @@ class StreamingLogHandler(logging.Handler):
             if queue in self.queues:
                 self.queues.remove(queue)
 
-    def get_recent_logs(self, limit: int = None) -> List[Dict]:
+    def get_recent_logs(self, limit: Optional[int] = None) -> List[Dict]:
         """
         Get recent logs from the circular buffer.
         

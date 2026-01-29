@@ -7,13 +7,14 @@
     "build": "vite build",
     "preview": "vite preview"
   },
-  "dependencies": {
+      "dependencies": {
     "@heroicons/react": "^2.1.5",
     "@tailwindcss/typography": "^0.5.19",
     "@types/dagre": "^0.7.53",
     "axios": "^1.7.2",
     "classnames": "^2.5.1",
     "dagre": "^0.8.5",
+    "highlight.js": "^11.9.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.2.9",

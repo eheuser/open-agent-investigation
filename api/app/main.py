@@ -27,6 +27,7 @@ from .routers import (
     investigation_choices,
     reports,
     logs,
+    playbooks,
 )
 from .utils.log_setup import get_logger
 from .services.log_streaming import setup_log_streaming
@@ -65,6 +66,7 @@ app.include_router(embeddings.router, prefix="/api/v1/embeddings", tags=["embedd
 app.include_router(investigation_choices.router, tags=["investigation-choices"])
 app.include_router(reports.router, tags=["reports"])
 app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
+app.include_router(playbooks.router, tags=["playbooks"])
 
 
 @app.get("/health")

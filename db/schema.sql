@@ -463,6 +463,53 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_embedding ON chat_messages(embeddin
 CREATE INDEX IF NOT EXISTS idx_timeline_entries_embedding ON timeline_entries(embedding_id) WHERE embedding_id IS NOT NULL;
 
 -- ============================================================================
+-- PLAYBOOKS TABLES
+-- ============================================================================
+
+-- User-created playbooks table
+CREATE TABLE IF NOT EXISTS playbooks (
+    playbook_id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (length(name) > 0),
+    description TEXT NOT NULL CHECK (length(description) > 0),
+    playbook TEXT NOT NULL CHECK (length(playbook) > 0),
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT playbook_name_not_empty CHECK (length(name) > 0),
+    CONSTRAINT playbook_description_not_empty CHECK (length(description) > 0),
+    CONSTRAINT playbook_content_not_empty CHECK (length(playbook) > 0)
+);
+
+CREATE INDEX idx_playbooks_user ON playbooks(user_id);
+CREATE INDEX idx_playbooks_name ON playbooks(name);
+CREATE INDEX idx_playbooks_enabled ON playbooks(is_enabled) WHERE is_enabled = true;
+
+COMMENT ON TABLE playbooks IS 'User-created investigation playbooks - mutable database storage. Base playbooks are immutable YAML files.';
+COMMENT ON COLUMN playbooks.name IS 'Playbook identifier (e.g., lateral_movement_custom)';
+COMMENT ON COLUMN playbooks.description IS 'Brief description of investigation strategy';
+COMMENT ON COLUMN playbooks.playbook IS 'Markdown playbook content with investigation steps';
+COMMENT ON COLUMN playbooks.is_enabled IS 'Whether playbook is globally enabled for the user';
+
+-- Investigation-playbook relationship table
+CREATE TABLE IF NOT EXISTS investigation_playbooks (
+    id BIGSERIAL PRIMARY KEY,
+    investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
+    playbook_id BIGINT NOT NULL REFERENCES playbooks(playbook_id) ON DELETE CASCADE,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    enabled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_investigation_playbook UNIQUE (investigation_id, playbook_id)
+);
+
+CREATE INDEX idx_investigation_playbooks_investigation ON investigation_playbooks(investigation_id);
+CREATE INDEX idx_investigation_playbooks_playbook ON investigation_playbooks(playbook_id);
+CREATE INDEX idx_investigation_playbooks_enabled ON investigation_playbooks(investigation_id, is_enabled) WHERE is_enabled = true;
+
+COMMENT ON TABLE investigation_playbooks IS 'Many-to-many relationship between investigations and user playbooks. Base playbooks are always enabled.';
+COMMENT ON COLUMN investigation_playbooks.is_enabled IS 'Whether this playbook is enabled for this specific investigation';
+COMMENT ON COLUMN investigation_playbooks.enabled_at IS 'When the playbook was enabled for this investigation';
+
+-- ============================================================================
 -- MIGRATION TRACKING
 -- ============================================================================
 
@@ -540,6 +587,11 @@ ON CONFLICT (version) DO NOTHING;
 -- Record reports table as version 12
 INSERT INTO schema_migrations (version, description, checksum)
 VALUES (12, 'Add reports table for persistent investigation report storage', '012_add_reports')
+ON CONFLICT (version) DO NOTHING;
+
+-- Record playbooks tables as version 14
+INSERT INTO schema_migrations (version, description, checksum)
+VALUES (14, 'Add playbooks and investigation_playbooks tables for user-created playbooks', '014_add_playbooks')
 ON CONFLICT (version) DO NOTHING;
 
 -- ============================================================================
@@ -652,6 +704,12 @@ CREATE TRIGGER update_field_dictionary_updated_at
 -- NOTE: No trigger on events table - field discovery happens in batch after parsing
 -- This avoids massive performance degradation during bulk event inserts
 -- See: field_dictionary_finalizer.discover_and_populate_fields()
+
+-- Trigger to update updated_at timestamp on playbooks
+CREATE TRIGGER update_playbooks_updated_at
+    BEFORE UPDATE ON playbooks
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
 -- DEFAULT DATA

@@ -1,10 +1,3 @@
-"""
-Investigation playbooks directory.
-
-This module loads playbook YAML files and uses LLM to select the most relevant
-playbook based on the user's investigation question.
-"""
-
 import os
 from pathlib import Path
 from typing import List, Dict, Optional

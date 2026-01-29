@@ -21,6 +21,7 @@ The UI provides:
 - **Chat Interface** - Ask natural language questions with 4 routing modes (Auto, Agent, Timeline, Augmented Chat)
 - **Evidence Timeline Viewer** - Chronological view of events, findings, and observations with advanced filtering
 - **Events Table** - Browse and filter forensic events with JSONB field queries
+- **Playbook Manager** - Create, edit, clone, and manage investigation playbooks
 - **Query Replication** - One-click query replication from chat to Events tab
 - **Mode Selector** - Manual routing mode selection (Auto/Agent/Timeline/Augmented Chat)
 - **RAG Results Display** - Expandable tool execution cards for query expansion and source retrieval
@@ -308,7 +309,54 @@ User: "Find failed logon attempts"
 - Automatic parsing job creation
 - Supported formats: `.evtx`, `.pf`, `.lnk`, `$MFT`, registry hives
 
-### 6. Settings Panel
+### 6. Playbook Manager
+
+**Location**: `/playbooks`
+
+**Features**:
+- View all playbooks (base + custom)
+- Search playbooks by name or description
+- **Base Playbooks** (20 built-in, immutable):
+  - View playbook content with syntax highlighting
+  - Clone to create editable copies
+  - Always enabled for all investigations
+- **Custom Playbooks** (user-created, mutable):
+  - Create new playbooks from scratch
+  - Edit existing playbooks (name, description, content)
+  - Delete playbooks
+  - Enable/disable globally
+  - Clone from other custom playbooks
+- **Markdown Editor**:
+  - Rich text editing with validation
+  - Syntax highlighting for code blocks
+  - Real-time preview
+- **Per-Investigation Control** (API ready):
+  - Enable/disable specific playbooks per investigation
+  - Persistent settings across sessions
+
+**Playbook Structure**:
+```yaml
+name: lateral_movement
+description: Investigation strategies for detecting lateral movement
+playbook: |
+  ## LATERAL MOVEMENT INVESTIGATION PLAYBOOK
+  
+  ### Key Indicators to Investigate:
+  1. Network Logons (Event ID 4624 Type 10)
+  2. Explicit Credential Usage (Event ID 4648)
+  ...
+```
+
+**Example Workflow**:
+```
+1. Browse base playbooks → Find "Lateral Movement"
+2. Click "Clone" → Creates "lateral_movement_copy"
+3. Click "Edit" → Customize for your environment
+4. Save → Available for all investigations
+5. (Optional) Enable/disable per investigation via API
+```
+
+### 7. Settings Panel
 
 **Location**: `/settings`
 

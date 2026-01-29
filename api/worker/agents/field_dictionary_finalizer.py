@@ -1,15 +1,3 @@
-"""
-Field Dictionary Finalizer - Post-Parsing LLM Description Generation
-
-This module generates LLM descriptions for newly discovered JSONB fields after
-artifact parsing completes. It runs ONCE per artifact upload, not every agent iteration.
-
-Architecture:
-1. Events trigger auto-populates field_dictionary with field names + samples (no description)
-2. After parsing completes, this module generates descriptions for fields with NULL description
-3. Cached markdown is pre-generated and stored for efficient agent context loading
-"""
-
 import json
 from typing import Dict, List, Optional
 from sqlalchemy import text
