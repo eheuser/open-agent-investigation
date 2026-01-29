@@ -67,10 +67,25 @@ async def handle_general_chat(
         if answer.get("type") == "error":
             return answer
 
+        # Determine query type from context
+        query_type = "metadata"
+        if "timeline" in user_query.lower():
+            query_type = "timeline_summary"
+        elif "artifact" in user_query.lower():
+            query_type = "artifact_summary"
+        elif "event" in user_query.lower():
+            query_type = "event_summary"
+
         return {
             "type": "general_chat_answer",
             "success": True,
             "message": answer.get("content", ""),
+            "routing_metadata": {
+                "handler_type": "general_chat",
+                "handler_display_name": "General Chat",
+                "query_type": query_type,
+                "context_sources": list(context.keys()),
+            },
         }
 
     except Exception as e:

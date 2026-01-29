@@ -1,4 +1,5 @@
 name: golden_silver_tickets
+display_name: Golden/Silver Ticket
 description: Investigation strategies for detecting Kerberos golden and silver ticket attacks - forged authentication tickets for persistence and privilege escalation
 
 playbook: |

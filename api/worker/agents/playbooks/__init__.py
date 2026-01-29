@@ -11,10 +11,16 @@ logger = get_logger(__name__)
 class Playbook:
     """Represents a single investigation playbook."""
     
-    def __init__(self, name: str, description: str, playbook: str):
+    def __init__(self, name: str, description: str, playbook: str, display_name: Optional[str] = None):
         self.name = name
+        self.display_name = display_name or self._generate_display_name(name)
         self.description = description
         self.playbook = playbook
+    
+    def _generate_display_name(self, name: str) -> str:
+        """Generate a friendly display name from the playbook name."""
+        # Convert snake_case to Title Case
+        return ' '.join(word.capitalize() for word in name.split('_'))
     
     def __repr__(self):
         return f"Playbook(name={self.name})"
@@ -45,7 +51,8 @@ class PlaybookRegistry:
                 playbook = Playbook(
                     name=data['name'],
                     description=data['description'],
-                    playbook=data['playbook']
+                    playbook=data['playbook'],
+                    display_name=data.get('display_name')  # Optional field
                 )
                 self.playbooks.append(playbook)
                 cnt += 1

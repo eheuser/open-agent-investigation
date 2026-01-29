@@ -1,4 +1,5 @@
 name: collection
+display_name: Data Collection
 description: Investigation strategies for detecting data collection - identifying gathering of sensitive files, screenshots, clipboard data, and staging for exfiltration
 
 playbook: |

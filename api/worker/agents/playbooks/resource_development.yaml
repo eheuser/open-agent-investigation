@@ -1,4 +1,5 @@
 name: resource_development
+display_name: Resource Development Detection
 description: Investigation strategies for detecting resource development - identifying attacker infrastructure setup, tool acquisition, and capability development
 
 playbook: |

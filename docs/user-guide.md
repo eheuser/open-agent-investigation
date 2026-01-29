@@ -154,11 +154,11 @@ Use when:
 
 ### Effort Levels (Agent Mode Only)
 
-- **Quick** (5 turns): Simple queries, fast triage
-- **Standard** (10 turns): Balanced depth and speed
-- **Thorough** (15 turns): Comprehensive analysis
+- **Quick** (3 turns): Simple queries, fast triage
+- **Standard** (6 turns): Balanced depth and speed
+- **Thorough** (9 turns): Comprehensive analysis
 
-Agent can request up to 15 additional turns (hard ceiling: 30 total).
+Agent can request up to 9 additional turns (hard ceiling: 30 total).
 
 ### Query Best Practices
 

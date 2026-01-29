@@ -1,4 +1,5 @@
 name: dcsync_attack
+display_name: DCSync
 description: Investigation strategies for detecting DCSync attacks - domain credential replication abuse to steal password hashes including krbtgt
 
 playbook: |

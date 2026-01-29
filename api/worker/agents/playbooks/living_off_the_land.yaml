@@ -1,4 +1,5 @@
 name: living_off_the_land
+display_name: Living off the Land Detection
 description: Investigation strategies for detecting Living off the Land (LOLBin) attacks - abuse of legitimate Windows binaries for malicious purposes
 
 playbook: |

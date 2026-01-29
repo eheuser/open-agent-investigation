@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from ..schemas.chat_message import IntentType, ClassificationResult
+from ..schemas.routing_metadata import create_routing_metadata
 from ..crud.llm_config import get_active_llm_config
 from ..models.chat_history import ChatMessage
 from .handlers.event_handler import handle_event_insertion
@@ -466,7 +467,15 @@ async def route_chat_message(
             summary = result.get("summary", "")
             if summary:
                 message += f"\n\n---\n📊 {summary}"
-            yield {"type": "answer_chunk", "content": message, "chunk_id": 0, "is_final": True}
+            yield {
+                "type": "answer_chunk", 
+                "content": message, 
+                "chunk_id": 0, 
+                "is_final": True,
+                "metadata": {
+                    "routing_metadata": result.get("routing_metadata"),
+                },
+            }
         else:
             yield result
         return
@@ -503,12 +512,15 @@ async def route_chat_message(
         f"[CHAT_ROUTER] Classified as: {classification.intent.value} (confidence: {classification.confidence})"
     )
 
-    # Emit classification result
-    yield {
+    # Emit classification result with routing decision
+    routing_decision = {
         "type": "intent_classified",
         "intent": classification.intent.value,
         "confidence": classification.confidence,
+        "router_mode": router_mode,
+        "query_expanded": expanded_query != user_query,
     }
+    yield routing_decision
 
     # Step 4: Route to appropriate handler (EXPLICIT ROUTING)
     try:
@@ -539,7 +551,15 @@ async def route_chat_message(
                 if summary:
                     message += f"\n\n---\n📊 {summary}"
 
-                yield {"type": "answer_chunk", "content": message, "chunk_id": 0, "is_final": True}
+                yield {
+                    "type": "answer_chunk", 
+                    "content": message, 
+                    "chunk_id": 0, 
+                    "is_final": True,
+                    "metadata": {
+                        "routing_metadata": result.get("routing_metadata"),
+                    },
+                }
             else:
                 yield result
 
@@ -553,6 +573,9 @@ async def route_chat_message(
                     "content": result.get("message", ""),
                     "chunk_id": 0,
                     "is_final": True,
+                    "metadata": {
+                        "routing_metadata": result.get("routing_metadata"),
+                    },
                 }
             else:
                 yield result

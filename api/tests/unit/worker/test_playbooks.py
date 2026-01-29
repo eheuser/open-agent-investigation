@@ -37,6 +37,45 @@ class TestPlaybook:
         assert playbook.name == "test_playbook"
         assert playbook.description == "Test playbook description"
         assert playbook.playbook == "# Test Playbook Content"
+    
+    def test_playbook_auto_generates_display_name(self):
+        """Test that Playbook auto-generates display_name from name."""
+        playbook = Playbook(
+            name="lateral_movement",
+            description="Test description",
+            playbook="Content"
+        )
+        
+        assert playbook.display_name == "Lateral Movement"
+    
+    def test_playbook_uses_provided_display_name(self):
+        """Test that Playbook uses provided display_name when given."""
+        playbook = Playbook(
+            name="lateral_movement",
+            description="Test description",
+            playbook="Content",
+            display_name="Custom Display Name"
+        )
+        
+        assert playbook.display_name == "Custom Display Name"
+    
+    def test_playbook_display_name_generation(self):
+        """Test display name generation for various formats."""
+        test_cases = [
+            ("lateral_movement", "Lateral Movement"),
+            ("command_and_control", "Command And Control"),
+            ("dcsync_attack", "Dcsync Attack"),
+            ("single", "Single"),
+            ("multi_word_test_case", "Multi Word Test Case"),
+        ]
+        
+        for name, expected_display in test_cases:
+            playbook = Playbook(
+                name=name,
+                description="Test",
+                playbook="Content"
+            )
+            assert playbook.display_name == expected_display, f"Failed for {name}"
 
     def test_playbook_repr(self):
         """Test Playbook string representation."""
@@ -77,6 +116,21 @@ class TestPlaybookRegistry:
         assert playbook is not None
         assert playbook.name == "lateral_movement"
         assert "Lateral Movement" in playbook.description or "lateral movement" in playbook.description
+        # Verify display_name exists (either from YAML or auto-generated)
+        assert playbook.display_name is not None
+        assert len(playbook.display_name) > 0
+    
+    def test_all_playbooks_have_display_names(self):
+        """Test that all loaded playbooks have display_names."""
+        registry = get_playbook_registry()
+        
+        assert len(registry.playbooks) > 0
+        
+        for playbook in registry.playbooks:
+            assert playbook.display_name is not None, f"Playbook {playbook.name} missing display_name"
+            assert len(playbook.display_name) > 0, f"Playbook {playbook.name} has empty display_name"
+            # Display name should be title case
+            assert playbook.display_name[0].isupper(), f"Playbook {playbook.name} display_name not capitalized"
 
     def test_get_playbook_by_name_not_found(self):
         """Test that get_playbook_by_name returns None for unknown playbook."""
@@ -119,6 +173,32 @@ class TestPlaybookRegistryCustom:
 
             assert len(registry.playbooks) == 1
             assert registry.playbooks[0].name == "custom_test"
+            # Should auto-generate display_name
+            assert registry.playbooks[0].display_name == "Custom Test"
+    
+    def test_load_playbook_with_display_name(self):
+        """Test loading a playbook with explicit display_name."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            playbook_path = Path(tmpdir) / "custom_playbook.yaml"
+            playbook_data = {
+                "name": "custom_test",
+                "display_name": "My Custom Playbook",
+                "description": "Custom test playbook",
+                "playbook": "# Custom Playbook\nTest content"
+            }
+
+            with open(playbook_path, 'w') as f:
+                yaml.dump(playbook_data, f)
+
+            registry = PlaybookRegistry()
+            registry.playbooks = []
+            registry._playbooks_dir = Path(tmpdir)
+            registry._load_playbooks()
+
+            assert len(registry.playbooks) == 1
+            assert registry.playbooks[0].name == "custom_test"
+            # Should use provided display_name
+            assert registry.playbooks[0].display_name == "My Custom Playbook"
 
     def test_invalid_playbook_skipped(self):
         """Test that invalid playbooks are skipped during loading."""

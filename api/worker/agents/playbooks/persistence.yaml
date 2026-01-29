@@ -1,4 +1,5 @@
 name: persistence
+display_name: Persistence Detection
 description: Investigation strategies for detecting persistence mechanisms - identifying how attackers maintain access through registry keys, scheduled tasks, services, and startup items
 
 playbook: |

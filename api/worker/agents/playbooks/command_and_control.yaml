@@ -1,4 +1,5 @@
 name: command_and_control
+display_name: Command & Control
 description: Investigation strategies for detecting command and control - identifying C2 channels, beaconing patterns, and communication with attacker infrastructure
 
 playbook: |

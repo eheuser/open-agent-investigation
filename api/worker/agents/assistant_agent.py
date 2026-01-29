@@ -645,8 +645,28 @@ class AssistantAgent:
             {"role": "user", "content": self.question},
         ]
         
+        # Get playbook for this investigation (if applicable)
+        selected_playbook = None
+        playbook_metadata = None
         try:
-            yield {"type": "agent_started", "question": self.question}
+            from .playbooks import select_playbook_for_query
+            selected_playbook = await select_playbook_for_query(self.question, self.llm_client)
+            if selected_playbook:
+                playbook_metadata = {
+                    "playbook_name": selected_playbook.name,
+                    "playbook_display_name": selected_playbook.display_name,
+                    "playbook_description": selected_playbook.description,
+                }
+                logger.info(f"Selected playbook: {selected_playbook.display_name}")
+        except Exception as e:
+            logger.warning(f"Playbook selection failed: {e}")
+        
+        try:
+            yield {
+                "type": "agent_started",
+                "question": self.question,
+                "playbook_metadata": playbook_metadata,
+            }
             while not self.cancelled and self.iteration < self.max_iterations:
                 self.iteration += 1
                 logger.info(f"--- Iteration {self.iteration}/{self.max_iterations} ---")

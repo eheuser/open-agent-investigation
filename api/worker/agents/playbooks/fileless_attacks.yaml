@@ -1,4 +1,5 @@
 name: fileless_attacks
+display_name: Fileless Attack
 description: Investigation strategies for detecting fileless attacks - malware that runs in-memory without touching disk, using scripting engines and legitimate processes
 
 playbook: |

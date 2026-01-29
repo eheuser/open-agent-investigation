@@ -271,10 +271,10 @@ Final Summary Sent to UI
 ```
 
 **Turn Budget:**
-- Quick: 5 turns max
-- Standard: 10 turns max
-- Thorough: 15 turns max
-- Dynamic extension: Agent can request 3-15 additional turns (hard ceiling: 30)
+- Quick: 3 turns max
+- Standard: 6 turns max
+- Thorough: 9 turns max
+- Dynamic extension: Agent can request 3-9 additional turns (hard ceiling: 30)
 
 **Tools per Turn:** Maximum 5 tool executions per turn
 

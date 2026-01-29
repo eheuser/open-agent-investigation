@@ -1,4 +1,5 @@
 name: privilege_escalation
+display_name: Privilege Escalation Detection
 description: Investigation strategies for detecting privilege escalation - identifying attempts to gain higher-level permissions through token elevation, UAC bypass, or credential dumping
 
 playbook: |

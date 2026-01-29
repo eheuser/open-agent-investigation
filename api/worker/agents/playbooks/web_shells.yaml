@@ -1,4 +1,5 @@
 name: web_shells
+display_name: Web Shell Detection
 description: Investigation strategies for detecting web shells - malicious scripts uploaded to web servers for remote access and command execution
 
 playbook: |

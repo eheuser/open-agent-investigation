@@ -1,4 +1,5 @@
 name: pass_the_hash
+display_name: Pass-the-Hash Detection
 description: Investigation strategies for detecting pass-the-hash attacks - using stolen NTLM hashes to authenticate without knowing plaintext passwords
 
 playbook: |

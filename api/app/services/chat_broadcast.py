@@ -273,6 +273,17 @@ async def _handle_agent_started(
             current_metadata["investigation_incomplete"] = False  # Clear incomplete flag
             current_metadata["is_continuing"] = True
             current_metadata["isWaitingForLLM"] = True
+            
+            # Add playbook metadata if provided (from worker)
+            playbook_metadata = message.get("playbook_metadata")
+            if playbook_metadata:
+                current_metadata["playbook_metadata"] = playbook_metadata
+                
+                # Also update routing_metadata with playbook info
+                if "routing_metadata" in current_metadata:
+                    current_metadata["routing_metadata"]["playbook_name"] = playbook_metadata.get("playbook_name")
+                    current_metadata["routing_metadata"]["playbook_display_name"] = playbook_metadata.get("playbook_display_name")
+                    current_metadata["routing_metadata"]["playbook_description"] = playbook_metadata.get("playbook_description")
 
             await crud.update_message(
                 db=db,
@@ -313,6 +324,22 @@ async def _handle_agent_started(
         current_metadata["type"] = "agent_started"
         current_metadata["agent"] = message.get("agent")
         current_metadata["job_id"] = agent_job.job_id
+        
+        # Add playbook metadata if provided (from worker)
+        playbook_metadata = message.get("playbook_metadata")
+        if playbook_metadata:
+            current_metadata["playbook_metadata"] = playbook_metadata
+            
+            # Also update routing_metadata with playbook info (create if doesn't exist)
+            if "routing_metadata" not in current_metadata:
+                current_metadata["routing_metadata"] = {
+                    "handler_type": "agent",
+                    "handler_display_name": "AI Agent Investigation",
+                }
+            
+            current_metadata["routing_metadata"]["playbook_name"] = playbook_metadata.get("playbook_name")
+            current_metadata["routing_metadata"]["playbook_display_name"] = playbook_metadata.get("playbook_display_name")
+            current_metadata["routing_metadata"]["playbook_description"] = playbook_metadata.get("playbook_description")
 
         await crud.update_message(
             db=db,
@@ -350,18 +377,26 @@ async def _handle_agent_started(
         # Still no placeholder - create new message
         logger.warning(f"[AGENT_STARTED] Creating NEW message for streaming_id={streaming_id}")
         content = "Starting analysis..."
+        
+        # Build metadata with playbook info if provided
+        msg_metadata = {
+            "type": "agent_started",
+            "agent": message.get("agent"),
+            "job_id": agent_job.job_id,
+            "streaming_message_id": streaming_id,
+            "event_sequence": [],
+        }
+        
+        playbook_metadata = message.get("playbook_metadata")
+        if playbook_metadata:
+            msg_metadata["playbook_metadata"] = playbook_metadata
+        
         msg = await persist_assistant_message(
             db=db,
             investigation_id=investigation_id,
             user_id=user_id,
             content=content,
-            metadata={
-                "type": "agent_started",
-                "agent": message.get("agent"),
-                "job_id": agent_job.job_id,
-                "streaming_message_id": streaming_id,
-                "event_sequence": [],
-            },
+            metadata=msg_metadata,
             include_in_llm_context=False,
             visible_in_ui=True,
         )

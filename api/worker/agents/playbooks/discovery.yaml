@@ -1,4 +1,5 @@
 name: discovery
+display_name: Discovery
 description: Investigation strategies for detecting discovery activities - identifying reconnaissance commands used to map networks, enumerate systems, and gather information
 
 playbook: |

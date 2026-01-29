@@ -1,4 +1,5 @@
 name: kerberoasting
+display_name: Kerberoasting Detection
 description: Investigation strategies for detecting Kerberoasting attacks - requesting service tickets to crack service account passwords offline
 
 playbook: |

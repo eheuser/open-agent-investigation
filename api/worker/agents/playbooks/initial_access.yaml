@@ -1,4 +1,5 @@
 name: initial_access
+display_name: Initial Access
 description: Investigation strategies for detecting initial access - identifying how attackers first gained entry to the environment through phishing, exploits, or valid credentials
 
 playbook: |

@@ -51,6 +51,40 @@ export interface ChatMessage {
     summary?: string;
     effort?: 'low' | 'medium' | 'high';
     
+    // Routing metadata
+    routing_metadata?: {
+      handler_type: 'agent' | 'rag' | 'timeline' | 'general_chat';
+      handler_display_name: string;
+      confidence?: number;
+      processing_time_ms?: number;
+      // Agent-specific
+      playbook_name?: string;
+      playbook_display_name?: string;
+      playbook_description?: string;
+      effort_level?: string;
+      max_turns?: number;
+      job_id?: number;
+      // RAG-specific
+      sources_retrieved?: number;
+      expansion_terms?: number;
+      embedding_provider?: string;
+      total_candidates?: number;
+      // Timeline-specific
+      operation_type?: string;
+      entries_affected?: number;
+      filters_applied?: string[];
+      // General chat-specific
+      context_sources?: string[];
+      query_type?: string;
+    };
+    
+    // Playbook metadata (for agent)
+    playbook_metadata?: {
+      playbook_name: string;
+      playbook_display_name: string;
+      playbook_description: string;
+    };
+    
     // Event sequence for chronological ordering
     event_sequence?: Array<{
       type: 'thinking' | 'tool_execution';

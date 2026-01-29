@@ -83,16 +83,29 @@ Monitor the application with streamed logs.
 
 ## High-Level Capabilities
 
-### Query Routing
+### Query Routing with Visual Feedback
 
-Four specialized handlers optimize for different query types:
+Four specialized handlers optimize for different query types, with **real-time UI feedback** showing which handler was selected:
 
-- **Agent Handler**: Complex multi-step investigations with tool execution (16+ tools)
-- **Timeline Handler**: Timeline CRUD operations with 5 specialized tools
-- **General Chat**: Fast metadata queries without tool overhead
-- **Augmented Chat**: Semantic search using RAG with hybrid BM25 + vector retrieval
+- **Agent Handler** 🤖: Complex multi-step investigations with tool execution (16+ tools)
+  - Shows selected playbook (e.g., "Lateral Movement Detection")
+  - Displays effort level (Quick/Standard/Thorough) and max turns
+  - Real-time tool execution progress
+  
+- **Timeline Handler** ⏱️: Timeline CRUD operations with 5 specialized tools
+  - Shows operation type (query/add/update/delete)
+  - Displays number of entries affected
+  
+- **General Chat** 💬: Fast metadata queries without tool overhead
+  - Shows query type (metadata/summary/help)
+  - Lists context sources used
+  
+- **Augmented Chat** ✨: Semantic search using RAG with hybrid BM25 + vector retrieval
+  - Shows number of sources retrieved
+  - Displays query expansion terms count
+  - Shows embedding provider used
 
-The system automatically classifies user intent or accepts manual mode selection.
+The system automatically classifies user intent or accepts manual mode selection. **Every response includes a routing badge** showing which handler processed the query and relevant statistics.
 
 ### Artifact Support
 
@@ -117,9 +130,9 @@ Event-first architecture prevents data duplication:
 
 Bounded turn execution with configurable depth:
 
-- Quick: 5 turns maximum
-- Standard: 10 turns maximum
-- Thorough: 15 turns maximum
+- Quick: 3 turns maximum
+- Standard: 6 turns maximum
+- Thorough: 9 turns maximum
 - Dynamic extension: Up to 30 total turns with justification
 
 Each turn limited to 5 tool executions. Real-time progress streamed via WebSocket.

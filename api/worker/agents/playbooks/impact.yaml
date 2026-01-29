@@ -1,4 +1,5 @@
 name: impact
+display_name: Impact
 description: Investigation strategies for detecting impact - identifying destructive actions like ransomware, data destruction, service disruption, and resource hijacking
 
 playbook: |

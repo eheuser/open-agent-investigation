@@ -1,4 +1,5 @@
 name: defense_evasion
+display_name: Defense Evasion
 description: Investigation strategies for detecting defense evasion - identifying attempts to avoid detection through obfuscation, disabling security tools, and hiding artifacts
 
 playbook: |

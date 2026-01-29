@@ -172,6 +172,11 @@ Dashboard → Click "New Investigation"
 - Ask natural language questions
 - **Mode selector** - Choose routing mode (Auto/Agent/Timeline/Augmented Chat)
 - **Effort selector** - Choose investigation depth (Quick/Standard/Thorough)
+- **Routing feedback badges** - Visual indicators showing:
+  - Which handler processed your query (Agent/RAG/Timeline/General Chat)
+  - Selected playbook for agent investigations (e.g., "Lateral Movement Detection")
+  - Handler-specific statistics (sources retrieved, entries affected, effort level, etc.)
+  - Color-coded badges with icons for quick identification
 - Real-time agent reasoning streaming (see agent's thought process)
 - **Expandable tool execution cards** - Click to view arguments and results
 - **RAG results display** - Query expansion and source retrieval shown as tool executions
@@ -373,6 +378,33 @@ playbook: |
 
 ## Components
 
+#### RoutingBadge.tsx
+
+Routing feedback component:
+- Displays handler type with color-coded badge and icon
+- Shows handler-specific statistics
+- Displays playbook information for agent investigations
+- Responsive design with proper dark mode support
+
+```tsx
+<RoutingBadge
+  handlerType="agent"
+  handlerDisplayName="AI Agent Investigation"
+  playbookName="lateral_movement"
+  playbookDisplayName="Lateral Movement Detection"
+  stats={{
+    effort_level: "medium",
+    max_turns: 10
+  }}
+/>
+```
+
+**Color Scheme**:
+- Agent: Purple (`bg-purple-100 dark:bg-purple-900/30`)
+- RAG: Blue (`bg-blue-100 dark:bg-blue-900/30`)
+- Timeline: Green (`bg-green-100 dark:bg-green-900/30`)
+- General Chat: Gray (`bg-gray-100 dark:bg-gray-900/30`)
+
 ### Core Components
 
 #### Header.tsx
@@ -448,6 +480,7 @@ Message type router:
 #### AgentMessageCard.tsx
 
 Agent message display:
+- **Routing badge** - Shows handler type, playbook name, and statistics
 - Chronological event stream (thinking + tool executions)
 - Markdown rendering with syntax highlighting
 - Tool execution cards (expandable)
@@ -455,6 +488,17 @@ Agent message display:
 - Continuation UI for incomplete investigations
 - Copy message button
 - Delete message button
+
+**Routing Badge Display**:
+- **Agent Handler**: Purple badge with CPU chip icon
+  - Shows playbook name (e.g., "Lateral Movement Detection")
+  - Displays effort level and max turns (e.g., "medium effort • 6 turns max")
+- **RAG Handler**: Blue badge with sparkles icon
+  - Shows sources retrieved and expansion terms (e.g., "50 sources • 7 terms")
+- **Timeline Handler**: Green badge with clock icon
+  - Shows operation type and entries affected (e.g., "query • 5 entries")
+- **General Chat Handler**: Gray badge with chat icon
+  - Shows query type (e.g., "metadata")
 
 ```tsx
 <AgentMessageCard
@@ -1107,6 +1151,105 @@ RAG results are displayed as expandable tool execution cards:
   - Similarity score
   - Text preview (200 chars)
   - Full text (complete event data)
+
+## Routing System Extensibility
+
+### Adding New Handlers
+
+The routing system is designed to be extensible. To add a new handler:
+
+**Backend** (`api/app/services/handlers/`):
+
+1. **Create handler module**:
+   ```python
+   # api/app/services/handlers/my_handler.py
+   async def handle_my_operation(
+       db: AsyncSession,
+       investigation_id: UUID,
+       user_query: str,
+       user_id: int,
+   ) -> Dict[str, Any]:
+       # Process query
+       result = await process_query(...)
+       
+       return {
+           "type": "my_handler_answer",
+           "success": True,
+           "message": result,
+           "routing_metadata": {
+               "handler_type": "my_handler",
+               "handler_display_name": "My Custom Handler",
+               "custom_stat_1": 42,
+               "custom_stat_2": "value",
+           },
+       }
+   ```
+
+2. **Add routing metadata schema** (`api/app/schemas/routing_metadata.py`):
+   ```python
+   class MyHandlerMetadata(HandlerMetadata):
+       handler_type: str = "my_handler"
+       handler_display_name: str = "My Custom Handler"
+       processing_time_ms: Optional[int] = None
+       
+       custom_stat_1: int = Field(0, description="Description")
+       custom_stat_2: str = Field("", description="Description")
+   ```
+
+3. **Add intent type** (`api/app/schemas/chat_message.py`):
+   ```python
+   class IntentType(str, Enum):
+       MY_OPERATION = "my_operation"
+   ```
+
+4. **Update classification prompt** (`api/app/services/chat_router.py`):
+   - Add new intent category to `CLASSIFICATION_PROMPT_SYSTEM`
+   - Add routing case in `route_chat_message()`
+
+**Frontend** (`ui/src/components/chat/`):
+
+1. **Update RoutingBadge component**:
+   ```tsx
+   // Add icon mapping
+   case 'my_handler':
+     return <MyIcon className="w-4 h-4" />;
+   
+   // Add color mapping
+   case 'my_handler':
+     return 'bg-orange-100 text-orange-800 ...';
+   
+   // Add stats formatting
+   if (handlerType === 'my_handler') {
+     parts.push(`${stats.custom_stat_1} items`);
+   }
+   ```
+
+2. **Handler automatically displays** - No changes needed to `AgentMessageCard`
+
+### Handler Plugin Pattern
+
+All handlers follow a consistent interface:
+
+```python
+async def handle_X(
+    db: AsyncSession,
+    investigation_id: UUID,
+    user_query: str,
+    user_id: int,
+) -> Dict[str, Any]:
+    """Process query and return result with routing metadata."""
+    return {
+        "success": bool,
+        "message": str,
+        "routing_metadata": {
+            "handler_type": str,
+            "handler_display_name": str,
+            # ... handler-specific stats
+        },
+    }
+```
+
+This makes the system **fully extensible** - add new handlers without modifying core routing logic.
 
 ## Further Reading
 

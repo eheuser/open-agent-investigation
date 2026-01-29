@@ -1,4 +1,5 @@
 name: lateral_movement
+display_name: Lateral Movement
 description: Investigation strategies for detecting lateral movement - attackers moving from one system to another within a network after initial compromise
 
 playbook: |

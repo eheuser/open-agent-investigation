@@ -1,4 +1,5 @@
 name: data_exfiltration
+display_name: Data Exfiltration
 description: Investigation strategies for detecting data exfiltration - identifying large file transfers, unusual network activity, and data staging operations
 
 playbook: |

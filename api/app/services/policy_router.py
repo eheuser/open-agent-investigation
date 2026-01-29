@@ -446,6 +446,14 @@ Answer with ONLY ONE policy name from the list above:"""
         seed_instructions=seed_instructions,
     )
 
+    # Calculate max turns based on effort level
+    effort_to_turns = {
+        "low": 3,
+        "medium": 6,
+        "high": 9,
+    }
+    max_turns = effort_to_turns.get(effort, 6)
+
     return {
         "type": "job_queued",
         "job_id": job.job_id,
@@ -453,4 +461,11 @@ Answer with ONLY ONE policy name from the list above:"""
         "policy_title": policy.get("title", selected_policy_id),
         "message": "Analysis job created and queued for processing.",
         "estimated_duration": policy.get("estimated_duration", "unknown"),
+        "routing_metadata": {
+            "handler_type": "agent",
+            "handler_display_name": "AI Agent Investigation",
+            "effort_level": effort,
+            "max_turns": max_turns,
+            "job_id": job.job_id,
+        },
     }

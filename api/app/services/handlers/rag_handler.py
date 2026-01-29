@@ -377,6 +377,9 @@ async def handle_rag_query(
             }
         )
 
+        # Get embedding provider for metadata
+        embedding_provider = str(getattr(llm_config, "embedding_provider", "unknown"))
+
         yield {
             "type": "answer_chunk",
             "content": answer,
@@ -391,6 +394,14 @@ async def handle_rag_query(
                 "stats": {
                     "sources_retrieved": len(chunks),
                     "expansion_terms": len(expanded_terms),
+                },
+                "routing_metadata": {
+                    "handler_type": "rag",
+                    "handler_display_name": "Augmented Chat (RAG)",
+                    "sources_retrieved": len(chunks),
+                    "expansion_terms": len(expanded_terms),
+                    "embedding_provider": embedding_provider,
+                    "total_candidates": len(all_chunks),
                 },
             },
         }
