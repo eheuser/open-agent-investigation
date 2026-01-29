@@ -10,19 +10,6 @@
 - Add an optional re-ranker model.
 - Add max-context length for embedding and re-ranker model
 
-**Refactor Assistant Agent**
-
-- The `run()` method is huge, break up the phases and simplify them
-- Refactor context management to supply only needed context to each phase
-- Separate tools into groups, one for each phase
-- Batch timeline events for embedding, it's serial at the moment
-- Remove `auto_register` option from event tool queries
-
-**Refactor `field_dictionary` Logic**
-
-- It takes too long to process
-- find a way to cut this step out or attach it to artifact parsing
-
 **Enhance Investigation Choices**
 
 - Offer suggestions on where to take the investigation next

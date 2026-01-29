@@ -40,7 +40,7 @@ The Worker service is responsible for:
 ✅ **Idempotent Operations** - Jobs can be safely retried  
 ✅ **Real-time Streaming** - WebSocket notifications with agent reasoning  
 ✅ **LLM Integration** - Supports OpenAI, Ollama, and custom endpoints  
-✅ **Bounded Turn Execution** - 5 tools per turn, configurable max turns (5/10/15)  
+✅ **Bounded Turn Execution** - 3 tools per turn, configurable max turns (3/6/9)  
 ✅ **Turn Progress Tracking** - UI shows "Turn X/Y" instead of confusing tool counts  
 ✅ **Agent-Controlled Timeline** - Optional auto_register parameter for bulk registration  
 ✅ **Event-First Timeline** - Auto-fetches complete event data (no transcription errors)  
@@ -123,7 +123,11 @@ worker/
 │   ├── base_agent.py            # Legacy base agent class
 │   ├── assistant_agent.py       # AssistantAgent (primary, bounded turns)
 │   ├── unified_agent.py         # UnifiedAgent (legacy, self-directed)
-│   └── cli_harness.py           # CLI testing harness (deprecated)
+│   ├── cli_harness.py           # CLI testing harness (deprecated)
+│   └── playbooks/               # Investigation playbooks (21 total)
+│       ├── __init__.py          # Playbook registry and LLM selection
+│       ├── *.yaml               # MITRE ATT&CK tactics (14 playbooks)
+│       └── *.yaml               # Attack techniques (7 playbooks)
 ├── parsers/                     # Artifact parsers
 │   ├── __init__.py
 │   ├── dispatcher.py            # Parser routing
@@ -424,18 +428,26 @@ class BaseAgent:
 
 ### Assistant Agent (Primary)
 
-The primary forensic analysis agent with bounded turn execution.
+The primary forensic analysis agent with bounded turn execution and investigation playbook support.
 
 **File**: `api/worker/agents/assistant_agent.py`
 
 **Architecture**:
 - **Bounded Turns**: Each turn limited to 5 tool executions max
-- **Configurable Depth**: Max turns based on effort level (Quick=5, Standard=10, Thorough=15)
+- **Configurable Depth**: Max turns based on effort level (Quick=3, Standard=6, Thorough=9)
+- **Investigation Playbooks**: 21 built-in playbooks provide strategic guidance (auto-selected by LLM)
 - **Two-Phase Workflow**: Investigation phase (tools) → Reporting phase (explanation)
 - **Real-time Streaming**: Progress updates via WebSocket after each tool
 - **Turn Progress**: UI shows "Turn X/Y" instead of confusing tool counts
 - **Agent-Controlled Timeline**: Optional auto_register parameter for bulk registration
 - **Tool Descriptions**: REQUIRED description parameter for all search tools (shown in UI)
+
+**Investigation Playbooks**:
+- **21 Built-in Playbooks**: Complete MITRE ATT&CK tactic coverage + 7 attack techniques
+- **LLM Selection**: System automatically selects most relevant playbook based on question
+- **Strategic Guidance**: Each playbook provides specific event IDs, fields, queries, and patterns
+- **Dynamic Loading**: Add/modify playbooks without code changes (YAML files in `playbooks/`)
+- See [Investigation Playbooks](../../docs/playbooks.md) for complete list and details
 
 **Capabilities**:
 - Loads full investigation context on startup (timeline entries, chat history, event counts)
@@ -468,7 +480,7 @@ The primary forensic analysis agent with bounded turn execution.
 
 **Investigation Workflow**:
 ```
-1. Agent receives question and effort level (max turns: Quick=5, Standard=10, Thorough=15)
+1. Agent receives question and effort level (max turns: Quick=3, Standard=6, Thorough=9)
 2. Agent immediately yields agent_started (UI shows feedback)
 3. Agent loads investigation context (event counts, available fields)
 
@@ -495,7 +507,7 @@ Then, for each turn (max 5 tools per turn):
 **Example Agent Execution**:
 ```
 Question: "Find failed logon attempts"
-Effort: Standard (10 turns max)
+Effort: Standard (6 turns max)
 
 [Agent yields agent_started → UI shows message card immediately]
 
@@ -910,6 +922,7 @@ docker compose exec api psql -U postgres -d open_agent_inv -c "SELECT artifact_i
 
 ## Further Reading
 
+- [Investigation Playbooks](../../docs/playbooks.md) - Built-in attack scenario guidance
 - [API Documentation](../README.md) - REST API and WebSocket
 - [Database Schema](../../db/README.md) - PostgreSQL tables
 - [Agent Configuration](../data/agents/README.md) - YAML agent definitions

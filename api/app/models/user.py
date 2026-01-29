@@ -2,7 +2,7 @@ from enum import IntEnum
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, BigInteger, Text, SmallInteger, DateTime, CheckConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from ..core.database import Base
 
@@ -37,6 +37,9 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    # Relationships
+    playbooks = relationship("Playbook", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (CheckConstraint("role IN (0, 1)", name="valid_role"),)
 

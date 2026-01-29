@@ -178,8 +178,8 @@ async def build_context(
 
     logger.info(
         f"Built context for {investigation_id}: "
-        f"{len(context)} messages, ~{tokens_used} tokens "
-        f"(budget: {token_budget}, mode: {mode})"
+        f"{len(context):,} messages, ~{tokens_used:,} tokens "
+        f"(budget: {token_budget:,}, mode: {mode})"
     )
 
     return context

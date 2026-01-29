@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import InvestigationDetail from './routes/InvestigationDetail';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
+import Playbooks from './pages/Playbooks';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { JobsProvider } from './contexts/JobsContext';
 
@@ -58,13 +59,14 @@ function App() {
 
                                                                                                                                                   {/* Central content area */}
                       <section className="flex-1 overflow-hidden">
-                        <Routes>
+                                                <Routes>
                           <Route path="/" element={<Dashboard />} />
                           <Route
                             path="/investigation/:id"
                             element={<InvestigationWrapper />}
                           />
                           <Route path="/settings" element={<Settings />} />
+                          <Route path="/playbooks" element={<Playbooks />} />
                         </Routes>
                       </section>
                     </div>

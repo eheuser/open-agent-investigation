@@ -1,0 +1,243 @@
+name: kerberoasting
+display_name: Kerberoasting Detection
+description: Investigation strategies for detecting Kerberoasting attacks - requesting service tickets to crack service account passwords offline
+
+playbook: |
+  ## KERBEROASTING INVESTIGATION PLAYBOOK
+  
+  ### What is Kerberoasting?
+  An attack where adversaries request Kerberos service tickets for accounts with Service Principal Names (SPNs), then crack the tickets offline to obtain plaintext passwords.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Bulk Service Ticket Requests (Event ID 4769)**
+     - Primary Kerberoasting indicator
+     - Fields: EventData.ServiceName, EventData.TargetUserName, EventData.TicketEncryptionType
+     - Query: event_type='evtx_security_4769'
+     - Patterns to detect:
+       - Multiple service ticket requests in short time (>10 in 10 minutes)
+       - Requests for service accounts (not computer accounts)
+       - RC4 encryption type (0x17) - attackers prefer RC4 for easier cracking
+     - Red flags: Single user requesting many service tickets
+  
+  2. **RC4 Encryption Downgrade (Event ID 4769)**
+     - Kerberoasting tools often request RC4 tickets
+     - Modern domains use AES, but RC4 is faster to crack
+     - Fields: EventData.TicketEncryptionType
+     - Query: `query_jsonb_field` with jsonb_path='EventData.TicketEncryptionType', value='0x17'
+     - Red flags: RC4 tickets in AES-only environments
+  
+  3. **Service Account Enumeration (LDAP Queries)**
+     - Attackers enumerate accounts with SPNs before Kerberoasting
+     - LDAP query: (&(objectCategory=person)(servicePrincipalName=*))
+     - Event ID 1644: LDAP query logging (requires diagnostic logging)
+     - Query: event_type='evtx_directory_service_1644'
+     - Red flags: LDAP queries for servicePrincipalName attribute
+  
+  4. **PowerShell Kerberoasting Tools (Event ID 4688, Sysmon 1)**
+     - Common tools: Invoke-Kerberoast, Rubeus, Impacket
+     - Commands:
+       - `Invoke-Kerberoast -OutputFormat Hashcat`
+       - `Rubeus.exe kerberoast /outfile:hashes.txt`
+       - `GetUserSPNs.py domain/user:password -dc-ip 10.0.0.1 -request`
+     - Query: `search_events_by_content` for 'Invoke-Kerberoast', 'Rubeus', 'kerberoast'
+     - Red flags: Execution of Kerberoasting tools
+  
+  5. **Service Ticket Requests for High-Value Accounts (Event ID 4769)**
+     - Targeting privileged service accounts
+     - Fields: EventData.ServiceName (look for admin, sql, backup accounts)
+     - Query: Aggregate by ServiceName to identify targets
+     - Red flags: Requests for service accounts with elevated privileges
+  
+  6. **Unusual User Requesting Service Tickets (Event ID 4769)**
+     - Normal users don't request many service tickets
+     - Fields: EventData.TargetUserName (requester)
+     - Query: Aggregate by TargetUserName to find bulk requesters
+     - Red flags: Single user requesting 10+ service tickets
+  
+  7. **Failed Kerberos Pre-Authentication (Event ID 4771)**
+     - Some Kerberoasting attempts may fail
+     - Fields: EventData.TargetUserName, EventData.FailureCode
+     - Query: event_type='evtx_security_4771'
+     - Red flags: Multiple pre-auth failures for service accounts
+  
+  8. **Service Ticket Requests Without TGT (Event ID 4769 without 4768)**
+     - Suspicious if service tickets requested without TGT
+     - Compare: Event 4769 usernames vs Event 4768 usernames
+     - Red flags: Service tickets without corresponding TGT requests
+  
+  9. **Offline Cracking Indicators**
+     - Kerberoasting is offline attack - no direct indicators
+     - Look for: Successful password changes after Kerberoasting
+     - Event ID 4724: Password reset attempt
+     - Red flags: Service account password changes after ticket requests
+  
+  10. **Post-Kerberoasting Activity**
+     - What happens after successful cracking?
+     - Look for:
+       - Logons with cracked service account (Event 4624)
+       - Lateral movement using service account
+       - Privilege escalation attempts
+     - Timeline correlation: Kerberoasting → Days/weeks later → Service account logon
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Detect Kerberoasting Activity**
+  - Query Event 4769 for bulk service ticket requests
+  - Aggregate by TargetUserName to find users requesting many tickets
+  - Check for RC4 encryption type (0x17)
+  
+  **Phase 2 - Identify Targeted Accounts**
+  - Which service accounts were targeted? (ServiceName field)
+  - Are they high-value accounts? (SQL, backup, admin services)
+  - How many tickets were requested? (Volume)
+  
+  **Phase 3 - Analyze Attack Tools**
+  - Check for Kerberoasting tool execution (Invoke-Kerberoast, Rubeus)
+  - Look for PowerShell with Kerberoast modules
+  - Search for Python scripts (Impacket GetUserSPNs.py)
+  
+  **Phase 4 - Assess Impact**
+  - Were any service account passwords cracked? (Check for subsequent logons)
+  - Timeline: When were tickets requested vs when were accounts used?
+  - Scope: How many service accounts were compromised?
+  
+  ### Kerberoasting Attack Chain:
+  
+  ```
+  1. Enumerate service accounts with SPNs
+     - LDAP query: servicePrincipalName=*
+     - PowerView: Get-DomainUser -SPN
+  
+  2. Request service tickets
+     - Invoke-Kerberoast, Rubeus, GetUserSPNs.py
+     - Event 4769 logged for each request
+     - Prefer RC4 encryption (easier to crack)
+  
+  3. Extract tickets from memory
+     - Tools save tickets to file (hashcat format)
+  
+  4. Crack tickets offline
+     - Hashcat, John the Ripper
+     - No network activity - undetectable
+  
+  5. Use cracked credentials
+     - Logon with service account (Event 4624)
+     - Lateral movement, privilege escalation
+     - Persistence (create backdoor accounts)
+  ```
+  
+  ### Detection Queries:
+  
+  ```
+  # Find bulk service ticket requests
+  aggregate_jsonb_field(jsonb_path='EventData.TargetUserName', aggregation='count',
+                        event_type='evtx_security_4769', description='Service ticket requesters')
+  
+  # Find RC4 service tickets
+  query_jsonb_field(jsonb_path='EventData.TicketEncryptionType', operator='=', value='0x17',
+                    event_type='evtx_security_4769', description='RC4 service tickets')
+  
+  # Find Kerberoasting tools
+  search_events_by_content(value='Invoke-Kerberoast', description='PowerShell Kerberoasting')
+  search_events_by_content(value='Rubeus', description='Rubeus Kerberoasting tool')
+  search_events_by_content(value='GetUserSPNs', description='Impacket Kerberoasting')
+  
+  # Find targeted service accounts
+  aggregate_jsonb_field(jsonb_path='EventData.ServiceName', aggregation='top_values',
+                        event_type='evtx_security_4769', description='Targeted service accounts')
+  ```
+  
+  ### Event 4769 Field Analysis:
+  
+  **ServiceName**:
+  - Format: service/hostname (e.g., MSSQLSvc/SQL01.corp.local, HTTP/web.corp.local)
+  - Computer accounts: End with $ (e.g., WORKSTATION01$)
+  - Service accounts: User accounts with SPNs (e.g., svc_sql, svc_backup)
+  - Red flag: Requests for service accounts (not computer accounts)
+  
+  **TicketEncryptionType**:
+  - 0x1: DES-CBC-CRC (obsolete, very weak)
+  - 0x3: DES-CBC-MD5 (obsolete, very weak)
+  - 0x17: RC4-HMAC (common, preferred by attackers)
+  - 0x11: AES128-CTS-HMAC-SHA1-96 (modern, harder to crack)
+  - 0x12: AES256-CTS-HMAC-SHA1-96 (modern, hardest to crack)
+  
+  **TargetUserName**:
+  - User requesting the ticket
+  - Aggregate to find users requesting many tickets
+  - Normal: Users request tickets for services they use
+  - Suspicious: Single user requesting 10+ tickets in short time
+  
+  ### Kerberoasting Tool Signatures:
+  
+  **Invoke-Kerberoast (PowerShell)**:
+  ```powershell
+  Invoke-Kerberoast -OutputFormat Hashcat | Out-File hashes.txt
+  Invoke-Kerberoast -Domain corp.local -OutputFormat John
+  ```
+  
+  **Rubeus (C#)**:
+  ```
+  Rubeus.exe kerberoast /outfile:hashes.txt
+  Rubeus.exe kerberoast /user:svc_sql /simple
+  Rubeus.exe kerberoast /spn:MSSQLSvc/SQL01.corp.local
+  ```
+  
+  **Impacket GetUserSPNs.py (Python)**:
+  ```
+  GetUserSPNs.py corp.local/user:password -dc-ip 10.0.0.1 -request
+  GetUserSPNs.py corp.local/user:password -outputfile hashes.txt
+  ```
+  
+  ### Baseline vs Suspicious Patterns:
+  
+  **Normal Service Ticket Requests**:
+  - User requests ticket for specific service they use (e.g., SQL client → SQL server)
+  - Sporadic requests throughout the day
+  - AES encryption in modern domains
+  - Computer accounts requesting tickets for network services
+  
+  **Suspicious Kerberoasting**:
+  - Single user requesting 10+ service tickets in minutes
+  - Requests for services the user doesn't normally access
+  - RC4 encryption (especially in AES-only environment)
+  - Requests for high-privilege service accounts (backup, SQL SA)
+  - PowerShell/tool execution correlated with ticket requests
+  
+  ### Key Questions to Answer:
+  
+  1. Were bulk service tickets requested? (Event 4769 volume)
+  2. Who requested them? (TargetUserName)
+  3. Which service accounts were targeted? (ServiceName)
+  4. What encryption type was used? (RC4 vs AES)
+  5. Were Kerberoasting tools executed? (Invoke-Kerberoast, Rubeus)
+  6. When did this occur? (Timeline)
+  7. Were any passwords cracked? (Subsequent logons with service accounts)
+  8. What was the impact? (Compromised accounts, lateral movement)
+  
+  ### Remediation:
+  
+  1. **Immediate**:
+     - Reset passwords for targeted service accounts
+     - Use strong passwords (25+ characters) for service accounts
+     - Disable RC4 encryption (enforce AES)
+  
+  2. **Investigation**:
+     - Identify how attacker gained initial access
+     - Check for compromised service accounts
+     - Review service account usage (legitimate vs malicious)
+  
+  3. **Prevention**:
+     - Use Group Managed Service Accounts (gMSA) - 120-character passwords
+     - Enforce AES encryption (disable RC4)
+     - Limit service account privileges
+     - Monitor Event 4769 for bulk requests
+     - Implement honeypot service accounts (alert if requested)
+  
+  ### Advanced Detection:
+  
+  - **Volume Threshold**: Alert if user requests >5 service tickets in 10 minutes
+  - **Encryption Monitoring**: Alert on RC4 tickets in AES-only environment
+  - **Honeypot SPNs**: Create fake service accounts, alert if tickets requested
+  - **Behavioral Baseline**: Establish normal ticket request patterns per user

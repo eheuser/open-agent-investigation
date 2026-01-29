@@ -326,8 +326,21 @@ async def _execute_timeline_llm_loop(
                 summary = _generate_timeline_summary(tools_used)
 
                 logger.info(
-                    f"[TIMELINE_HANDLER] Completed in {iteration} iterations with {len(tools_used)} tools"
+                    f"[TIMELINE_HANDLER] Completed in {iteration} iterations with {len(tools_used):,} tools"
                 )
+
+                # Determine operation type from tools used
+                operation_types = []
+                if any(t["name"] == "query_timeline_entries" for t in tools_used):
+                    operation_types.append("query")
+                if any(t["name"] == "add_timeline_entry" for t in tools_used):
+                    operation_types.append("add")
+                if any(t["name"] == "update_timeline_entry" for t in tools_used):
+                    operation_types.append("update")
+                if any(t["name"] == "delete_timeline_entry" for t in tools_used):
+                    operation_types.append("delete")
+                
+                operation_type = "/".join(operation_types) if operation_types else "query"
 
                 return {
                     "type": "timeline_answer",
@@ -335,6 +348,12 @@ async def _execute_timeline_llm_loop(
                     "message": final_answer,
                     "summary": summary,
                     "tools_used": len(tools_used),
+                    "routing_metadata": {
+                        "handler_type": "timeline",
+                        "handler_display_name": "Timeline Operations",
+                        "operation_type": operation_type,
+                        "entries_affected": len(tools_used),
+                    },
                 }
 
             # Execute tool calls
@@ -398,12 +417,12 @@ async def _execute_timeline_llm_loop(
         if tools_used:
             summary = _generate_timeline_summary(tools_used)
             logger.warning(
-                f"[TIMELINE_HANDLER] Hit max iterations ({max_iterations}) with {len(tools_used)} tools executed"
+                f"[TIMELINE_HANDLER] Hit max iterations ({max_iterations}) with {len(tools_used):,} tools executed"
             )
             return {
                 "type": "timeline_answer",
                 "success": True,
-                "message": f"Timeline operation completed {len(tools_used)} operations but reached complexity limit. Results may be incomplete.",
+                "message": f"Timeline operation completed {len(tools_used):,} operations but reached complexity limit. Results may be incomplete.",
                 "summary": summary,
                 "tools_used": len(tools_used),
                 "incomplete": True,

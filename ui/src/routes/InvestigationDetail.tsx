@@ -4,6 +4,7 @@ import SimplifiedChatBox from '../components/chat/SimplifiedChatBox';
 import TimelineViewer from '../components/TimelineViewer';
 import EventsViewer from '../components/EventsViewer';
 import ReportGenerator from '../components/ReportGenerator';
+import LogsViewer from '../components/LogsViewer';
 import JobsModal from '../components/JobsModal';
 import UploadModal from '../components/chat/UploadModal';
 import { useInvestigation } from '../hooks/useInvestigations';
@@ -15,12 +16,13 @@ import {
   DocumentTextIcon,
   ChatBubbleLeftRightIcon,
   TableCellsIcon,
-  DocumentChartBarIcon
+  DocumentChartBarIcon,
+  RectangleStackIcon
 } from '@heroicons/react/24/outline';
 
 
 
-type TabType = 'chat' | 'events' | 'timeline' | 'report';
+type TabType = 'chat' | 'events' | 'timeline' | 'report' | 'logs';
 
 const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ investigationId }) => {
   const { investigation, isLoading, error } = useInvestigation(investigationId);
@@ -241,6 +243,21 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
             )}
           </button>
+          
+          <button
+            onClick={() => setActiveTab('logs')}
+            className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${
+              activeTab === 'logs'
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <RectangleStackIcon className="w-4 h-4" />
+            Logs
+            {activeTab === 'logs' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
+            )}
+          </button>
           </div>
         </div>
 
@@ -276,6 +293,10 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
           
           <div className={`h-full ${activeTab === 'report' ? '' : 'hidden'}`}>
             <ReportGenerator investigationId={investigationId} />
+          </div>
+          
+          <div className={`h-full ${activeTab === 'logs' ? '' : 'hidden'}`}>
+            <LogsViewer investigationId={investigationId} />
           </div>
         </div>
       </div>

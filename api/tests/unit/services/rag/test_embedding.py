@@ -38,6 +38,7 @@ class TestEmbedder:
             api_url="https://api.openai.com/v1",
             api_key="sk-test123",
             model_name="text-embedding-ada-002",
+            timeout=120,
         )
 
     @patch("app.services.rag.embedding.CentralizedEmbeddingService")

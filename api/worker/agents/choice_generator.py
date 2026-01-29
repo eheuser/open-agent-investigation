@@ -172,7 +172,7 @@ Generate the JSON now:"""
             choice.setdefault("tool_suggestions", None)
             choice.setdefault("display_order", 0)
 
-        logger.info(f"Generated {len(choices)} investigation choices")
+        logger.info(f"Generated {len(choices):,} investigation choices")
         return choices
 
     except json.JSONDecodeError as e:

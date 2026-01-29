@@ -1,0 +1,260 @@
+name: pass_the_hash
+display_name: Pass-the-Hash Detection
+description: Investigation strategies for detecting pass-the-hash attacks - using stolen NTLM hashes to authenticate without knowing plaintext passwords
+
+playbook: |
+  ## PASS-THE-HASH INVESTIGATION PLAYBOOK
+  
+  ### What is Pass-the-Hash?
+  An attack where adversaries use stolen NTLM password hashes to authenticate to remote systems without needing the plaintext password.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **NTLM Logons (Event ID 4624)**
+     - Pass-the-hash uses NTLM authentication
+     - Fields: EventData.LogonType, EventData.AuthenticationPackageName, EventData.TargetUserName
+     - Query: event_type='evtx_security_4624'
+     - Filter: AuthenticationPackageName='NTLM' AND LogonType=3 (network logon)
+     - Red flags:
+       - NTLM logons in Kerberos-only environments
+       - Admin accounts using NTLM (should use Kerberos)
+       - NTLM logons from unusual source IPs
+  
+  2. **Network Logon Type 3 (Event ID 4624)**
+     - Pass-the-hash typically uses network logons
+     - Fields: EventData.LogonType, EventData.IpAddress, EventData.WorkstationName
+     - Query: `query_jsonb_field` with jsonb_path='EventData.LogonType', value='3'
+     - Red flags:
+       - Multiple systems logged into from single source
+       - Logons to systems the account doesn't normally access
+       - Rapid succession of network logons (lateral movement)
+  
+  3. **Explicit Credential Usage (Event ID 4648)**
+     - Pass-the-hash often uses explicit credentials
+     - Fields: EventData.TargetUserName, EventData.TargetServerName, EventData.SubjectUserName
+     - Query: event_type='evtx_security_4648'
+     - Red flags:
+       - Different user credentials than logged-on user
+       - Admin credentials used from non-admin workstation
+       - Rapid credential usage across multiple systems
+  
+  4. **Mimikatz Pass-the-Hash Execution (Event ID 4688, Sysmon 1)**
+     - Mimikatz is primary tool for pass-the-hash
+     - Commands:
+       - `sekurlsa::pth /user:admin /domain:corp.local /ntlm:<hash>`
+       - `sekurlsa::pth /user:admin /ntlm:<hash> /run:cmd.exe`
+     - Query: `search_events_by_content` for 'sekurlsa::pth', 'mimikatz'
+     - Red flags: Mimikatz execution with pth module
+  
+  5. **LSASS Memory Access (Sysmon 10)**
+     - Pass-the-hash requires dumping LSASS for hashes
+     - Fields: EventData.TargetImage, EventData.SourceImage, EventData.GrantedAccess
+     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetImage', operator='ILIKE', value='%lsass.exe%'
+     - Red flags: Non-system processes accessing LSASS memory
+     - Precursor to pass-the-hash attack
+  
+  6. **Lateral Movement Patterns (Event ID 4624, 4648)**
+     - Pass-the-hash enables rapid lateral movement
+     - Pattern: Single source → Multiple destinations in short time
+     - Query: Aggregate by IpAddress to find sources connecting to many systems
+     - Red flags:
+       - Single IP authenticating to 5+ systems in minutes
+       - Same account used across many systems simultaneously
+  
+  7. **Admin Share Access (Event ID 5140)**
+     - Pass-the-hash often used to access admin shares (C$, ADMIN$)
+     - Fields: EventData.ShareName, EventData.IpAddress, EventData.SubjectUserName
+     - Query: `query_jsonb_field` with jsonb_path='EventData.ShareName', operator='ILIKE', value='%$%'
+     - Red flags: Admin share access from unusual IPs, bulk share access
+  
+  8. **Remote Service Creation (Event ID 7045, 4697)**
+     - Pass-the-hash used to create services remotely (PsExec pattern)
+     - Fields: EventData.ServiceName, EventData.ImagePath
+     - Query: event_type='evtx_system_7045' or 'evtx_security_4697'
+     - Red flags: Services created remotely, PSEXESVC service
+  
+  9. **WMI Remote Execution (Event ID 4688, Sysmon 1)**
+     - Pass-the-hash enables WMI remote execution
+     - Parent process: wmiprvse.exe on remote system
+     - Query: `query_jsonb_field` with jsonb_path='EventData.ParentProcessName', value='wmiprvse.exe'
+     - Red flags: wmiprvse spawning unusual processes (cmd.exe, powershell.exe)
+  
+  10. **Credential Dumping Tools (Event ID 4688, Sysmon 1)**
+     - Tools to dump hashes for pass-the-hash
+     - Tools: Mimikatz, ProcDump, Comsvcs.dll, Task Manager
+     - Commands:
+       - `procdump.exe -ma lsass.exe lsass.dmp`
+       - `rundll32.exe comsvcs.dll MiniDump <lsass_pid> dump.bin full`
+     - Query: `search_events_by_content` for 'procdump', 'comsvcs.dll', 'lsass'
+     - Red flags: LSASS dumping before lateral movement
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Detect Pass-the-Hash Activity**
+  - Query Event 4624 for NTLM network logons (LogonType 3)
+  - Check for bulk logons from single source IP
+  - Look for explicit credential usage (Event 4648)
+  
+  **Phase 2 - Identify Credential Theft**
+  - Check for LSASS memory access (Sysmon 10)
+  - Look for credential dumping tools (Mimikatz, ProcDump)
+  - Search for LSASS dump files (Sysmon 11)
+  
+  **Phase 3 - Map Lateral Movement**
+  - Identify source system (where attack originated)
+  - Map destination systems (where attacker moved)
+  - Timeline: When did lateral movement occur?
+  - Which accounts were used?
+  
+  **Phase 4 - Assess Impact**
+  - How many systems were compromised?
+  - What actions were taken on each system?
+  - Were credentials dumped from additional systems?
+  - Is there ongoing access?
+  
+  ### Pass-the-Hash Attack Chain:
+  
+  ```
+  1. Initial Compromise
+     - Phishing, exploit, stolen credentials
+  
+  2. Credential Dumping
+     - LSASS memory access (Sysmon 10)
+     - Mimikatz: sekurlsa::logonpasswords
+     - Extract NTLM hashes from memory
+  
+  3. Pass-the-Hash Execution
+     - Mimikatz: sekurlsa::pth /user:admin /ntlm:<hash>
+     - Creates new process with hash in memory
+     - Event 4624 (LogonType 3, NTLM authentication)
+  
+  4. Lateral Movement
+     - Access remote systems using hash
+     - Event 4648 (explicit credential usage)
+     - Event 5140 (admin share access)
+     - Event 7045 (remote service creation)
+  
+  5. Persistence & Escalation
+     - Dump credentials on new systems
+     - Repeat pass-the-hash to additional systems
+     - Create backdoor accounts, scheduled tasks
+  ```
+  
+  ### Detection Queries:
+  
+  ```
+  # Find NTLM network logons
+  query_jsonb_field(jsonb_path='EventData.AuthenticationPackageName', operator='=', value='NTLM',
+                    event_type='evtx_security_4624', description='NTLM authentication')
+  query_jsonb_field(jsonb_path='EventData.LogonType', operator='=', value='3',
+                    event_type='evtx_security_4624', description='Network logons')
+  
+  # Find bulk logons from single source
+  aggregate_jsonb_field(jsonb_path='EventData.IpAddress', aggregation='top_values',
+                        event_type='evtx_security_4624', description='Logon source IPs')
+  
+  # Find explicit credential usage
+  search_events_by_type(event_type='evtx_security_4648', description='Explicit credentials')
+  
+  # Find LSASS memory access
+  query_jsonb_field(jsonb_path='EventData.TargetImage', operator='ILIKE', value='%lsass.exe%',
+                    event_type='evtx_sysmon_10', description='LSASS memory access')
+  
+  # Find Mimikatz pass-the-hash
+  search_events_by_content(value='sekurlsa::pth', description='Mimikatz pass-the-hash')
+  
+  # Find admin share access
+  query_jsonb_field(jsonb_path='EventData.ShareName', operator='ILIKE', value='%$%',
+                    event_type='evtx_security_5140', description='Admin share access')
+  ```
+  
+  ### Event 4624 Analysis for Pass-the-Hash:
+  
+  **LogonType**:
+  - 3: Network logon (pass-the-hash typical)
+  - 9: NewCredentials (RunAs with /netonly)
+  - 10: RemoteInteractive (RDP - less common for PTH)
+  
+  **AuthenticationPackageName**:
+  - NTLM: Pass-the-hash indicator (should be Kerberos in modern domains)
+  - Kerberos: Normal authentication
+  
+  **Key Fields**:
+  - IpAddress: Source of authentication (attacker's system)
+  - WorkstationName: Source system name
+  - TargetUserName: Account being used
+  - LogonProcessName: NtLmSsp (NTLM Security Support Provider)
+  
+  ### Pass-the-Hash vs Normal NTLM:
+  
+  **Normal NTLM Usage**:
+  - Legacy systems, non-domain systems
+  - Sporadic authentication events
+  - Expected source IPs and accounts
+  - Single system access
+  
+  **Pass-the-Hash Attack**:
+  - Bulk logons from single source in short time
+  - Admin accounts using NTLM (should use Kerberos)
+  - Unusual source IPs or workstations
+  - Lateral movement pattern (one-to-many)
+  - Correlated with LSASS access, Mimikatz execution
+  
+  ### Mimikatz Pass-the-Hash Commands:
+  
+  ```
+  # Basic pass-the-hash
+  sekurlsa::pth /user:Administrator /domain:corp.local /ntlm:8846f7eaee8fb117ad06bdd830b7586c
+  
+  # Pass-the-hash with specific process
+  sekurlsa::pth /user:admin /ntlm:<hash> /run:cmd.exe
+  sekurlsa::pth /user:admin /ntlm:<hash> /run:powershell.exe
+  
+  # Pass-the-hash for specific domain
+  sekurlsa::pth /user:admin /domain:corp.local /ntlm:<hash> /run:"net use \\\\target\\c$"
+  ```
+  
+  ### Lateral Movement Tools Using Pass-the-Hash:
+  
+  - **PsExec**: `psexec.exe \\target -u admin -p <hash> cmd.exe`
+  - **WMI**: `wmic /node:target /user:admin /password:<hash> process call create "cmd.exe"`
+  - **PowerShell Remoting**: `Enter-PSSession -ComputerName target -Credential (hash)`
+  - **RDP**: `mstsc.exe /v:target` (with hash injected into LSASS)
+  
+  ### Key Questions to Answer:
+  
+  1. Were NTLM logons detected? (Event 4624 with NTLM)
+  2. Is there lateral movement pattern? (Bulk logons from single source)
+  3. Were credentials dumped? (LSASS access, Mimikatz)
+  4. Which accounts were used? (Admin accounts, service accounts)
+  5. What systems were accessed? (Destination IPs, hostnames)
+  6. When did this occur? (Timeline)
+  7. What actions were taken on remote systems? (Commands, file access)
+  8. Is the attack ongoing? (Recent NTLM logons)
+  
+  ### Remediation:
+  
+  1. **Immediate**:
+     - Reset passwords for compromised accounts
+     - Isolate affected systems
+     - Block source IP addresses
+  
+  2. **Investigation**:
+     - Identify all systems accessed via pass-the-hash
+     - Check for persistence mechanisms (backdoors, scheduled tasks)
+     - Review actions taken on each compromised system
+  
+  3. **Prevention**:
+     - Disable NTLM authentication (enforce Kerberos)
+     - Implement Credential Guard (protects LSASS)
+     - Use Protected Users security group (prevents NTLM)
+     - Implement LAPS (Local Administrator Password Solution)
+     - Monitor Event 4624 for NTLM logons
+     - Restrict lateral movement (firewall rules, network segmentation)
+  
+  ### Advanced Detection:
+  
+  - **NTLM Baseline**: Establish normal NTLM usage, alert on deviations
+  - **Lateral Movement Correlation**: Single source → Multiple destinations in <10 minutes
+  - **Account Usage Patterns**: Alert if admin account used from unusual system
+  - **Honeypot Accounts**: Create decoy admin accounts, alert on any usage

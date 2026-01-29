@@ -1,0 +1,23 @@
+name: data_exfiltration
+display_name: Data Exfiltration
+description: Investigation strategies for detecting data exfiltration - identifying large file transfers, unusual network activity, and data staging operations
+
+playbook: |
+  ## DATA EXFILTRATION INVESTIGATION PLAYBOOK
+
+  ### What to Look For:
+
+  1. **Large File Transfers**
+     - Network connections with high data volume
+     - File access to sensitive directories
+     - Compression/archiving activity
+
+  2. **Unusual Network Activity**
+     - Connections to cloud storage (Dropbox, OneDrive, etc.)
+     - FTP/SFTP connections
+     - Unusual ports or protocols
+
+  3. **Data Staging**
+     - File copy operations to temp locations
+     - Archive creation (zip, rar, 7z)
+     - Encryption activity

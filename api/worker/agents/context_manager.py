@@ -5,6 +5,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from .field_dictionary_db import generate_field_dictionary
+from ..tools import event_tools
 
 logger = get_logger(__name__)
 
@@ -80,7 +82,7 @@ def prune_chat_log(
     # Preserve system, user question, and recent messages
     if len(chat_log) <= preserve_recent + 2:
         # Can't prune further without losing critical context
-        logger.warning(f"Chat log at minimum size ({len(chat_log)} messages), cannot prune further")
+        logger.warning(f"Chat log at minimum size ({len(chat_log):,} messages), cannot prune further")
         return chat_log
 
     # Build pruned log: system + user question + recent messages
@@ -97,8 +99,8 @@ def prune_chat_log(
     tokens_saved = current_tokens - new_tokens
 
     logger.info(
-        f"Pruned chat log: {len(chat_log)} -> {len(pruned_log)} messages, "
-        f"{current_tokens} -> {new_tokens} tokens (saved {tokens_saved} tokens, "
+        f"Pruned chat log: {len(chat_log):,} -> {len(pruned_log):,} messages, "
+        f"{current_tokens:,} -> {new_tokens:,} tokens (saved {tokens_saved:,} tokens, "
         f"{(tokens_saved/current_tokens)*100:.1f}% reduction)"
     )
 
@@ -183,9 +185,7 @@ async def load_investigation_context(
     # Get available JSONB fields with descriptions (if LLM client provided)
     try:
         if use_field_dictionary and llm_client:
-            # Generate field dictionary with LLM descriptions (database-backed)
-            from .field_dictionary_db import generate_field_dictionary
-
+            # Use cached field dictionary from database
             field_dict = await generate_field_dictionary(
                 db=db,
                 investigation_id=investigation_id,
@@ -197,8 +197,6 @@ async def load_investigation_context(
             context_parts.append(field_dict)
         else:
             # Fallback: simple field list without descriptions
-            from ..tools import event_tools
-
             available_fields = await event_tools.get_available_jsonb_fields(db, investigation_id)
 
             if available_fields:
@@ -213,7 +211,7 @@ async def load_investigation_context(
                 else:
                     sample = available_fields[:50]
                     context_parts.append(
-                        f"`{', '.join(sample)}` (+{len(available_fields)-50} more)\n"
+                        f"`{', '.join(sample)}` (+{len(available_fields)-50:,} more)\n"
                     )
 
                 context_parts.append(
@@ -226,8 +224,22 @@ async def load_investigation_context(
     except Exception as e:
         logger.error(f"Failed to load available fields: {e}", exc_info=True)
 
-    # Get existing timeline entries
+    # Get existing timeline entries (limited to most recent 10 by UTC timestamp)
     try:
+        # First get total count
+        count_result = await db.execute(
+            text(
+                """
+                SELECT COUNT(*) as total
+                FROM timeline_entries
+                WHERE investigation_id = :investigation_id
+            """
+            ),
+            {"investigation_id": investigation_id},
+        )
+        total_count = int(count_result.scalar() or 0)
+
+        # Get most recent 10 entries by UTC timestamp
         result = await db.execute(
             text(
                 """
@@ -235,7 +247,7 @@ async def load_investigation_context(
                 FROM timeline_entries
                 WHERE investigation_id = :investigation_id
                 ORDER BY timestamp DESC
-                LIMIT 50
+                LIMIT 10
             """
             ),
             {"investigation_id": investigation_id},
@@ -245,10 +257,13 @@ async def load_investigation_context(
 
         if timeline_entries:
             context_parts.append("\n### Existing Timeline Evidence\n")
-            context_parts.append(f"**Total Timeline Entries**: {len(timeline_entries)}\n\n")
-            context_parts.append("**Recent Entries**:\n\n")
+            context_parts.append(f"**Total Timeline Entries**: {total_count:,}\n")
+            if total_count > 10:
+                context_parts.append(f"**Showing Most Recent**: 10 of {total_count:,}\n\n")
+            else:
+                context_parts.append("\n")
 
-            for entry_id, title, description, entry_type, tags, timestamp in timeline_entries[:10]:
+            for entry_id, title, description, entry_type, tags, timestamp in timeline_entries:
                 context_parts.append(f"- **Entry {entry_id}**: {title}")
                 if description:
                     desc_preview = (
@@ -258,9 +273,6 @@ async def load_investigation_context(
                 if tags:
                     context_parts.append(f" [Tags: {', '.join(tags)}]")
                 context_parts.append("\n")
-
-            if len(timeline_entries) > 10:
-                context_parts.append(f"\n(+{len(timeline_entries) - 10} more entries)\n")
 
             context_parts.append(
                 "\n**IMPORTANT**: Don't re-register events already on the timeline!\n"
@@ -276,8 +288,209 @@ async def load_investigation_context(
     return "".join(context_parts)
 
 
+async def load_execution_phase_context(
+    db: AsyncSession,
+    investigation_id: str,
+    llm_client=None,
+    use_field_dictionary: bool = True,
+    llm_max_context: int = 32768,
+) -> str:
+    """
+    Load context needed for Phase 1 (Tool Execution).
+
+    Phase 1 needs:
+    - Event type counts (to know what data exists)
+    - Available JSONB fields (to query specific fields)
+    - No timeline entries needed (Phase 1 doesn't register to timeline)
+
+    Parameters
+    ----------
+    db: AsyncSession
+        Database session.
+    investigation_id: str
+        Investigation identifier.
+    llm_client: Any, optional
+        LLM client for field dictionary generation.
+    use_field_dictionary: bool, default True
+        Whether to use LLM-generated field dictionary.
+    llm_max_context: int, default 32768
+        Maximum token budget for field dictionary.
+
+    Returns
+    -------
+    str
+        Formatted markdown context for Phase 1.
+    """
+    context_parts = ["\n\n## PHASE 1 CONTEXT - AVAILABLE DATA\n"]
+
+    # Get event type counts
+    try:
+        result = await db.execute(
+            text(
+                """
+                SELECT event_type, COUNT(*) as count
+                FROM events
+                WHERE investigation_id = :investigation_id
+                GROUP BY event_type
+                ORDER BY count DESC
+                LIMIT 20
+            """
+            ),
+            {"investigation_id": investigation_id},
+        )
+
+        event_counts = result.fetchall()
+
+        if event_counts:
+            context_parts.append("\n### Event Types\n")
+            total_events = sum(row[1] for row in event_counts)
+            context_parts.append(f"**Total Events**: {total_events}\n\n")
+
+            for event_type, count in event_counts:
+                context_parts.append(f"- `{event_type}`: {count}\n")
+        else:
+            context_parts.append("\n### Event Types\n")
+            context_parts.append("No events found. Upload artifacts first.\n")
+    except Exception as e:
+        logger.error(f"Failed to load event counts: {e}", exc_info=True)
+        context_parts.append("\n### Event Types\n")
+        context_parts.append(f"Error loading data: {type(e).__name__}: {e}\n")
+
+    # Get available JSONB fields
+    try:
+        if use_field_dictionary and llm_client:
+            # Use cached field dictionary from database
+            field_dict = await generate_field_dictionary(
+                db=db,
+                investigation_id=investigation_id,
+                llm_client=llm_client,
+                max_fields_per_type=30,
+                llm_max_context=llm_max_context,
+            )
+            context_parts.append(field_dict)
+        else:
+            available_fields = await event_tools.get_available_jsonb_fields(db, investigation_id)
+
+            if available_fields:
+                context_parts.append("\n### Available JSONB Fields\n")
+                context_parts.append(
+                    "Use these exact field names with `query_jsonb_field` or `aggregate_jsonb_field`:\n\n"
+                )
+
+                if len(available_fields) <= 50:
+                    context_parts.append(f"`{', '.join(available_fields)}`\n")
+                else:
+                    sample = available_fields[:50]
+                    context_parts.append(
+                        f"`{', '.join(sample)}` (+{len(available_fields)-50:,} more)\n"
+                    )
+
+                context_parts.append(
+                    "\n**IMPORTANT**: Use exact field names from above. Common prefixes:\n"
+                )
+                context_parts.append(
+                    "- `event_data.*` - Event-specific data (e.g., `event_data.TargetUserName`)\n"
+                )
+                context_parts.append("- `system.*` - System metadata (e.g., `system.Computer`)\n")
+    except Exception as e:
+        logger.error(f"Failed to load available fields: {e}", exc_info=True)
+
+    context_parts.append("\n---\n")
+    return "".join(context_parts)
+
+
+async def load_analysis_phase_context(
+    db: AsyncSession,
+    investigation_id: str,
+) -> str:
+    """
+    Load context needed for Phase 2 (Analysis).
+
+    Phase 2 needs:
+    - Existing timeline entries (to avoid duplicates when registering)
+    - Tool results are passed separately, not part of context
+
+    Parameters
+    ----------
+    db: AsyncSession
+        Database session.
+    investigation_id: str
+        Investigation identifier.
+
+    Returns
+    -------
+    str
+        Formatted markdown context for Phase 2.
+    """
+    context_parts = ["\n\n## PHASE 2 CONTEXT - TIMELINE STATUS\n"]
+
+    # Get existing timeline entries (limited to most recent 10 by UTC timestamp)
+    try:
+        # First get total count
+        count_result = await db.execute(
+            text(
+                """
+                SELECT COUNT(*) as total
+                FROM timeline_entries
+                WHERE investigation_id = :investigation_id
+            """
+            ),
+            {"investigation_id": investigation_id},
+        )
+        total_count = int(count_result.scalar() or 0)
+
+        # Get most recent 10 entries by UTC timestamp
+        result = await db.execute(
+            text(
+                """
+                SELECT entry_id, title, description, entry_type, tags, timestamp
+                FROM timeline_entries
+                WHERE investigation_id = :investigation_id
+                ORDER BY timestamp DESC
+                LIMIT 10
+            """
+            ),
+            {"investigation_id": investigation_id},
+        )
+
+        timeline_entries = result.fetchall()
+
+        if timeline_entries:
+            context_parts.append("\n### Existing Timeline Evidence\n")
+            context_parts.append(f"**Total Timeline Entries**: {total_count:,}\n")
+            if total_count > 10:
+                context_parts.append(f"**Showing Most Recent**: 10 of {total_count:,}\n\n")
+            else:
+                context_parts.append("\n")
+
+            for entry_id, title, description, entry_type, tags, timestamp in timeline_entries:
+                context_parts.append(f"- **Entry {entry_id}**: {title}")
+                if description:
+                    desc_preview = (
+                        description[:100] + "..." if len(description) > 100 else description
+                    )
+                    context_parts.append(f" - {desc_preview}")
+                if tags:
+                    context_parts.append(f" [Tags: {', '.join(tags)}]")
+                context_parts.append("\n")
+
+            context_parts.append(
+                "\n**IMPORTANT**: Don't re-register events already on the timeline!\n"
+            )
+        else:
+            context_parts.append("\n### Existing Timeline Evidence\n")
+            context_parts.append("**No timeline entries yet** - Register important findings!\n")
+    except Exception as e:
+        logger.error(f"Failed to load timeline entries: {e}", exc_info=True)
+
+    context_parts.append("\n---\n")
+    return "".join(context_parts)
+
+
 __all__ = [
     "estimate_tokens",
     "prune_chat_log",
     "load_investigation_context",
+    "load_execution_phase_context",
+    "load_analysis_phase_context",
 ]

@@ -1,0 +1,225 @@
+name: dcsync_attack
+display_name: DCSync
+description: Investigation strategies for detecting DCSync attacks - domain credential replication abuse to steal password hashes including krbtgt
+
+playbook: |
+  ## DCSYNC ATTACK INVESTIGATION PLAYBOOK
+  
+  ### What is DCSync?
+  An attack that abuses Active Directory replication to extract password hashes for all domain accounts, including krbtgt (used for golden tickets).
+  
+  Attackers with replication rights can impersonate a domain controller and request password data for any account.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Directory Service Replication (Event ID 4662)**
+     - Primary DCSync detection event
+     - Fields: EventData.SubjectUserName, EventData.ObjectName, EventData.Properties
+     - Query: event_type='evtx_security_4662'
+     - Critical GUIDs in Properties field:
+       - **1131f6aa-9c07-11d1-f79f-00c04fc2dcd2**: DS-Replication-Get-Changes
+       - **1131f6ad-9c07-11d1-f79f-00c04fc2dcd2**: DS-Replication-Get-Changes-All
+       - **89e95b76-444d-4c62-991a-0facbeda640c**: DS-Replication-Get-Changes-In-Filtered-Set
+     - Red flags: Non-DC computers with these replication rights
+  
+  2. **Unusual Replication Source (Event ID 4662)**
+     - DCSync from workstations or member servers
+     - Fields: EventData.SubjectUserName, EventData.SubjectLogonId
+     - Query: `query_jsonb_field` with jsonb_path='EventData.Properties', operator='ILIKE', value='%1131f6aa%'
+     - Cross-reference: Check SubjectUserName - should only be domain controllers
+     - Red flags: 
+       - Replication from WORKSTATION* or SERVER* (not DC)
+       - Replication by user accounts (not computer accounts ending in $)
+  
+  3. **Mimikatz DCSync Usage (Event ID 4688, Sysmon 1)**
+     - Mimikatz is the most common DCSync tool
+     - Commands:
+       - `lsadump::dcsync /user:krbtgt`
+       - `lsadump::dcsync /user:Administrator`
+       - `lsadump::dcsync /domain:corp.local /all`
+     - Query: `search_events_by_content` for 'lsadump::dcsync', 'mimikatz'
+     - Red flags: Mimikatz execution with dcsync module
+  
+  4. **Network Replication Traffic (Sysmon 3)**
+     - DCSync generates RPC traffic to domain controllers
+     - Destination port: 135 (RPC), then dynamic high port
+     - Fields: EventData.DestinationPort, EventData.DestinationIp, EventData.Image
+     - Query: `query_jsonb_field` with jsonb_path='EventData.DestinationPort', value='135'
+     - Cross-reference: Check if source is a workstation connecting to DC
+     - Red flags: Workstations making RPC connections to DCs
+  
+  5. **Privileged Account Usage (Event ID 4672)**
+     - DCSync requires special privileges
+     - Required rights: DS-Replication-Get-Changes permissions
+     - Fields: EventData.SubjectUserName, EventData.PrivilegeList
+     - Query: event_type='evtx_security_4672'
+     - Red flags: Non-admin accounts with replication privileges
+  
+  6. **Explicit Credential Usage (Event ID 4648)**
+     - Attacker may use stolen credentials for DCSync
+     - Fields: EventData.TargetUserName, EventData.TargetServerName
+     - Query: event_type='evtx_security_4648'
+     - Red flags: Credentials used for replication from non-DC
+  
+  7. **Account Enumeration (Event ID 4662)**
+     - Attackers may enumerate accounts before DCSync
+     - Fields: EventData.ObjectName (user accounts)
+     - Query: Aggregate by SubjectUserName to find bulk enumeration
+     - Red flags: Rapid access to multiple user objects
+  
+  8. **Kerberos Ticket Requests (Event ID 4769)**
+     - DCSync requires Kerberos ticket to DC
+     - Fields: EventData.ServiceName (LDAP or cifs), EventData.TargetUserName
+     - Query: event_type='evtx_security_4769' with ServiceName='ldap'
+     - Red flags: LDAP service tickets from unusual accounts
+  
+  9. **LDAP Queries (Event ID 1644)**
+     - DCSync uses LDAP to request replication data
+     - Fields: LDAP query details (requires LDAP diagnostic logging)
+     - Query: event_type='evtx_directory_service_1644'
+     - Red flags: Unusual LDAP queries for password data
+  
+  10. **Post-DCSync Activity**
+     - What happens after DCSync?
+     - Look for:
+       - Golden ticket creation (Event 4768 anomalies)
+       - Pass-the-hash attacks (Event 4624 LogonType 9)
+       - Lateral movement (Event 4648, 4624 LogonType 3)
+     - Timeline correlation: DCSync followed by privileged access
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Detect DCSync Events**
+  - Query Event 4662 for replication GUIDs (1131f6aa, 1131f6ad, 89e95b76)
+  - Check SubjectUserName - should only be DC computer accounts
+  - Identify source systems - should only be domain controllers
+  
+  **Phase 2 - Analyze DCSync Source**
+  - What system performed DCSync? (Workstation, server, DC)
+  - What account was used? (User account, service account, computer account)
+  - When did it occur? (Timeline)
+  - How many accounts were replicated? (Single user or /all)
+  
+  **Phase 3 - Identify Attack Tools**
+  - Check for Mimikatz execution (Event 4688, Sysmon 1)
+  - Look for PowerShell Empire, Covenant, or other frameworks
+  - Search for custom DCSync tools
+  
+  **Phase 4 - Determine Scope**
+  - Which accounts were replicated? (krbtgt, Domain Admins, all users)
+  - Was krbtgt hash stolen? (Enables golden tickets)
+  - Check for subsequent attacks (golden tickets, pass-the-hash)
+  
+  ### DCSync Attack Chain:
+  
+  ```
+  1. Compromise Domain Admin or account with replication rights
+     - Credential dumping, Kerberoasting, password spray
+  
+  2. Execute DCSync
+     - Mimikatz: lsadump::dcsync /user:krbtgt
+     - Event 4662 logged on domain controller
+     - Replication GUIDs in Properties field
+  
+  3. Extract password hashes
+     - krbtgt hash (for golden tickets)
+     - Domain Admin hashes (for pass-the-hash)
+     - All domain user hashes (complete compromise)
+  
+  4. Use stolen credentials
+     - Golden ticket creation (krbtgt hash)
+     - Pass-the-hash (NTLM hashes)
+     - Lateral movement (privileged accounts)
+  
+  5. Maintain persistence
+     - Golden tickets (valid until krbtgt reset twice)
+     - Backdoor accounts with replication rights
+  ```
+  
+  ### Detection Queries:
+  
+  ```
+  # Find all DCSync events (Event 4662 with replication GUIDs)
+  query_jsonb_field(jsonb_path='EventData.Properties', operator='ILIKE', value='%1131f6aa%',
+                    event_type='evtx_security_4662', description='DCSync Get-Changes')
+  query_jsonb_field(jsonb_path='EventData.Properties', operator='ILIKE', value='%1131f6ad%',
+                    event_type='evtx_security_4662', description='DCSync Get-Changes-All')
+  
+  # Identify DCSync source accounts
+  aggregate_jsonb_field(jsonb_path='EventData.SubjectUserName', aggregation='top_values',
+                        event_type='evtx_security_4662', description='Replication accounts')
+  
+  # Find Mimikatz DCSync commands
+  search_events_by_content(value='lsadump::dcsync', description='Mimikatz DCSync')
+  search_events_by_content(value='dcsync', description='DCSync tool usage')
+  
+  # Find RPC connections to DCs (Sysmon 3)
+  query_jsonb_field(jsonb_path='EventData.DestinationPort', operator='=', value='135',
+                    event_type='evtx_sysmon_3', description='RPC connections to DCs')
+  ```
+  
+  ### Replication GUID Details:
+  
+  - **1131f6aa-9c07-11d1-f79f-00c04fc2dcd2**
+    - Name: DS-Replication-Get-Changes
+    - Purpose: Replicate directory changes
+    - Required for: Basic DCSync
+  
+  - **1131f6ad-9c07-11d1-f79f-00c04fc2dcd2**
+    - Name: DS-Replication-Get-Changes-All
+    - Purpose: Replicate all objects including passwords
+    - Required for: Password hash replication
+  
+  - **89e95b76-444d-4c62-991a-0facbeda640c**
+    - Name: DS-Replication-Get-Changes-In-Filtered-Set
+    - Purpose: Replicate filtered set of objects
+    - Required for: RODC password replication
+  
+  ### Legitimate DCSync Sources:
+  
+  - **Domain Controllers**: Computer accounts ending in $ (e.g., DC01$, DC02$)
+  - **Replication Services**: DRS (Directory Replication Service)
+  - **Backup Tools**: Some enterprise backup solutions with AD replication rights
+  
+  ### Suspicious DCSync Sources:
+  
+  - **Workstations**: WORKSTATION01$, DESKTOP-*, etc.
+  - **Member Servers**: SERVER01$, APP-SERVER$, etc.
+  - **User Accounts**: john.doe, administrator (not computer accounts)
+  - **Service Accounts**: svc_backup, svc_sql (unless explicitly granted rights)
+  
+  ### Key Questions to Answer:
+  
+  1. Was DCSync performed? (Event 4662 with replication GUIDs)
+  2. What system performed DCSync? (DC, workstation, server)
+  3. What account was used? (User, service, computer account)
+  4. Which accounts were replicated? (krbtgt, Domain Admins, all)
+  5. When did it occur? (Timeline)
+  6. What tool was used? (Mimikatz, custom tool)
+  7. What happened after DCSync? (Golden tickets, pass-the-hash)
+  8. How did the attacker gain replication rights? (Compromised DA, privilege escalation)
+  
+  ### Remediation:
+  
+  1. **Immediate**:
+     - Reset passwords for all replicated accounts
+     - Reset krbtgt password TWICE (for golden ticket mitigation)
+     - Revoke replication rights from compromised accounts
+  
+  2. **Investigation**:
+     - Identify how attacker gained replication rights
+     - Check for backdoor accounts with replication permissions
+     - Review all accounts with DS-Replication-Get-Changes rights
+  
+  3. **Prevention**:
+     - Enable Event 4662 auditing (Directory Service Access)
+     - Monitor for replication from non-DC systems
+     - Restrict replication rights to DCs only
+     - Implement privileged access management (PAM)
+  
+  ### Advanced Detection:
+  
+  - **Behavioral Analysis**: Baseline normal replication patterns, alert on deviations
+  - **Network Monitoring**: Monitor RPC traffic to DCs from workstations
+  - **Honeypot Accounts**: Create decoy accounts, alert if replicated
+  - **Replication Rights Audit**: Regularly audit who has replication permissions

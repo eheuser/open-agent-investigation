@@ -374,7 +374,7 @@ async def _insert_event_batch(
         await db.execute(insert_query, events)
         await db.commit()
     except Exception as e:
-        logger.error(f"Failed to insert event batch of {len(events)} events: {e}", exc_info=True)
+        logger.error(f"Failed to insert event batch of {len(events):,} events: {e}", exc_info=True)
         await db.rollback()
         raise
 

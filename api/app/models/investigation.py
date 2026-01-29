@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, String, DateTime, BigInteger, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 import uuid as uuid_pkg
 from ..core.database import Base
@@ -44,6 +44,9 @@ class Investigation(Base):
         server_default=func.now(),
         nullable=False
     )
+
+    # Relationships
+    investigation_playbooks = relationship("InvestigationPlaybook", back_populates="investigation", cascade="all, delete-orphan")
 
     def __repr__(self):
         """

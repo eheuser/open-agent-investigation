@@ -1,0 +1,102 @@
+name: persistence
+display_name: Persistence Detection
+description: Investigation strategies for detecting persistence mechanisms - identifying how attackers maintain access through registry keys, scheduled tasks, services, and startup items
+
+playbook: |
+  ## PERSISTENCE INVESTIGATION PLAYBOOK
+  
+  ### What is Persistence?
+  Techniques attackers use to maintain access to systems across reboots, credential changes, and other interruptions.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Registry Run Keys (Sysmon 13)**
+     - Most common persistence mechanism
+     - Fields: EventData.TargetObject, EventData.Details
+     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetObject', operator='ILIKE', value='%\\Run%'
+     - Key paths to check:
+       - HKLM\Software\Microsoft\Windows\CurrentVersion\Run
+       - HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+       - HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce
+       - HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce
+     - Red flags: Unusual executables, encoded commands, suspicious paths (Temp, AppData)
+  
+  2. **Scheduled Tasks (Event ID 4698)**
+     - Powerful persistence with flexible scheduling
+     - Fields: EventData.TaskName, EventData.TaskContent
+     - Query: event_type='evtx_security_4698'
+     - Look for: Unusual task names, suspicious executables, frequent execution
+     - Follow-up: Aggregate by SubjectUserName to find who created tasks
+  
+  3. **Service Creation (Event ID 7045, 4697)**
+     - Services run with SYSTEM privileges and auto-start
+     - Fields: EventData.ServiceName, EventData.ImagePath, EventData.ServiceType
+     - Query: event_type='evtx_system_7045' or 'evtx_security_4697'
+     - Red flags: Unusual service names, suspicious ImagePath, manual start type
+     - Common malware: Services with random names, paths in Temp/AppData
+  
+  4. **WMI Event Subscriptions (Sysmon 19, 20, 21)**
+     - Stealthy persistence, rarely used by legitimate software
+     - Event IDs: 19 (WmiEventFilter), 20 (WmiEventConsumer), 21 (WmiEventConsumerToFilter)
+     - Fields: EventData.EventNamespace, EventData.Query, EventData.Destination
+     - Query: event_type='evtx_sysmon_19' or 'evtx_sysmon_20' or 'evtx_sysmon_21'
+     - Red flags: ANY WMI event subscription is suspicious
+  
+  5. **Startup Folder Items**
+     - Files placed in user/system startup folders
+     - Check MFT for: %AppData%\Microsoft\Windows\Start Menu\Programs\Startup
+     - Query: `search_events_by_content` with value='%\\Startup\\%'
+     - Look for: LNK files, executables, scripts
+  
+  6. **DLL Hijacking / Image File Execution Options**
+     - Registry modifications to hijack legitimate processes
+     - Fields: EventData.TargetObject (Sysmon 13)
+     - Query: `query_jsonb_field` for 'Image File Execution Options' or 'AppInit_DLLs'
+     - Red flags: Debugger values, unusual DLL paths
+  
+  7. **Accessibility Features Hijacking**
+     - Replacing sethc.exe, utilman.exe with cmd.exe
+     - Fields: EventData.TargetFilename (Sysmon 11)
+     - Query: `search_events_by_content` for 'sethc.exe' or 'utilman.exe'
+     - Red flags: File modifications in System32 for accessibility tools
+  
+  8. **User Account Creation (Event ID 4720)**
+     - Attackers create backdoor accounts
+     - Fields: EventData.TargetUserName, EventData.SubjectUserName
+     - Query: event_type='evtx_security_4720'
+     - Look for: Unusual account names, creation times, privilege escalation
+     - Follow-up: Check Event ID 4732 (user added to privileged group)
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify All Persistence Mechanisms**
+  - Query each persistence type systematically
+  - Aggregate by timestamp to find when persistence was established
+  - Look for multiple persistence mechanisms (defense in depth)
+  
+  **Phase 2 - Correlate with Initial Access**
+  - Check if persistence was created shortly after initial compromise
+  - Identify which account created the persistence
+  - Look for parent process that created persistence
+  
+  **Phase 3 - Validate Legitimacy**
+  - Cross-reference with known software installations
+  - Check digital signatures (Sysmon 1 - Signature field)
+  - Investigate any unsigned or suspicious executables
+  
+  ### Common Patterns:
+  
+  - **Registry Run Key**: Encoded PowerShell in HKCU\Run
+  - **Scheduled Task**: Daily task running cmd.exe with obfuscated script
+  - **Service**: Random service name (e.g., "WindowsUpdate2") with Temp path
+  - **WMI**: Event filter + consumer for fileless persistence
+  - **Multiple Methods**: Attackers often use 2-3 persistence mechanisms
+  
+  ### Key Questions to Answer:
+  
+  1. What persistence mechanisms were used?
+  2. When were they created? (Timeline correlation)
+  3. Which account created them? (Compromised user vs. SYSTEM)
+  4. Are they still active? (Check current registry/tasks)
+  5. What do they execute? (Payload analysis)
+  6. How can they be removed? (Remediation guidance)

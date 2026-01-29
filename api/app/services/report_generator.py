@@ -157,7 +157,7 @@ async def generate_investigation_report(
         narrative=narrative,
     )
 
-    logger.info(f"Generated report: {len(report_md)} chars")
+    logger.info(f"Generated report: {len(report_md):,} chars")
 
     return {
         "markdown": report_md,
@@ -212,9 +212,9 @@ async def _generate_llm_narrative(
     # Build context for LLM
     context_parts = [
         f"**Investigation**: {investigation_title}",
-        f"\n**Artifacts**: {len(artifacts)} files uploaded",
-        f"\n**Timeline Entries**: {len(timeline_entries)} events",
-        f"\n**Event Types**: {len(event_counts)} distinct types",
+        f"\n**Artifacts**: {len(artifacts):,} files uploaded",
+        f"\n**Timeline Entries**: {len(timeline_entries):,} events",
+        f"\n**Event Types**: {len(event_counts):,} distinct types",
     ]
 
     # Add timeline summary
@@ -394,10 +394,10 @@ def _build_markdown_report(
 
     # Section 2: Investigation Scope & Artifacts
     lines.append("## 2. Investigation Scope & Artifacts\n\n")
-    lines.append(f"**Artifacts Analyzed**: {len(artifacts)}  \n")
-    lines.append(f"**Timeline Entries**: {len(timeline_entries)}  \n")
-    lines.append(f"**Event Types**: {len(event_counts)}  \n")
-    lines.append(f"**Total Events**: {sum(event_counts.values())}  \n\n")
+    lines.append(f"**Artifacts Analyzed**: {len(artifacts):,}  \n")
+    lines.append(f"**Timeline Entries**: {len(timeline_entries):,}  \n")
+    lines.append(f"**Event Types**: {len(event_counts):,}  \n")
+    lines.append(f"**Total Events**: {sum(event_counts.values()):,}  \n\n")
 
     if artifacts:
         lines.append("### Artifacts\n\n")

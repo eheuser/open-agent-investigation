@@ -12,6 +12,7 @@ from .tool_result import ToolResult
 from .filter_config import FilterConfig
 from .investigation_choice import InvestigationChoice
 from .report import Report
+from .playbook import Playbook, InvestigationPlaybook
 
 __all__ = [
     "User",
@@ -29,4 +30,6 @@ __all__ = [
     "FilterConfig",
     "InvestigationChoice",
     "Report",
+    "Playbook",
+    "InvestigationPlaybook",
 ]

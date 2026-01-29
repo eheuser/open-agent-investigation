@@ -313,6 +313,9 @@ async def _handle_question(
         # Track if this is an agent job (will be handled by worker)
         if response.get("type") == "job_queued":
             is_agent_job = True
+            # Capture routing metadata from job_queued response
+            if response.get("routing_metadata"):
+                assistant_response_metadata["routing_metadata"] = response.get("routing_metadata")
 
         # Collect answer chunks and metadata for persistence
         if response.get("type") == "answer_chunk":
@@ -344,7 +347,7 @@ async def _handle_question(
                 "type": "answer",
                 "isWaitingForLLM": False,
             }
-            # Merge in any metadata from the response (event_sequence, stats, etc.)
+            # Merge in any metadata from the response (event_sequence, stats, routing_metadata, etc.)
             final_metadata.update(assistant_response_metadata)
 
             await update_message(
@@ -386,7 +389,7 @@ async def _handle_question(
                         metadata=final_metadata,
                     )
                     await db.commit()
-                    logger.info(f"Updated event_sequence with {len(execution_ids)} execution_ids")
+                    logger.info(f"Updated event_sequence with {len(execution_ids):,} execution_ids")
 
             # Broadcast message update
             await manager.broadcast(
@@ -491,17 +494,25 @@ async def _handle_routing_response(
             logger.info(
                 f"Updating existing thinking message {thinking_message_id} with streaming_id=agent_{response.get('job_id')}"
             )
+            
+            # Build metadata with routing info from job_queued response
+            job_metadata = {
+                "type": "agent_starting",
+                "job_id": response.get("job_id"),
+                "policy_id": response.get("policy_id"),
+                "streaming_message_id": f"agent_{response.get('job_id')}",  # Worker will look for this
+                "isWaitingForLLM": True,
+                "event_sequence": [],
+            }
+            
+            # Add routing metadata if present
+            if response.get("routing_metadata"):
+                job_metadata["routing_metadata"] = response.get("routing_metadata")
+            
             await update_message(
                 db=db,
                 message_id=thinking_message_id,
-                metadata={
-                    "type": "agent_starting",
-                    "job_id": response.get("job_id"),
-                    "policy_id": response.get("policy_id"),
-                    "streaming_message_id": f"agent_{response.get('job_id')}",  # Worker will look for this
-                    "isWaitingForLLM": True,
-                    "event_sequence": [],
-                },
+                metadata=job_metadata,
             )
             await db.commit()
 
@@ -925,11 +936,11 @@ async def continue_investigation(
 
     # Determine additional turns based on effort
     effort_to_turns = {
-        "low": 5,
-        "medium": 10,
-        "high": 15,
+        "low": 3,
+        "medium": 6,
+        "high": 9,
     }
-    additional_turns = effort_to_turns.get(effort, 10)
+    additional_turns = effort_to_turns.get(effort, 6)
 
     # Find the existing incomplete message for this job
     result = await db.execute(

@@ -1,0 +1,83 @@
+name: initial_access
+display_name: Initial Access
+description: Investigation strategies for detecting initial access - identifying how attackers first gained entry to the environment through phishing, exploits, or valid credentials
+
+playbook: |
+  ## INITIAL ACCESS INVESTIGATION PLAYBOOK
+  
+  ### What is Initial Access?
+  The techniques attackers use to gain their first foothold in a network - the entry point of an attack.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Phishing / Malicious Email Artifacts**
+     - Look for: Email client process spawning unusual children
+     - Fields: EventData.ParentProcessName, EventData.NewProcessName, EventData.CommandLine
+     - Query: `query_jsonb_field` with jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%outlook%'
+     - Red flags: outlook.exe → powershell.exe, cmd.exe, wscript.exe
+     - Follow-up: Check CommandLine for encoded commands, suspicious URLs
+  
+  2. **Suspicious Logons (Event ID 4624, 4625)**
+     - Successful logons (4624): Unusual times, locations, accounts
+     - Failed logons (4625): Brute force patterns, password spraying
+     - Fields: EventData.TargetUserName, EventData.IpAddress, EventData.LogonType, EventData.WorkstationName
+     - Query: Aggregate by IpAddress to find multiple failed attempts
+     - Look for: Geographic anomalies, service accounts logging on interactively
+  
+  3. **Web Application Exploitation**
+     - IIS/Apache logs showing exploitation attempts
+     - Sysmon 1: Web server processes spawning cmd.exe, powershell.exe
+     - Fields: EventData.ParentProcessName, EventData.CommandLine
+     - Query: event_type='evtx_sysmon_1' with ParentProcessName='w3wp.exe' or 'httpd.exe'
+     - Red flags: Web shells, reverse shells, unusual child processes
+  
+  4. **External Remote Services (RDP, VPN)**
+     - Event ID 4624 LogonType 10 (RDP)
+     - Event ID 4778/4779 (Session connect/disconnect)
+     - Fields: EventData.IpAddress, EventData.TargetUserName
+     - Query: `search_events_by_timerange` for RDP logons from external IPs
+     - Look for: First-time IPs, unusual hours, dormant accounts
+  
+  5. **Drive-by Compromise / Browser Exploitation**
+     - Browser processes spawning unusual children
+     - Fields: EventData.ParentProcessName (chrome.exe, firefox.exe, iexplore.exe)
+     - Query: `query_jsonb_field` for browser parent processes
+     - Red flags: Browsers spawning powershell, cmd, regsvr32, rundll32
+  
+  6. **Exploit Public-Facing Application**
+     - Look for: Vulnerability exploitation patterns in logs
+     - Common targets: Exchange, SharePoint, VPN appliances
+     - Check MFT for: Webshells in wwwroot directories
+     - Query: `search_events_by_content` for paths like '%\\inetpub\\wwwroot\\%'
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Timeline Establishment**
+  - Identify earliest suspicious activity timestamp
+  - Query for all events in 1-hour window before/after
+  - Look for "patient zero" - first compromised system
+  
+  **Phase 2 - Entry Vector Analysis**
+  - Correlate process creation with network connections (Sysmon 1 + 3)
+  - Check for file creation in user directories (MFT entries)
+  - Identify initial payload delivery mechanism
+  
+  **Phase 3 - Credential Analysis**
+  - Check which account was used for initial access
+  - Look for credential dumping shortly after (Event ID 4688 for lsass.exe access)
+  - Identify if attacker used stolen credentials vs. exploit
+  
+  ### Common Patterns:
+  
+  - **Phishing**: Email client → Office app → Macro execution → PowerShell
+  - **Web Exploit**: Web server → cmd.exe → Credential dumping → Lateral movement
+  - **RDP Brute Force**: Multiple 4625 events → Single 4624 → Reconnaissance commands
+  - **Valid Credentials**: Clean 4624 logon → Unusual behavior (tool downloads, recon)
+  
+  ### Key Questions to Answer:
+  
+  1. What was the initial entry point? (Email, web, RDP, etc.)
+  2. When did the compromise occur? (Earliest suspicious timestamp)
+  3. Which account was used? (User account, service account, admin)
+  4. What was the initial payload? (Executable, script, exploit)
+  5. Did the attacker use valid credentials or exploit a vulnerability?

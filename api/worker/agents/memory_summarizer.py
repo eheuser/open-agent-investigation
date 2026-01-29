@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from worker.agents.context_manager import estimate_tokens
 
 logger = get_logger(__name__)
 
@@ -52,14 +53,12 @@ async def generate_chat_summary(
         return "", {}
 
     # Calculate original token count
-    from .context_manager import estimate_tokens
-
     original_tokens = sum(
         estimate_tokens(json.dumps(msg, default=str)) for msg in messages_to_summarize
     )
 
     logger.info(
-        f"Generating summary for {len(messages_to_summarize)} messages "
+        f"Generating summary for {len(messages_to_summarize):,} messages "
         f"({original_tokens} tokens) at iteration {iteration_number}"
     )
 
@@ -201,7 +200,7 @@ async def generate_chat_summary(
 
         if not summary_text:
             # Fallback to simple transcript
-            summary_text = f"**Event IDs**: {', '.join(sorted(event_ids_found))}\n**Tools**: {', '.join(tools_executed)}\n**Activities**: {len(messages_to_summarize)} messages processed"
+            summary_text = f"**Event IDs**: {', '.join(sorted(event_ids_found))}\n**Tools**: {', '.join(tools_executed)}\n**Activities**: {len(messages_to_summarize):,} messages processed"
 
         summary_tokens = estimate_tokens(summary_text)
 
@@ -275,9 +274,9 @@ async def generate_chat_summary(
 
 **Tools Executed**: {', '.join(tools_executed) if tools_executed else 'None'}
 
-**Messages Processed**: {len(messages_to_summarize)}
+**Messages Processed**: {len(messages_to_summarize):,}
 
-**Key Findings**: {len(key_findings)} observations recorded
+**Key Findings**: {len(key_findings):,} observations recorded
 
 *Note: LLM summarization failed, using fallback template*
 """
@@ -434,8 +433,6 @@ def trim_messages_from_middle(
     - The function logs informational messages about the trimming process and warnings if aggressive trimming is required.
     - If the original list contains seven or fewer messages, it is returned unchanged because all messages can be kept without exceeding typical budgets.
     """
-    from .context_manager import estimate_tokens
-
     if len(messages) <= 7:
         return messages
 
@@ -453,7 +450,7 @@ def trim_messages_from_middle(
     if preserved_tokens > max_tokens:
         # Even preserved messages exceed budget, just keep first 2 + last 3
         trimmed = messages[:2] + messages[-3:]
-        logger.warning(f"Aggressive trimming required: {len(messages)} → {len(trimmed)} messages")
+        logger.warning(f"Aggressive trimming required: {len(messages):,} → {len(trimmed):,} messages")
         return trimmed
 
     # Add messages from middle until we hit budget
@@ -491,8 +488,8 @@ def trim_messages_from_middle(
 
     new_tokens = sum(estimate_tokens(json.dumps(msg, default=str)) for msg in trimmed)
     logger.info(
-        f"Trimmed {len(messages)} → {len(trimmed)} messages, "
-        f"{current_tokens} → {new_tokens} tokens"
+        f"Trimmed {len(messages):,} → {len(trimmed):,} messages, "
+        f"{current_tokens:,} → {new_tokens:,} tokens"
     )
 
     return trimmed

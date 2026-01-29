@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ClipboardDocumentIcon, CheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import ToolExecutionCard from './ToolExecutionCard';
+import RoutingBadge from './RoutingBadge';
 
 interface AgentMessageCardProps {
   message: ChatMessage;
@@ -209,6 +210,10 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
   const canContinue = message.metadata?.can_continue;
   const jobId = message.metadata?.job_id;
   const stats = message.metadata?.stats;
+  
+  // Extract routing metadata
+  const routingMetadata = message.metadata?.routing_metadata;
+  const playbookMetadata = message.metadata?.playbook_metadata;
 
   // Prefer explicit tool_executions from database over metadata
   // This is the new architecture - tool executions are stored in a separate table
@@ -494,6 +499,23 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
           )}
         </div>
 
+        {/* Routing Badge - show handler type and playbook */}
+        {routingMetadata && (
+          <RoutingBadge
+            handlerType={routingMetadata.handler_type}
+            handlerDisplayName={routingMetadata.handler_display_name}
+            playbookName={playbookMetadata?.playbook_name}
+            playbookDisplayName={playbookMetadata?.playbook_display_name}
+            stats={{
+              sources_retrieved: routingMetadata.sources_retrieved,
+              expansion_terms: routingMetadata.expansion_terms,
+              entries_affected: routingMetadata.entries_affected,
+              effort_level: routingMetadata.effort_level,
+              max_turns: routingMetadata.max_turns,
+            }}
+          />
+        )}
+
         {/* Chronological event stream - interleaves thinking and tool executions */}
         {/* Always show if we have events, even when completed or starting */}
         {eventStream.length > 0 && (
@@ -598,9 +620,9 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
                   onChange={(e) => setSelectedEffort(e.target.value)}
                   className="text-sm px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
-                  <option value="low">Quick (+5 turns)</option>
-                  <option value="medium">Standard (+10 turns)</option>
-                  <option value="high">Thorough (+15 turns)</option>
+                                    <option value="low">Quick (+3 turns)</option>
+                    <option value="medium">Standard (+6 turns)</option>
+                    <option value="high">Thorough (+9 turns)</option>
                 </select>
                 <button
                   onClick={() => onContinue(jobId, selectedEffort)}

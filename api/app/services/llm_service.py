@@ -367,9 +367,9 @@ class LLMService:
         tokens_removed = current_tokens - self.estimate_messages_tokens(final_messages)
 
         logger.info(
-            f"Context trimmed: {len(messages)} → {len(final_messages)} messages, "
-            f"{current_tokens} → {self.estimate_messages_tokens(final_messages)} tokens "
-            f"({tokens_removed} tokens removed)"
+            f"Context trimmed: {len(messages):,} → {len(final_messages):,} messages, "
+            f"{current_tokens:,} → {self.estimate_messages_tokens(final_messages):,} tokens "
+            f"({tokens_removed:,} tokens removed)"
         )
 
         return final_messages, tokens_removed
@@ -422,7 +422,7 @@ class LLMService:
         if enforce_context_limit:
             messages, tokens_removed = self.enforce_context_limit(messages)
             if tokens_removed > 0:
-                logger.info(f"Context enforcement removed {tokens_removed} tokens")
+                logger.info(f"Context enforcement removed {tokens_removed:,} tokens")
 
         # Use config defaults if not specified
         if max_tokens is None:
@@ -472,8 +472,8 @@ class LLMService:
                         result = await response.json()
 
                         logger.debug(
-                            f"LLM call successful: {len(messages)} messages, "
-                            f"~{self.estimate_messages_tokens(messages)} input tokens"
+                            f"LLM call successful: {len(messages):,} messages, "
+                            f"~{self.estimate_messages_tokens(messages):,} input tokens"
                         )
 
                         return result
@@ -531,7 +531,7 @@ class LLMService:
         if enforce_context_limit:
             messages, tokens_removed = self.enforce_context_limit(messages)
             if tokens_removed > 0:
-                logger.info(f"Context enforcement removed {tokens_removed} tokens")
+                logger.info(f"Context enforcement removed {tokens_removed:,} tokens")
 
         # Use config defaults
         if max_tokens is None:
@@ -599,8 +599,8 @@ class LLMService:
                                 continue
 
                         logger.debug(
-                            f"LLM stream completed: {len(messages)} messages, "
-                            f"~{self.estimate_messages_tokens(messages)} input tokens"
+                            f"LLM stream completed: {len(messages):,} messages, "
+                            f"~{self.estimate_messages_tokens(messages):,} input tokens"
                         )
 
                         return  # Success
@@ -652,6 +652,7 @@ class EmbeddingService:
         model_name: str = "text-embedding-ada-002",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_backoff_base: int = DEFAULT_RETRY_BACKOFF_BASE,
+        timeout: int = 120,
     ):
         """
         Initialize an embedding service instance.
@@ -663,6 +664,7 @@ class EmbeddingService:
             model_name (str, optional): Identifier of the model to use for generating embeddings. Defaults to `"text-embedding-ada-002"`.
             max_retries (int, optional): Maximum number of retry attempts for transient request failures. Defaults to :data:`DEFAULT_MAX_RETRIES`.
             retry_backoff_base (int, optional): Base value used in exponential back-off calculations between retries. Defaults to :data:`DEFAULT_RETRY_BACKOFF_BASE`.
+            timeout (int, optional): Request timeout in seconds. Defaults to 120 seconds (2 minutes).
 
         Raises:
             ValueError: If `provider` is not one of the supported types or if required credentials are missing for the selected provider.
@@ -673,6 +675,7 @@ class EmbeddingService:
         self.model_name = model_name
         self.max_retries = max_retries
         self.retry_backoff_base = retry_backoff_base
+        self.timeout = timeout
 
         logger.debug(f"EmbeddingService initialized: {provider} at {api_url}")
 
@@ -728,7 +731,7 @@ class EmbeddingService:
                         self.api_url,
                         json=payload,
                         headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=30.0),
+                        timeout=aiohttp.ClientTimeout(total=self.timeout),
                     ) as response:
                         if response.status != 200:
                             error_text = await response.text()
@@ -753,8 +756,8 @@ class EmbeddingService:
                         raise ValueError(f"Unexpected response format: {result.keys()}")
 
                 logger.debug(
-                    f"Embedding successful: {len(texts)} texts, "
-                    f"{len(embeddings)} embeddings generated"
+                    f"Embedding successful: {len(texts):,} texts, "
+                    f"{len(embeddings):,} embeddings generated"
                 )
 
                 return embeddings

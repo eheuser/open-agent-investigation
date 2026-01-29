@@ -221,7 +221,7 @@ async def handle_rag_query(
 
         # Step 3: Generate embeddings for original query + expanded terms
         all_queries = [user_query] + expanded_terms
-        logger.info(f"Generating embeddings for {len(all_queries)} queries")
+        logger.info(f"Generating embeddings for {len(all_queries):,} queries")
         query_vecs = await embedder.embed(all_queries)
 
         if len(query_vecs) == 0:
@@ -239,7 +239,7 @@ async def handle_rag_query(
         try:
             for i, query_vec in enumerate(query_vecs):
                 query_text = all_queries[i][:50]
-                logger.debug(f"Searching with query {i+1}/{len(query_vecs)}: {query_text}...")
+                logger.debug(f"Searching with query {i+1}/{len(query_vecs):,}: {query_text}...")
 
                 chunks = await retriever.retrieve(
                     query_vec=query_vec,
@@ -249,7 +249,7 @@ async def handle_rag_query(
                 )
                 all_chunks.extend(chunks)
 
-            logger.info(f"Retrieved {len(all_chunks)} total chunks from {len(query_vecs)} queries")
+            logger.info(f"Retrieved {len(all_chunks):,} total chunks from {len(query_vecs):,} queries")
         except Exception as retrieval_error:
             logger.error(f"Retrieval error: {retrieval_error}", exc_info=True)
             # Rollback the transaction to clean up state
@@ -263,7 +263,7 @@ async def handle_rag_query(
 
         # Step 5: Deduplicate and re-rank chunks by score
         chunks = _deduplicate_and_rerank(all_chunks, top_k=50)
-        logger.info(f"After deduplication and re-ranking: {len(chunks)} chunks")
+        logger.info(f"After deduplication and re-ranking: {len(chunks):,} chunks")
 
         # Build context from chunks
         context_parts = []
@@ -362,7 +362,7 @@ async def handle_rag_query(
                     "type": "tool_execution",
                     "sequence": sequence_num,
                     "tool_name": "retrieve_sources",
-                    "display_name": f"Retrieved Sources ({len(chunks)} results)",
+                    "display_name": f"Retrieved Sources ({len(chunks):,} results)",
                     "status": "completed",
                 }
             )
@@ -376,6 +376,9 @@ async def handle_rag_query(
                 "content": answer,
             }
         )
+
+        # Get embedding provider for metadata
+        embedding_provider = str(getattr(llm_config, "embedding_provider", "unknown"))
 
         yield {
             "type": "answer_chunk",
@@ -391,6 +394,14 @@ async def handle_rag_query(
                 "stats": {
                     "sources_retrieved": len(chunks),
                     "expansion_terms": len(expanded_terms),
+                },
+                "routing_metadata": {
+                    "handler_type": "rag",
+                    "handler_display_name": "Augmented Chat (RAG)",
+                    "sources_retrieved": len(chunks),
+                    "expansion_terms": len(expanded_terms),
+                    "embedding_provider": embedding_provider,
+                    "total_candidates": len(all_chunks),
                 },
             },
         }
@@ -482,7 +493,7 @@ async def persist_rag_tool_executions(
                 display_name="Query Expansion",
                 arguments={},
                 result={"expanded_terms": expanded_terms},
-                result_summary=f"Generated {len(expanded_terms)} search terms: {', '.join(expanded_terms[:3])}{'...' if len(expanded_terms) > 3 else ''}",
+                result_summary=f"Generated {len(expanded_terms):,} search terms: {', '.join(expanded_terms[:3])}{'...' if len(expanded_terms) > 3 else ''}",
                 status="completed",
                 execution_number=current_tool,
                 max_tools=total_tools,
@@ -508,7 +519,7 @@ async def persist_rag_tool_executions(
             sources_tool = ToolExecution(
                 chat_message_id=message_id,
                 tool_name="retrieve_sources",
-                display_name=f"Retrieved Sources ({len(chunks_data)} results)",
+                display_name=f"Retrieved Sources ({len(chunks_data):,} results)",
                 arguments={
                     "total_sources": len(chunks_data),
                     "sources_by_type": sources_by_type,
@@ -527,7 +538,7 @@ async def persist_rag_tool_executions(
                         for i, chunk in enumerate(chunks_data)
                     ]
                 },
-                result_summary=f"Retrieved {len(chunks_data)} sources ({type_summary})",
+                result_summary=f"Retrieved {len(chunks_data):,} sources ({type_summary})",
                 status="completed",
                 execution_number=current_tool,
                 max_tools=total_tools,
@@ -537,7 +548,7 @@ async def persist_rag_tool_executions(
             await db.flush()
             execution_ids.append(sources_tool.execution_id)
 
-        logger.info(f"Persisted {len(execution_ids)} RAG tool executions for message {message_id}")
+        logger.info(f"Persisted {len(execution_ids):,} RAG tool executions for message {message_id}")
         return execution_ids
 
     except Exception as e:

@@ -27,6 +27,7 @@ class Embedder:
         api_url: str,
         api_key: Optional[str] = None,
         model_name: str = "text-embedding-ada-002",
+        timeout: int = 120,
     ):
         """
         Initialize a backward-compatible embedder that forwards requests to a centralized embedding service.
@@ -41,6 +42,8 @@ class Embedder:
             Authentication token for the provider. Required when `provider` is `'openai'` or `'cohere'`; ignored for Ollama which may run locally without a key.
         model_name : str, default='text-embedding-ada-002'
             Identifier of the model to request embeddings from. The default corresponds to OpenAI's Ada embedding model but can be overridden for other providers.
+        timeout : int, default=120
+            Request timeout in seconds. Defaults to 120 seconds (2 minutes) which is suitable for batch embedding operations.
 
         Notes
         -----
@@ -52,6 +55,7 @@ class Embedder:
             api_url=api_url,
             api_key=api_key,
             model_name=model_name,
+            timeout=timeout,
         )
 
         # Keep these for backward compatibility

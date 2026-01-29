@@ -1,25 +1,32 @@
 import asyncio
 import logging
+import time
 import uuid as uuid_pkg
 import multiprocessing as mp
 import signal
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, cast
 import aiohttp
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update, and_, text
 
 from app.models.job_parsing import ParsingJob, JobStatus
 from app.models.job_agent import AgentJob
 from app.models.llm_config import LLMProviderConfig
+from app.models.investigation import Investigation
 from app.core.config import settings
+from app.crud import investigation as inv_crud
+from app.crud.investigation_choice import create_investigation_choices_bulk
+from app.schemas.investigation_choice import InvestigationChoiceCreate
 from worker.parsers import parse_artifact
 from worker.agents.assistant_agent import AssistantAgent
-from app.crud import investigation as inv_crud
+from worker.core.llm_client import LLMClient
+from worker.agents.field_dictionary_finalizer import finalize_field_dictionary
 
 from app.utils.log_setup import get_logger
+from app.utils.http_log_handler import setup_worker_logging
 
 logger = get_logger(__name__)
 
@@ -35,9 +42,8 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
     This coroutine is invoked after parsing has finished for a given
     investigation. It retrieves the investigation’s owner, obtains the
     owner’s active LLM provider configuration, creates an `LLMClient`,
-    and calls :func:`worker.agents.field_dictionary_db.generate_field_dictionary`
-    to pre-populate the `field_dictionary` table with LLM-generated
-    descriptions for each JSONB field discovered in the investigation.
+    and calls :func:`worker.agents.field_dictionary_finalizer.finalize_field_dictionary`
+    to generate LLM descriptions for pending fields discovered during parsing.
     A rough count of processed fields is logged and a WebSocket notification
     is sent to inform connected clients that the dictionary is ready.
 
@@ -61,8 +67,6 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
 
         async with AsyncSessionLocal() as db:
             # Get investigation owner to fetch their LLM config
-            from app.models.investigation import Investigation
-
             result = await db.execute(
                 select(Investigation).where(Investigation.investigation_id == investigation_id)
             )
@@ -97,8 +101,6 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
                 return
 
             # Create LLM client
-            from worker.core.llm_client import LLMClient
-
             llm_endpoint = cast(str, llm_config.api_endpoint)
             llm_model = cast(str, llm_config.model_name)
             api_key_raw = llm_config.api_key
@@ -111,27 +113,24 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
                 api_key=llm_api_key,
             )
 
-            # Generate field dictionary
-            from worker.agents.field_dictionary_db import generate_field_dictionary
-
+            # OPTIMIZED: Use new finalizer that only processes pending fields
             logger.info(
-                f"Generating field dictionary for investigation {investigation_id} using {llm_model}..."
+                f"Finalizing field dictionary for investigation {investigation_id} using {llm_model}..."
             )
 
-            field_dict = await generate_field_dictionary(
+            stats = await finalize_field_dictionary(
                 db=db,
                 investigation_id=str(investigation_id),
                 llm_client=llm_client,
-                max_fields_per_type=30,
-                llm_max_context=llm_max_context,
+                max_output_tokens=min(16_384, int(llm_max_context * 0.75)),
             )
 
-            # Count how many fields were processed
-            field_count = field_dict.count("`") // 2  # Rough estimate
+            fields_processed = stats.get("fields_processed", 0)
+            event_types = stats.get("event_types_processed", 0)
 
             logger.info(
-                f"Field dictionary generation complete for investigation {investigation_id}. "
-                f"Processed ~{field_count} fields."
+                f"Field dictionary finalization complete for investigation {investigation_id}. "
+                f"Processed {fields_processed:,} fields across {event_types:,} event types."
             )
 
             # Notify WebSocket clients that field dictionary is ready
@@ -140,7 +139,8 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
                 message={
                     "type": "field_dictionary_ready",
                     "investigation_id": str(investigation_id),
-                    "field_count": field_count,
+                    "field_count": fields_processed,
+                    "event_types": event_types,
                 },
             )
 
@@ -205,7 +205,7 @@ async def check_and_clear_parsing_lock(db: AsyncSession, investigation_id: uuid_
         asyncio.create_task(generate_field_dictionary_background(investigation_id))
     else:
         logger.debug(
-            f"Investigation {investigation_id} still has {len(remaining_jobs)} parsing job(s) pending/running"
+            f"Investigation {investigation_id} still has {len(remaining_jobs):,} parsing job(s) pending/running"
         )
 
 
@@ -425,8 +425,6 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
         logger.info(f"Processing job {job_id} for artifact {artifact_id}")
 
         # Get investigation to find user_id
-        from app.models.investigation import Investigation
-
         result = await db.execute(
             select(Investigation).where(Investigation.investigation_id == investigation_id)
         )
@@ -444,10 +442,8 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
         )
 
         # Mark job as completed using raw SQL to avoid session issues
-        from sqlalchemy import text as sql_text
-
         await db.execute(
-            sql_text(
+            text(
                 """
                 UPDATE jobs_parsing 
                 SET status = 'completed', 
@@ -490,10 +486,8 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
 
         # Use raw SQL to update job status to avoid ORM session issues
         try:
-            from sqlalchemy import text as sql_text
-
             await db.execute(
-                sql_text(
+                text(
                     """
                     UPDATE jobs_parsing 
                     SET status = 'failed', 
@@ -533,23 +527,32 @@ async def process_agent_job(
         ValueError: If no active LLM configuration is found for the job's user.
         Exception: Any unexpected error during processing results in the job being marked as failed and a `job_failed` message being sent to connected clients.
     """
+    # Extract job attributes early to avoid lazy loading issues after rollback
+    job_id = job.job_id
+    investigation_id = job.investigation_id
+    user_id = job.user_id
+    policy_id = job.policy_id
+    seed_instructions = job.seed_instructions
+    rule_values = job.rule_values
+    job_metadata = job.job_metadata
+    
     try:
-        logger.info(f"Processing agent job {job.job_id} with policy {job.policy_id}")
+        logger.info(f"Processing agent job {job_id} with policy {policy_id}")
 
         # Extract effort level from rule_values
-        effort = job.rule_values.get("effort", "medium")
+        effort = rule_values.get("effort", "medium")
 
         # Retrieve LLM configuration for the user (REQUIRED - no fallbacks)
         result = await db.execute(
             select(LLMProviderConfig)
-            .where(LLMProviderConfig.user_id == job.user_id)
+            .where(LLMProviderConfig.user_id == user_id)
             .where(LLMProviderConfig.is_active == True)
         )
         llm_config = result.scalar_one_or_none()
 
         if not llm_config:
             raise ValueError(
-                f"No active LLM configuration found for user {job.user_id}. "
+                f"No active LLM configuration found for user {user_id}. "
                 f"Please create an LLM configuration via POST /api/v1/llm-config/ before running agent jobs."
             )
 
@@ -560,6 +563,7 @@ async def process_agent_job(
         llm_api_key = cast(str, api_key_raw) if api_key_raw is not None else None
         llm_max_context = cast(int, llm_config.max_context_length)
         llm_temperature = float(cast(float, llm_config.temperature))
+        
         llm_top_p = float(cast(float, llm_config.top_p)) if llm_config.top_p is not None else None
         llm_top_k = cast(int, llm_config.top_k) if llm_config.top_k is not None else None
         llm_min_p = float(cast(float, llm_config.min_p)) if llm_config.min_p is not None else None
@@ -583,19 +587,19 @@ async def process_agent_job(
         max_turns = effort_to_turns.get(effort, 6)
 
         # Check if this is a continuation job
-        if job.job_metadata and job.job_metadata.get("continued_from"):
-            additional_turns = job.job_metadata.get("additional_turns", 6)
+        if job_metadata and job_metadata.get("continued_from"):
+            additional_turns = job_metadata.get("additional_turns", 6)
             max_turns = additional_turns
             logger.info(
                 f"Continuation job: adding {additional_turns} turns "
-                f"(continued from job {job.job_metadata['continued_from']})"
+                f"(continued from job {job_metadata['continued_from']})"
             )
 
         agent = AssistantAgent(
             db=db,
-            investigation_id=str(job.investigation_id),
-            job_id=job.job_id,
-            question=job.seed_instructions,
+            investigation_id=str(investigation_id),
+            job_id=job_id,
+            question=seed_instructions,
             llm_endpoint=llm_endpoint,
             llm_model=llm_model,
             llm_api_key=llm_api_key,
@@ -606,7 +610,7 @@ async def process_agent_job(
             llm_min_p=llm_min_p,
             llm_timeout=llm_timeout,
             max_iterations=max_turns,
-            user_id=job.user_id,
+            user_id=user_id,
         )
 
         # Run agent and stream progress updates
@@ -617,12 +621,12 @@ async def process_agent_job(
 
         async for update in agent.run():
             # Send progress updates via WebSocket
-            await notify_websocket_clients(investigation_id=job.investigation_id, message=update)
+            await notify_websocket_clients(investigation_id=investigation_id, message=update)
 
             # Track if agent encountered an error
             if update.get("type") == "agent_error":
                 agent_error = update
-                logger.error(f"Agent job {job.job_id} encountered error: {update.get('error')}")
+                logger.error(f"Agent job {job_id} encountered error: {update.get('error')}")
 
             # Collect summary if final message
             if update.get("type") == "agent_completed":
@@ -639,7 +643,7 @@ async def process_agent_job(
 
             await db.commit()
 
-            logger.error(f"Agent job {job.job_id} failed: {job.error_message}")
+            logger.error(f"Agent job {job_id} failed: {job.error_message}")
 
             # Note: agent_error message was already sent by the agent during run()
             # No need to send job_failed - it would create a duplicate message
@@ -651,19 +655,15 @@ async def process_agent_job(
 
             await db.commit()
 
-            logger.info(f"Agent job {job.job_id} completed successfully")
+            logger.info(f"Agent job {job_id} completed successfully")
 
             # Check if investigation was incomplete and generate continuation choices
             if investigation_incomplete:
                 logger.info(
-                    f"Investigation incomplete - generating continuation choices for job {job.job_id}"
+                    f"Investigation incomplete - generating continuation choices for job {job_id}"
                 )
 
                 try:
-                    # Import the CRUD function
-                    from app.crud.investigation_choice import create_investigation_choices_bulk
-                    from app.schemas.investigation_choice import InvestigationChoiceCreate
-
                     # Generate 3 continuation choices with different effort levels
                     turns_executed = agent_stats.get("turns_executed", 0)
                     tools_executed = agent_stats.get("tool_executions", 0)
@@ -671,15 +671,15 @@ async def process_agent_job(
 
                     choices_to_create = [
                         InvestigationChoiceCreate(
-                            investigation_id=job.investigation_id,
-                            job_id=job.job_id,
+                            investigation_id=investigation_id,
+                            job_id=job_id,
                             title="Quick follow-up (3 more turns)",
                             description=f"Continue investigating with 3 additional turns. So far: {turns_executed} turns, {tools_executed} tools, {timeline_entries} timeline entries.",
                             rationale=f"The investigation reached the maximum of {turns_executed} turns without completion. A quick follow-up can explore additional leads or verify findings.",
-                            suggested_query=job.seed_instructions,
+                            suggested_query=seed_instructions,
                             suggested_effort="low",
                             tool_suggestions={
-                                "continued_from": job.job_id,
+                                "continued_from": job_id,
                                 "additional_turns": 3,
                                 "original_turns": turns_executed,
                                 "original_tools": tools_executed,
@@ -687,15 +687,15 @@ async def process_agent_job(
                             display_order=1,
                         ),
                         InvestigationChoiceCreate(
-                            investigation_id=job.investigation_id,
-                            job_id=job.job_id,
+                            investigation_id=investigation_id,
+                            job_id=job_id,
                             title="Standard follow-up (6 more turns)",
                             description=f"Continue investigating with 6 additional turns. So far: {turns_executed} turns, {tools_executed} tools, {timeline_entries} timeline entries.",
                             rationale=f"The investigation reached the maximum of {turns_executed} turns without completion. A standard follow-up provides balanced depth for thorough analysis.",
-                            suggested_query=job.seed_instructions,
+                            suggested_query=seed_instructions,
                             suggested_effort="medium",
                             tool_suggestions={
-                                "continued_from": job.job_id,
+                                "continued_from": job_id,
                                 "additional_turns": 6,
                                 "original_turns": turns_executed,
                                 "original_tools": tools_executed,
@@ -703,15 +703,15 @@ async def process_agent_job(
                             display_order=2,
                         ),
                         InvestigationChoiceCreate(
-                            investigation_id=job.investigation_id,
-                            job_id=job.job_id,
+                            investigation_id=investigation_id,
+                            job_id=job_id,
                             title="Thorough follow-up (9 more turns)",
                             description=f"Continue investigating with 9 additional turns. So far: {turns_executed} turns, {tools_executed} tools, {timeline_entries} timeline entries.",
                             rationale=f"The investigation reached the maximum of {turns_executed} turns without completion. A thorough follow-up enables comprehensive analysis of complex patterns.",
-                            suggested_query=job.seed_instructions,
+                            suggested_query=seed_instructions,
                             suggested_effort="high",
                             tool_suggestions={
-                                "continued_from": job.job_id,
+                                "continued_from": job_id,
                                 "additional_turns": 9,
                                 "original_turns": turns_executed,
                                 "original_tools": tools_executed,
@@ -724,16 +724,16 @@ async def process_agent_job(
                     created_choices = await create_investigation_choices_bulk(db, choices_to_create)
 
                     logger.info(
-                        f"Created {len(created_choices)} continuation choices for job {job.job_id} "
-                        f"(investigation {job.investigation_id})"
+                        f"Created {len(created_choices):,} continuation choices for job {job_id} "
+                        f"(investigation {investigation_id})"
                     )
 
                     # Notify UI that choices are available
                     await notify_websocket_clients(
-                        investigation_id=job.investigation_id,
+                        investigation_id=investigation_id,
                         message={
                             "type": "investigation_choices_available",
-                            "job_id": job.job_id,
+                            "job_id": job_id,
                             "count": len(created_choices),
                             "choices": [
                                 {
@@ -750,7 +750,7 @@ async def process_agent_job(
 
                 except Exception as choice_error:
                     logger.error(
-                        f"Failed to create investigation choices for job {job.job_id}: {choice_error}",
+                        f"Failed to create investigation choices for job {job_id}: {choice_error}",
                         exc_info=True,
                     )
                     # Don't fail the job if choice creation fails
@@ -759,7 +759,7 @@ async def process_agent_job(
             # No need to send job_completed - it would create a duplicate message
 
     except Exception as e:
-        logger.error(f"Agent job {job.job_id} failed: {e}", exc_info=True)
+        logger.error(f"Agent job {job_id} failed: {e}", exc_info=True)
 
         # Mark job as failed
         job.status = JobStatus.FAILED
@@ -770,10 +770,10 @@ async def process_agent_job(
 
         # Notify of failure
         await notify_websocket_clients(
-            investigation_id=job.investigation_id,
+            investigation_id=investigation_id,
             message={
                 "type": "job_failed",
-                "job_id": job.job_id,
+                "job_id": job_id,
                 "error": str(e)[:500],
             },
         )
@@ -796,8 +796,6 @@ async def recover_stale_jobs(db: AsyncSession):
     Raises:
         Any exception raised by the database layer will propagate to the caller.
     """
-    from datetime import timedelta
-
     stale_threshold = datetime.utcnow() - timedelta(minutes=30)
 
     # Reset stale parsing jobs
@@ -865,6 +863,13 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
     """
     # Set process name for logging
     mp.current_process().name = f"Worker-{worker_index}"
+
+    # Configure HTTP logging to send logs to API server
+    setup_worker_logging(
+        api_host=settings.api_host,
+        api_port=settings.api_port,
+        process_name=f"Worker-{worker_index}"
+    )
 
     # Configure logging for this process
     logger.info(f"Worker process {worker_index} starting with ID {worker_id}")
@@ -1084,8 +1089,6 @@ async def monitor_stop_signals(control_queues: dict):
         try:
             async with AsyncSessionLocal() as db:
                 # Find jobs with stop_requested flag
-                from sqlalchemy import text
-
                 result = await db.execute(
                     text(
                         """
@@ -1256,8 +1259,6 @@ def main():
                     logger.info(f"Restarted worker {i} (PID {new_worker.pid})")
 
             # Sleep before next check
-            import time
-
             time.sleep(5)
 
     except KeyboardInterrupt:

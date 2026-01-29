@@ -117,7 +117,7 @@ class Retriever:
             query_list = query_vec.tolist()
             query_vec_str = "[" + ",".join(map(str, query_list)) + "]"
             logger.debug(
-                f"Query vector length: {len(query_list)}, investigation_id: {investigation_id}"
+                f"Query vector length: {len(query_list):,}, investigation_id: {investigation_id}"
             )
 
             # Build SQL query
@@ -164,7 +164,7 @@ class Retriever:
             rows = result.fetchall()
 
             logger.info(
-                f"Vector search returned {len(rows)} candidates (out of {total_embeddings} total embeddings)"
+                f"Vector search returned {len(rows):,} candidates (out of {total_embeddings} total embeddings)"
             )
 
             # Log first result for debugging
@@ -241,12 +241,12 @@ class Retriever:
                         )
                     )
                     logger.debug(
-                        f"Successfully loaded text for {owner_type}/{owner_id} ({i+1}/{len(candidates)})"
+                        f"Successfully loaded text for {owner_type}/{owner_id} ({i+1}/{len(candidates):,})"
                     )
             except Exception as e:
                 error_msg = str(e)
                 logger.error(
-                    f"Error loading text for {owner_type}/{owner_id} ({i+1}/{len(candidates)}): {error_msg}"
+                    f"Error loading text for {owner_type}/{owner_id} ({i+1}/{len(candidates):,}): {error_msg}"
                 )
 
                 # If transaction is aborted, rollback and stop processing
@@ -255,7 +255,7 @@ class Retriever:
                     or "InFailedSQLTransactionError" in error_msg
                 ):
                     logger.warning(
-                        f"Transaction aborted at candidate {i+1}/{len(candidates)}, rolling back and stopping"
+                        f"Transaction aborted at candidate {i+1}/{len(candidates):,}, rolling back and stopping"
                     )
                     try:
                         await self.db.rollback()
@@ -267,7 +267,7 @@ class Retriever:
                 # For other errors, continue to next candidate
                 continue
 
-        logger.info(f"Loaded {len(chunks)} chunks from {len(candidates)} candidates")
+        logger.info(f"Loaded {len(chunks):,} chunks from {len(candidates):,} candidates")
         return chunks
 
     async def _fetch_text(self, owner_type: str, owner_id: int) -> Optional[str]:
@@ -330,7 +330,7 @@ class Retriever:
                 payload_str = str(payload)[:500] if payload else "No details"
                 text_result = f"{event_type} at {timestamp_str}: {payload_str}"
                 logger.debug(
-                    f"Successfully fetched event {owner_id}, text length: {len(text_result)}"
+                    f"Successfully fetched event {owner_id}, text length: {len(text_result):,}"
                 )
                 return text_result
 

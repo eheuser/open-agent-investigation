@@ -2,9 +2,13 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from sqlalchemy import update, select, or_
+from datetime import datetime
 
 from .core.config import settings
 from .core.database import get_db, init_db
+from .models.job_parsing import ParsingJob, JobStatus
+from .models.job_agent import AgentJob
 from .routers import (
     auth,
     investigations,
@@ -22,8 +26,11 @@ from .routers import (
     embeddings,
     investigation_choices,
     reports,
+    logs,
+    playbooks,
 )
 from .utils.log_setup import get_logger
+from .services.log_streaming import setup_log_streaming
 
 logger = get_logger(__name__)
 
@@ -58,6 +65,8 @@ app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(embeddings.router, prefix="/api/v1/embeddings", tags=["embeddings"])
 app.include_router(investigation_choices.router, tags=["investigation-choices"])
 app.include_router(reports.router, tags=["reports"])
+app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
+app.include_router(playbooks.router, tags=["playbooks"])
 
 
 @app.get("/health")
@@ -106,19 +115,123 @@ async def startup_event():
     * Displays the database host extracted from `settings.database_url` (or indicates that it is configured without a host).
     * Indicates whether a JWT secret has been provided.
     * Notes that tables are created externally via `bootstrap.sql` rather than by SQLAlchemy.
+    * Cancels any running or pending jobs from previous service instances.
     * Confirms that the chat router is enabled.
     * Signals that the API is ready to accept requests.
 
     No return value. Raises any exception propagated from logging or settings access.
     """
+        # Initialize log streaming before any other logging
+    setup_log_streaming()
+    
     logger.info("Starting Open Agent Investigation API...")
     logger.info(
         f"Database: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'configured'}"
     )
     logger.info(f"JWT Secret: {'configured' if settings.jwt_secret else 'missing'}")
     # Note: Tables are created by bootstrap.sql, not by SQLAlchemy
+    
+    # Clean up any running/pending jobs from previous service instances
+    await cleanup_stale_jobs()
+    
     logger.info("Chat router enabled")
+    logger.info("Log streaming enabled")
     logger.info("API ready")
+
+
+async def cleanup_stale_jobs():
+    """
+    Cancel or mark as failed any jobs that are in PENDING or RUNNING state.
+    
+    This function is called on application startup to handle jobs that may have been
+    left in an incomplete state due to service crashes or restarts. It:
+    
+    * Marks all RUNNING jobs as FAILED with an appropriate error message
+    * Marks all PENDING jobs as FAILED with an appropriate error message
+    * Sets the finished_at timestamp to the current time
+    * Logs the number of jobs cleaned up for both parsing and agent jobs
+    
+    This prevents jobs from hanging indefinitely and cluttering the job queue.
+    
+    Returns:
+        None
+    
+    Raises:
+        May raise database exceptions if the update operations fail.
+    """
+    try:
+        # Get a database session
+        async for db in get_db():
+            try:
+                # Clean up parsing jobs
+                parsing_result = await db.execute(
+                    select(ParsingJob).where(
+                        or_(
+                            ParsingJob.status == JobStatus.RUNNING,
+                            ParsingJob.status == JobStatus.PENDING
+                        )
+                    )
+                )
+                stale_parsing_jobs = parsing_result.scalars().all()
+                
+                if stale_parsing_jobs:
+                    await db.execute(
+                        update(ParsingJob)
+                        .where(
+                            or_(
+                                ParsingJob.status == JobStatus.RUNNING,
+                                ParsingJob.status == JobStatus.PENDING
+                            )
+                        )
+                        .values(
+                            status=JobStatus.FAILED,
+                            finished_at=datetime.utcnow(),
+                            error_message="Job cancelled due to service restart"
+                        )
+                    )
+                    logger.info(f"Cleaned up {len(stale_parsing_jobs)} stale parsing job(s)")
+                
+                # Clean up agent jobs
+                agent_result = await db.execute(
+                    select(AgentJob).where(
+                        or_(
+                            AgentJob.status == JobStatus.RUNNING,
+                            AgentJob.status == JobStatus.PENDING
+                        )
+                    )
+                )
+                stale_agent_jobs = agent_result.scalars().all()
+                
+                if stale_agent_jobs:
+                    await db.execute(
+                        update(AgentJob)
+                        .where(
+                            or_(
+                                AgentJob.status == JobStatus.RUNNING,
+                                AgentJob.status == JobStatus.PENDING
+                            )
+                        )
+                        .values(
+                            status=JobStatus.FAILED,
+                            finished_at=datetime.utcnow(),
+                            error_message="Job cancelled due to service restart"
+                        )
+                    )
+                    logger.info(f"Cleaned up {len(stale_agent_jobs)} stale agent job(s)")
+                
+                # Commit the changes
+                await db.commit()
+                
+                if not stale_parsing_jobs and not stale_agent_jobs:
+                    logger.info("No stale jobs found")
+                    
+            finally:
+                await db.close()
+            break  # Exit after first iteration
+            
+    except Exception as e:
+        logger.error(f"Error cleaning up stale jobs: {e}")
+        # Don't raise - we don't want to prevent startup
 
 
 @app.on_event("shutdown")

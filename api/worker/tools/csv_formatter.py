@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 from typing import List, Dict, Any
 
 
@@ -46,8 +47,6 @@ def events_to_csv(events: List[Dict[str, Any]]) -> str:
                 flattened_event[key] = ""
             elif isinstance(value, (dict, list)):
                 # Convert complex types to compact JSON strings
-                import json
-
                 flattened_event[key] = json.dumps(value, separators=(",", ":"))
             else:
                 flattened_event[key] = str(value)

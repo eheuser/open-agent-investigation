@@ -13,6 +13,7 @@ from app.services.rag.embedding_service import (
     generate_embeddings_for_events,
     generate_embedding_for_chat_message,
     generate_embedding_for_timeline_entry,
+    generate_embeddings_for_timeline_entries,
 )
 
 
@@ -474,3 +475,204 @@ class TestGenerateEmbeddingForTimelineEntry:
                 )
 
                 assert result is None
+
+
+@pytest.mark.unit
+class TestGenerateEmbeddingsForTimelineEntries:
+    """Test generate_embeddings_for_timeline_entries function (batch processing)."""
+
+    async def test_empty_entry_list(self):
+        """
+        Test that batch embedding generation returns zero when given an empty list of entry IDs.
+        """
+        db = AsyncMock()
+
+        result = await generate_embeddings_for_timeline_entries(
+            db=db, entry_ids=[], user_id=1
+        )
+
+        assert result == 0
+
+    async def test_no_llm_config(self):
+        """
+        Test that batch embedding generation returns zero when no active LLM configuration exists.
+        """
+        db = AsyncMock()
+
+        with patch("app.services.rag.embedding_service.get_active_llm_config", return_value=None):
+            result = await generate_embeddings_for_timeline_entries(
+                db=db, entry_ids=[1, 2, 3], user_id=1
+            )
+
+            assert result == 0
+
+    async def test_no_embedding_provider(self):
+        """
+        Test that batch embedding generation returns zero when embedding provider is not configured.
+        """
+        db = AsyncMock()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = None
+
+        with patch(
+            "app.services.rag.embedding_service.get_active_llm_config", return_value=mock_config
+        ):
+            result = await generate_embeddings_for_timeline_entries(
+                db=db, entry_ids=[1, 2, 3], user_id=1
+            )
+
+            assert result == 0
+
+    async def test_no_timeline_entries_found(self):
+        """
+        Test that batch embedding generation returns zero when none of the requested entries exist.
+        """
+        db = AsyncMock()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = "openai"
+        mock_config.embedding_api_url = "https://api.openai.com/v1/embeddings"
+        mock_config.embedding_api_key = "test-key"
+        mock_config.embedding_model_name = "text-embedding-ada-002"
+
+        # Mock empty query result
+        result_mock = MagicMock()
+        result_mock.fetchall.return_value = []
+        db.execute.return_value = result_mock
+
+        with patch(
+            "app.services.rag.embedding_service.get_active_llm_config", return_value=mock_config
+        ):
+            result = await generate_embeddings_for_timeline_entries(
+                db=db, entry_ids=[1, 2, 3], user_id=1
+            )
+
+            assert result == 0
+
+    async def test_batch_generate_embeddings_success(self):
+        """
+        Test successful batch generation of embeddings for multiple timeline entries.
+        """
+        db = AsyncMock()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = "openai"
+        mock_config.embedding_api_url = "https://api.openai.com/v1/embeddings"
+        mock_config.embedding_api_key = "test-key"
+        mock_config.embedding_model_name = "text-embedding-ada-002"
+
+        # Mock timeline entries query
+        timeline_result = MagicMock()
+        timeline_result.fetchall.return_value = [
+            (1, "Event 1", "Description 1"),
+            (2, "Event 2", "Description 2"),
+            (3, "Event 3", "Description 3"),
+        ]
+
+        # Mock embedding insertion results
+        insert_result = MagicMock()
+        insert_result.fetchone.return_value = (100,)
+
+        db.execute.side_effect = [
+            timeline_result,
+            insert_result,
+            AsyncMock(),
+            insert_result,
+            AsyncMock(),
+            insert_result,
+            AsyncMock(),
+        ]
+
+        # Mock embedder returning 3 embeddings
+        mock_embeddings = [
+            np.array([0.1, 0.2, 0.3]),
+            np.array([0.4, 0.5, 0.6]),
+            np.array([0.7, 0.8, 0.9]),
+        ]
+
+        with patch(
+            "app.services.rag.embedding_service.get_active_llm_config", return_value=mock_config
+        ):
+            with patch("app.services.rag.embedding_service.Embedder") as mock_embedder_class:
+                mock_embedder = AsyncMock()
+                mock_embedder.embed.return_value = mock_embeddings
+                mock_embedder_class.return_value = mock_embedder
+
+                result = await generate_embeddings_for_timeline_entries(
+                    db=db, entry_ids=[1, 2, 3], user_id=1
+                )
+
+                assert result == 3
+                # Verify embed was called with all texts at once (batched)
+                mock_embedder.embed.assert_called_once()
+
+    async def test_batch_processing_large_batch(self):
+        """
+        Test that batch processing handles large batches by splitting into chunks of 100.
+        """
+        db = AsyncMock()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = "openai"
+        mock_config.embedding_api_url = "https://api.openai.com/v1/embeddings"
+        mock_config.embedding_api_key = "test-key"
+        mock_config.embedding_model_name = "text-embedding-ada-002"
+
+        # Create 150 entries (should be split into 2 batches: 100 + 50)
+        timeline_entries = [(i, f"Event {i}", f"Description {i}") for i in range(150)]
+        timeline_result = MagicMock()
+        timeline_result.fetchall.return_value = timeline_entries
+
+        # Mock embedding insertion
+        insert_result = MagicMock()
+        insert_result.fetchone.return_value = (100,)
+
+        # Need to provide enough execute results for query + 150 inserts
+        db.execute.side_effect = [timeline_result] + [insert_result, AsyncMock()] * 150
+
+        # Mock embedder
+        mock_embeddings_batch1 = [np.array([float(i)] * 3) for i in range(100)]
+        mock_embeddings_batch2 = [np.array([float(i)] * 3) for i in range(50)]
+
+        with patch(
+            "app.services.rag.embedding_service.get_active_llm_config", return_value=mock_config
+        ):
+            with patch("app.services.rag.embedding_service.Embedder") as mock_embedder_class:
+                mock_embedder = AsyncMock()
+                # Return different batches for each call
+                mock_embedder.embed.side_effect = [mock_embeddings_batch1, mock_embeddings_batch2]
+                mock_embedder_class.return_value = mock_embedder
+
+                result = await generate_embeddings_for_timeline_entries(
+                    db=db, entry_ids=list(range(150)), user_id=1
+                )
+
+                assert result == 150
+                # Verify embed was called twice (2 batches)
+                assert mock_embedder.embed.call_count == 2
+
+    async def test_handles_exception(self):
+        """
+        Test that batch embedding generation handles exceptions gracefully and returns zero.
+        """
+        db = AsyncMock()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = "openai"
+        mock_config.embedding_api_url = "https://api.openai.com/v1/embeddings"
+        mock_config.embedding_api_key = "test-key"
+        mock_config.embedding_model_name = "text-embedding-ada-002"
+
+        with patch(
+            "app.services.rag.embedding_service.get_active_llm_config", return_value=mock_config
+        ):
+            with patch(
+                "app.services.rag.embedding_service.Embedder",
+                side_effect=Exception("Embedder error"),
+            ):
+                result = await generate_embeddings_for_timeline_entries(
+                    db=db, entry_ids=[1, 2, 3], user_id=1
+                )
+
+                assert result == 0
