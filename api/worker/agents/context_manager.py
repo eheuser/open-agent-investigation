@@ -5,6 +5,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from .field_dictionary_db import generate_field_dictionary
+from ..tools import event_tools
 
 logger = get_logger(__name__)
 
@@ -184,8 +186,6 @@ async def load_investigation_context(
     try:
         if use_field_dictionary and llm_client:
             # Use cached field dictionary from database
-            from .field_dictionary_db import generate_field_dictionary
-
             field_dict = await generate_field_dictionary(
                 db=db,
                 investigation_id=investigation_id,
@@ -197,8 +197,6 @@ async def load_investigation_context(
             context_parts.append(field_dict)
         else:
             # Fallback: simple field list without descriptions
-            from ..tools import event_tools
-
             available_fields = await event_tools.get_available_jsonb_fields(db, investigation_id)
 
             if available_fields:
@@ -362,8 +360,6 @@ async def load_execution_phase_context(
     try:
         if use_field_dictionary and llm_client:
             # Use cached field dictionary from database
-            from .field_dictionary_db import generate_field_dictionary
-
             field_dict = await generate_field_dictionary(
                 db=db,
                 investigation_id=investigation_id,
@@ -373,8 +369,6 @@ async def load_execution_phase_context(
             )
             context_parts.append(field_dict)
         else:
-            from ..tools import event_tools
-
             available_fields = await event_tools.get_available_jsonb_fields(db, investigation_id)
 
             if available_fields:

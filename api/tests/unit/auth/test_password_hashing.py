@@ -3,6 +3,7 @@ Unit tests for password hashing.
 Tests Argon2 password hashing and verification.
 """
 
+import time
 import pytest
 from app.auth import hash_password, verify_password
 
@@ -199,8 +200,6 @@ class TestPasswordHashingPerformance:
 
         The test measures the elapsed time taken by `hash_password` when processing a typical password string and asserts that the operation finishes in under one second. This ensures that the Argon2 implementation remains performant for standard use cases.
         """
-        import time
-
         password = "TestPassword123"
         start = time.time()
         hash_password(password)
@@ -217,8 +216,6 @@ class TestPasswordHashingPerformance:
         :func:`verify_password` to confirm the same password against the generated hash, and asserts
         that the elapsed time is less than one second, ensuring that verification remains performant.
         """
-        import time
-
         password = "TestPassword123"
         hashed = hash_password(password)
 

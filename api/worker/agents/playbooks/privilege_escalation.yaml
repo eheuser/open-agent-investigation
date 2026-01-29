@@ -1,0 +1,20 @@
+name: privilege_escalation
+description: Investigation strategies for detecting privilege escalation - identifying attempts to gain higher-level permissions through token elevation, UAC bypass, or credential dumping
+
+playbook: |
+  ## PRIVILEGE ESCALATION INVESTIGATION PLAYBOOK
+
+  ### What to Look For:
+
+  1. **Special Privilege Assignment (Event ID 4672)**
+     - Token elevation events
+     - Fields: EventData.SubjectUserName, EventData.PrivilegeList
+
+  2. **UAC Bypass Indicators**
+     - Unusual process elevation
+     - Registry modifications to UAC settings
+
+  3. **Credential Dumping**
+     - LSASS access (Sysmon 10)
+     - Mimikatz indicators
+     - SAM/SECURITY registry access

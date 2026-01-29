@@ -1,3 +1,4 @@
+import re
 from typing import Dict, Any
 
 from app.utils.log_setup import get_logger
@@ -115,8 +116,6 @@ def _generate_graphviz(description: str) -> str:
 
     # Extract relationships (simple parser)
     # Looks for patterns like "A -> B", "A→B", "parent→child"
-    import re
-
     nodes = set()
     edges = []
 
@@ -228,8 +227,6 @@ def _generate_mermaid_flowchart(description: str) -> str:
     * Only alphanumeric word characters (matched by `\w+`) are considered valid
       identifiers. Any surrounding whitespace or punctuation is ignored.
     """
-    import re
-
     lines = description.strip().split("\n")
 
     mermaid_lines = ["flowchart LR"]
@@ -281,8 +278,6 @@ def _generate_mermaid_sequence(description: str) -> str:
         * For arrow patterns, a generic label “message” is applied.
         * If no interactions are found, a single note over participant `A` containing up to the first 100 characters of the description is added.
     """
-    import re
-
     lines = description.strip().split("\n")
 
     mermaid_lines = ["sequenceDiagram"]
@@ -330,8 +325,6 @@ def _generate_mermaid_timeline(description: str) -> str:
     str
         A string containing Mermaid markup that defines a timeline, ready for rendering by Mermaid tools.
     """
-    import re
-
     lines = description.strip().split("\n")
 
     mermaid_lines = ["timeline"]

@@ -1,0 +1,194 @@
+name: fileless_attacks
+description: Investigation strategies for detecting fileless attacks - malware that runs in-memory without touching disk, using scripting engines and legitimate processes
+
+playbook: |
+  ## FILELESS ATTACKS INVESTIGATION PLAYBOOK
+  
+  ### What are Fileless Attacks?
+  Malware that executes in memory without writing files to disk, making detection harder and avoiding traditional antivirus.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **PowerShell In-Memory Execution**
+     - PowerShell loading scripts directly into memory
+     - Commands:
+       - `IEX(New-Object Net.WebClient).DownloadString('http://...')`
+       - `Invoke-Expression (Invoke-WebRequest -Uri '...' -UseBasicParsing).Content`
+       - `[Reflection.Assembly]::Load([byte[]]...)`
+       - `[System.Reflection.Assembly]::LoadWithPartialName()`
+     - Fields: EventData.CommandLine, EventData.ScriptBlockText (Sysmon 4104)
+     - Query: `search_events_by_content` for 'IEX', 'DownloadString', 'Reflection.Assembly'
+     - Red flags: Remote script execution, assembly loading, obfuscated commands
+  
+  2. **WMI Event Subscriptions (Permanent)**
+     - Fileless persistence via WMI
+     - Event IDs: Sysmon 19 (WmiEventFilter), 20 (WmiEventConsumer), 21 (Binding)
+     - Fields: EventData.EventNamespace, EventData.Query, EventData.Destination
+     - Query: event_type='evtx_sysmon_19' or 'evtx_sysmon_20' or 'evtx_sysmon_21'
+     - Red flags: ANY WMI event subscription is suspicious (rarely used legitimately)
+     - Common pattern: Filter triggers on event → Consumer executes script
+  
+  3. **Process Injection (Code Injection)**
+     - Injecting malicious code into legitimate processes
+     - Sysmon 8: CreateRemoteThread detected
+     - Sysmon 10: ProcessAccess (cross-process memory access)
+     - Fields: EventData.SourceImage, EventData.TargetImage, EventData.GrantedAccess
+     - Query: event_type='evtx_sysmon_8' or 'evtx_sysmon_10'
+     - Target processes: explorer.exe, svchost.exe, notepad.exe
+     - Red flags: Unusual processes accessing legitimate process memory
+  
+  4. **Reflective DLL Injection**
+     - Loading DLLs directly into memory without touching disk
+     - Indicators:
+       - PowerShell Reflection.Assembly.Load
+       - Unusual memory allocations (VirtualAlloc)
+       - No corresponding file creation (Sysmon 11)
+     - Query: `search_events_by_content` for 'Reflection.Assembly', 'VirtualAlloc'
+     - Red flags: DLL loading without file writes
+  
+  5. **Registry-Resident Malware**
+     - Storing malicious code in registry keys
+     - Common locations:
+       - HKCU\Software\Classes\CLSID
+       - HKLM\Software\Microsoft\Windows\CurrentVersion\Run (with encoded payload)
+     - Fields: EventData.TargetObject, EventData.Details (Sysmon 13)
+     - Query: `query_jsonb_field` for registry keys with large values (>1KB)
+     - Red flags: Base64-encoded data in registry, unusual CLSID entries
+  
+  6. **Scheduled Task with Inline Script**
+     - Tasks that execute scripts without file artifacts
+     - Event ID 4698: Scheduled task created
+     - Fields: EventData.TaskContent (contains XML with script)
+     - Query: event_type='evtx_security_4698'
+     - Red flags: Tasks with PowerShell inline scripts, encoded commands
+  
+  7. **Office Macro In-Memory Execution**
+     - Macros executing PowerShell or scripts without dropping files
+     - Process chain: WINWORD.EXE/EXCEL.EXE → powershell.exe
+     - Fields: EventData.ParentProcessName, EventData.CommandLine
+     - Query: `query_jsonb_field` with jsonb_path='EventData.ParentProcessName', value='%WINWORD%' or '%EXCEL%'
+     - Red flags: Office apps spawning PowerShell, cmd, wscript
+  
+  8. **LSASS Memory Dumping (Fileless Credential Theft)**
+     - Dumping credentials from memory without writing dump files
+     - Sysmon 10: ProcessAccess to lsass.exe
+     - Fields: EventData.TargetImage='lsass.exe', EventData.GrantedAccess
+     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetImage', value='lsass.exe'
+     - Red flags: Non-system processes accessing LSASS memory
+  
+  9. **JavaScript/VBScript In-Memory Execution**
+     - Scripts executed via wscript/cscript without file artifacts
+     - Commands:
+       - `wscript.exe //E:vbscript //B "malicious code"`
+       - `cscript.exe //E:jscript //nologo inline_script`
+     - Query: `search_events_by_content` for 'wscript', 'cscript' with '//E:'
+     - Red flags: Inline script execution, no .vbs/.js file arguments
+  
+  10. **PsExec In-Memory Execution**
+     - Remote execution without dropping files
+     - Service creation: PSEXESVC with inline commands
+     - Event ID 7045: Service installed
+     - Query: event_type='evtx_system_7045' with ServiceName='PSEXESVC'
+     - Red flags: PSEXESVC service with unusual ImagePath
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Fileless Execution**
+  - Look for PowerShell with IEX, DownloadString, Reflection.Assembly
+  - Check for WMI event subscriptions (Sysmon 19/20/21)
+  - Query for process injection (Sysmon 8/10)
+  - Search for Office apps spawning scripting engines
+  
+  **Phase 2 - Analyze Memory-Resident Artifacts**
+  - Check registry for large encoded values (Sysmon 13)
+  - Look for scheduled tasks with inline scripts (Event 4698)
+  - Identify WMI consumers with embedded scripts
+  
+  **Phase 3 - Correlate with Network Activity**
+  - Did PowerShell make network connections? (Sysmon 3)
+  - Were remote scripts downloaded? (Check URLs in CommandLine)
+  - Is there C2 beaconing from injected processes?
+  
+  **Phase 4 - Reconstruct Attack Chain**
+  - What was the initial vector? (Macro, script, exploit)
+  - What was loaded into memory? (Script, DLL, shellcode)
+  - What actions were taken? (Credential theft, lateral movement)
+  - Is there persistence? (WMI, registry, scheduled task)
+  
+  ### Common Fileless Attack Patterns:
+  
+  - **Macro → PowerShell Cradle**: Office macro → PowerShell IEX download → In-memory execution
+  - **WMI Persistence**: WMI event filter → Consumer with PowerShell script → Executes on trigger
+  - **Process Injection**: Initial process → Inject into explorer.exe → C2 from legitimate process
+  - **Registry Dropper**: Encoded payload in registry → PowerShell reads and executes
+  - **Living-off-the-Land**: certutil download → PowerShell Reflection.Assembly.Load → Fileless DLL
+  
+  ### Detection Queries:
+  
+  ```
+  # Find PowerShell download cradles
+  search_events_by_content(value='IEX', description='PowerShell IEX execution')
+  search_events_by_content(value='DownloadString', description='PowerShell download cradles')
+  
+  # Find WMI event subscriptions (fileless persistence)
+  search_events_by_type(event_type='evtx_sysmon_19', description='WMI event filters')
+  search_events_by_type(event_type='evtx_sysmon_20', description='WMI event consumers')
+  
+  # Find process injection
+  search_events_by_type(event_type='evtx_sysmon_8', description='CreateRemoteThread injection')
+  query_jsonb_field(jsonb_path='EventData.TargetImage', operator='ILIKE', value='%explorer.exe%')
+  
+  # Find Office apps spawning scripts
+  query_jsonb_field(jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%WINWORD%')
+  query_jsonb_field(jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%EXCEL%')
+  
+  # Find Reflection.Assembly usage
+  search_events_by_content(value='Reflection.Assembly', description='In-memory assembly loading')
+  ```
+  
+  ### PowerShell Fileless Indicators:
+  
+  - **Download Cradles**: IEX, DownloadString, Invoke-WebRequest, Invoke-RestMethod
+  - **Assembly Loading**: [Reflection.Assembly]::Load, LoadWithPartialName
+  - **Encoding**: -EncodedCommand, FromBase64String
+  - **Execution Policy Bypass**: -ExecutionPolicy Bypass, -ep bypass
+  - **Hidden Execution**: -WindowStyle Hidden, -w hidden
+  - **No Profile**: -NoProfile, -nop
+  
+  ### WMI Fileless Persistence:
+  
+  ```
+  # Typical WMI persistence pattern
+  1. WmiEventFilter (Sysmon 19): Trigger condition (e.g., every 60 seconds)
+  2. WmiEventConsumer (Sysmon 20): Action (e.g., execute PowerShell script)
+  3. FilterToConsumerBinding (Sysmon 21): Links filter to consumer
+  
+  # Detection
+  Query for ANY Sysmon 19/20/21 events - legitimate use is extremely rare
+  Check EventData.Query (filter condition)
+  Check EventData.Destination or EventData.CommandLineTemplate (consumer action)
+  ```
+  
+  ### Process Injection Techniques:
+  
+  - **CreateRemoteThread** (Sysmon 8): Classic injection
+  - **Process Hollowing**: Create suspended process, replace memory, resume
+  - **Atom Bombing**: Use Windows Atom tables for injection
+  - **Thread Execution Hijacking**: Suspend thread, modify context, resume
+  
+  ### Key Questions to Answer:
+  
+  1. What fileless technique was used? (PowerShell, WMI, injection)
+  2. What was the initial vector? (Macro, script, exploit)
+  3. What was executed in memory? (Script, DLL, shellcode)
+  4. Is there fileless persistence? (WMI, registry, task)
+  5. Were credentials stolen? (LSASS access)
+  6. Was there lateral movement? (Process injection on remote systems)
+  7. Can the payload be recovered? (Memory dump, PowerShell logging)
+  
+  ### Recovery Artifacts:
+  
+  - **PowerShell Logging**: Event 4104 (ScriptBlock logging) may contain full scripts
+  - **WMI Persistence**: Query WMI repository for consumers/filters
+  - **Memory Dumps**: Capture process memory for analysis
+  - **Registry**: Check for encoded payloads in registry keys

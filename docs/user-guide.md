@@ -6,10 +6,23 @@ This guide covers common workflows and usage patterns for Open Agent Investigati
 
 Open Agent Investigation provides four main interfaces:
 
-1. **Chat** - Natural language investigation interface
+1. **Chat** - Natural language investigation interface with 21 built-in investigation playbooks
 2. **Timeline** - Chronological evidence viewer and editor
 3. **Events** - Raw event browser with advanced filtering
 4. **Reports** - Investigation report generation
+
+### Investigation Playbooks
+
+The system includes 21 built-in investigation playbooks that provide strategic guidance for common attack scenarios:
+
+- **MITRE ATT&CK Tactics**: Complete coverage of all 14 attack lifecycle phases (Initial Access, Persistence, Credential Access, etc.)
+- **Attack Techniques**: 7 focused playbooks for specific methods (Living off the Land, Kerberoasting, Pass-the-Hash, etc.)
+- **Automatic Selection**: LLM automatically selects the most relevant playbook based on your question
+- **Strategic Guidance**: Each playbook provides specific event IDs, field names, detection queries, and investigation strategies
+
+See [Investigation Playbooks](playbooks.md) for the complete list and details on how playbooks work.
+
+**Example**: When you ask "Find evidence of lateral movement", the system automatically selects the `lateral_movement.yaml` playbook and guides the agent to check Event IDs 4624 (logon), 4648 (explicit credentials), 5140 (share access), and other relevant indicators.
 
 ## Uploading Artifacts
 
@@ -75,18 +88,23 @@ System automatically routes to best handler:
 
 #### Agent Mode
 
-Force full agent execution with tools:
+Force full agent execution with tools and playbook guidance:
 
 ```
 "Analyze PowerShell activity"
 "Investigate suspicious process creation"
 "Find evidence of persistence mechanisms"
+"Detect Kerberoasting attacks"
+"Find web shells on the server"
 ```
 
 Use when:
 - Complex multi-step analysis needed
 - Multiple artifact types involved
 - Pattern discovery required
+- Leveraging investigation playbooks for structured analysis
+
+**Playbook Integration**: The agent automatically receives strategic guidance from relevant playbooks, including specific event IDs to query, fields to analyze, and common attack patterns to look for.
 
 #### Timeline Mode
 
@@ -551,6 +569,6 @@ Result: All 42 failed logon events registered to timeline automatically
 
 ## Next Steps
 
+- [Investigation Playbooks](playbooks.md) - Learn about built-in attack scenario guidance
 - [Architecture](architecture.md) - Understand system design
-- [Reference](reference/api.md) - Explore API documentation
-- [Operations](operations.md) - Deploy to production
+- [Getting Started](getting-started.md) - Installation and configuration

@@ -1,0 +1,126 @@
+name: defense_evasion
+description: Investigation strategies for detecting defense evasion - identifying attempts to avoid detection through obfuscation, disabling security tools, and hiding artifacts
+
+playbook: |
+  ## DEFENSE EVASION INVESTIGATION PLAYBOOK
+  
+  ### What is Defense Evasion?
+  Techniques attackers use to avoid detection by security tools, hide their presence, and remove evidence.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Security Tool Tampering (Event ID 4688, Sysmon 1)**
+     - Disabling antivirus, firewall, logging
+     - Fields: EventData.CommandLine, EventData.NewProcessName
+     - Query: `search_events_by_content` for 'Set-MpPreference', 'netsh advfirewall', 'sc stop'
+     - Red flags: Commands disabling Windows Defender, stopping security services
+     - Example patterns:
+       - `Set-MpPreference -DisableRealtimeMonitoring $true`
+       - `netsh advfirewall set allprofiles state off`
+       - `sc stop WinDefend`
+  
+  2. **Event Log Clearing (Event ID 1102, 104)**
+     - Attackers clear logs to hide activity
+     - Event ID 1102: Security log cleared
+     - Event ID 104: System log cleared
+     - Fields: EventData.SubjectUserName
+     - Query: event_type='evtx_security_1102' or 'evtx_system_104'
+     - Look for: When logs were cleared (gap in timeline), who cleared them
+  
+  3. **File Deletion / Timestomping (Sysmon 23, 2)**
+     - Sysmon 23: File deletions (requires ArchiveDirectory config)
+     - Sysmon 2: File creation time changes
+     - Fields: EventData.TargetFilename, EventData.CreationUtcTime
+     - Query: event_type='evtx_sysmon_23' or 'evtx_sysmon_2'
+     - Red flags: Deletion of tools, timestomping to match legitimate files
+  
+  4. **Obfuscated Commands (Event ID 4688, Sysmon 1)**
+     - Base64 encoding, XOR, character substitution
+     - Fields: EventData.CommandLine
+     - Query: `search_events_by_content` for 'encodedcommand', 'frombase64', '-enc', '^'
+     - Patterns to look for:
+       - PowerShell: `-EncodedCommand`, `-enc`, `-e`
+       - Character obfuscation: `c^m^d`, `p^o^w^e^r^s^h^e^l^l`
+       - Environment variable abuse: `%COMSPEC%`, `%PUBLIC%`
+  
+  5. **Process Injection (Sysmon 8, 10)**
+     - Sysmon 8: CreateRemoteThread
+     - Sysmon 10: ProcessAccess (cross-process memory access)
+     - Fields: EventData.SourceImage, EventData.TargetImage, EventData.GrantedAccess
+     - Query: event_type='evtx_sysmon_8' or 'evtx_sysmon_10'
+     - Red flags: Unusual processes accessing lsass.exe, svchost.exe
+     - Look for: GrantedAccess 0x1010 (PROCESS_VM_READ), 0x1F0FFF (PROCESS_ALL_ACCESS)
+  
+  6. **Masquerading (Sysmon 1, Event ID 4688)**
+     - Malware disguised as legitimate processes
+     - Fields: EventData.NewProcessName, EventData.OriginalFileName
+     - Query: `search_events_by_content` for 'svchost.exe' NOT in System32
+     - Red flags: 
+       - svchost.exe running from Temp, Downloads, AppData
+       - Misspellings: svch0st.exe, scvhost.exe
+       - Legitimate names in wrong locations
+  
+  7. **Indicator Removal (MFT, Prefetch, Registry)**
+     - Deletion of prefetch files to hide execution
+     - Registry key deletion (Sysmon 12)
+     - Fields: EventData.TargetObject (registry), EventData.TargetFilename (files)
+     - Query: `query_jsonb_field` for 'Prefetch' or check MFT for deleted entries
+     - Look for: Gaps in forensic artifacts
+  
+  8. **Disabling Windows Defender (Registry, Event ID 5001)**
+     - Event ID 5001: Windows Defender disabled
+     - Registry: DisableAntiSpyware, DisableRealtimeMonitoring
+     - Fields: EventData.TargetObject (Sysmon 13)
+     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetObject', value='%DisableAntiSpyware%'
+     - Red flags: Registry changes to Defender policies
+  
+  9. **DLL Side-Loading / Hijacking**
+     - Placing malicious DLL in application directory
+     - Sysmon 7: Image loaded events
+     - Fields: EventData.ImageLoaded, EventData.Signed, EventData.SignatureStatus
+     - Query: event_type='evtx_sysmon_7' with Signed='false'
+     - Red flags: Unsigned DLLs loaded by legitimate processes
+  
+  10. **Alternate Data Streams (ADS)**
+     - Hiding data in NTFS alternate streams
+     - Check MFT for: Filenames with `:` (e.g., `file.txt:hidden.exe`)
+     - Query: `search_events_by_content` for ':%'
+     - Red flags: Executables hidden in ADS
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Evasion Techniques**
+  - Check for log clearing events (1102, 104)
+  - Query for security tool tampering commands
+  - Look for obfuscated PowerShell/cmd commands
+  
+  **Phase 2 - Timeline Gaps**
+  - Identify when logs were cleared (missing time periods)
+  - Cross-reference with other data sources (MFT, Prefetch)
+  - Reconstruct activity from surviving artifacts
+  
+  **Phase 3 - Process Analysis**
+  - Check for process injection (Sysmon 8, 10)
+  - Identify masquerading (legitimate names in wrong paths)
+  - Validate digital signatures (unsigned executables)
+  
+  **Phase 4 - Artifact Removal**
+  - Check for deleted files (Sysmon 23, MFT)
+  - Look for timestomping (Sysmon 2)
+  - Identify missing prefetch files
+  
+  ### Common Patterns:
+  
+  - **Initial Evasion**: Disable Defender → Clear logs → Execute payload
+  - **Obfuscation**: Base64 PowerShell → Process injection → Fileless execution
+  - **Cleanup**: Delete tools → Clear prefetch → Timestomp files → Clear logs
+  - **Masquerading**: svchost.exe in AppData → Unsigned DLL side-loading
+  
+  ### Key Questions to Answer:
+  
+  1. What security tools were disabled? (AV, firewall, logging)
+  2. Were logs cleared? (When, which logs, by whom)
+  3. What obfuscation techniques were used? (Encoding, injection, masquerading)
+  4. What artifacts were removed? (Files, registry keys, logs)
+  5. Can deleted artifacts be recovered? (Check MFT, volume shadow copies)
+  6. What is the timeline of evasion activity? (Before/after other attack phases)

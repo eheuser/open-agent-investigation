@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from worker.agents.context_manager import estimate_tokens
 
 logger = get_logger(__name__)
 
@@ -52,8 +53,6 @@ async def generate_chat_summary(
         return "", {}
 
     # Calculate original token count
-    from .context_manager import estimate_tokens
-
     original_tokens = sum(
         estimate_tokens(json.dumps(msg, default=str)) for msg in messages_to_summarize
     )
@@ -434,8 +433,6 @@ def trim_messages_from_middle(
     - The function logs informational messages about the trimming process and warnings if aggressive trimming is required.
     - If the original list contains seven or fewer messages, it is returned unchanged because all messages can be kept without exceeding typical budgets.
     """
-    from .context_manager import estimate_tokens
-
     if len(messages) <= 7:
         return messages
 

@@ -1,0 +1,178 @@
+name: collection
+description: Investigation strategies for detecting data collection - identifying gathering of sensitive files, screenshots, clipboard data, and staging for exfiltration
+
+playbook: |
+  ## COLLECTION INVESTIGATION PLAYBOOK
+  
+  ### What is Collection?
+  Techniques attackers use to gather data of interest before exfiltration - the "what to steal" phase.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **File Archiving/Compression (Event ID 4688, Sysmon 1, 11)**
+     - Staging data for exfiltration
+     - Commands to look for:
+       - `7z.exe a archive.7z C:\sensitive\*`
+       - `zip.exe`, `rar.exe`, `tar.exe`
+       - PowerShell: `Compress-Archive`
+       - `makecab.exe` - Built-in Windows compression
+     - Fields: EventData.CommandLine, EventData.TargetFilename
+     - Query: `search_events_by_content` for '7z', 'zip', 'rar', 'Compress-Archive'
+     - Red flags: Large archives, compression of entire directories
+  
+  2. **Sensitive File Access (Event ID 4663, Sysmon 11)**
+     - Event 4663: Object access (requires auditing enabled)
+     - Sysmon 11: File creation (archives, copies)
+     - Target files: *.xlsx, *.docx, *.pdf, *.pst, *.sql, *.bak
+     - Query: `search_events_by_content` for file extensions
+     - Look for: Access to Documents, Desktop, network shares
+     - Red flags: Bulk file access, unusual accounts accessing sensitive data
+  
+  3. **Data Staging Directories (MFT, Sysmon 11)**
+     - Temporary directories for collected data
+     - Common staging locations:
+       - C:\Temp\
+       - C:\ProgramData\
+       - C:\Users\Public\
+       - C:\Windows\Temp\
+     - Query: `search_events_by_content` for staging paths
+     - Look for: Large file creations, unusual directory names
+     - Red flags: Directories named after dates, random strings
+  
+  4. **Screenshot/Screen Capture (Event ID 4688, Sysmon 1)**
+     - Capturing visual data
+     - Tools: SnippingTool, PowerShell screenshot, custom tools
+     - PowerShell commands:
+       - `[System.Windows.Forms.Screen]::PrimaryScreen`
+       - `[System.Drawing.Bitmap]`
+     - Query: `search_events_by_content` for 'screenshot', 'bitmap', 'screen'
+     - Red flags: Automated screenshot tools, frequent captures
+  
+  5. **Clipboard Data Collection**
+     - Stealing copied passwords, data
+     - PowerShell: `Get-Clipboard`
+     - Query: `search_events_by_content` for 'Get-Clipboard'
+     - Red flags: Continuous clipboard monitoring
+  
+  6. **Email Collection (Event ID 4688, Sysmon 11)**
+     - Exporting mailboxes
+     - Files: *.pst, *.ost (Outlook)
+     - Commands:
+       - `New-MailboxExportRequest` (Exchange)
+       - Copying PST files from user profiles
+     - Query: `search_events_by_content` for '.pst', '.ost', 'MailboxExport'
+     - Red flags: PST exports, mailbox access by unusual accounts
+  
+  7. **Database Dumping (Event ID 4688, Sysmon 1)**
+     - Stealing database contents
+     - Commands:
+       - `mysqldump`, `pg_dump`, `sqlcmd`
+       - `bcp.exe` - SQL Server bulk copy
+     - Query: `search_events_by_content` for database tools
+     - Red flags: Database dumps to unusual locations
+  
+  8. **Network Share Collection (Event ID 5140, 5145)**
+     - Event 5140: Network share accessed
+     - Event 5145: Network share object accessed
+     - Fields: EventData.ShareName, EventData.RelativeTargetName, EventData.IpAddress
+     - Query: event_type='evtx_security_5140'
+     - Look for: Bulk access to shares, unusual accounts
+     - Red flags: Accessing multiple shares, copying entire directories
+  
+  9. **Browser Data Collection (Sysmon 11)**
+     - Stealing browser history, cookies, saved passwords
+     - Files:
+       - Chrome: `Login Data`, `History`, `Cookies`
+       - Firefox: `logins.json`, `places.sqlite`, `cookies.sqlite`
+       - Edge: Similar to Chrome
+     - Query: `search_events_by_content` for 'Login Data', 'logins.json'
+     - Red flags: Copying browser data stores
+  
+  10. **Cloud Storage Synchronization**
+     - Using cloud services to collect/stage data
+     - Tools: OneDrive, Dropbox, Google Drive clients
+     - Query: Check for cloud sync processes accessing sensitive files
+     - Red flags: Unusual cloud sync activity, new cloud accounts
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Collection Activity**
+  - Look for archiving tools (7z, zip, rar)
+  - Check for file staging directories
+  - Query for sensitive file access (Event 4663, Sysmon 11)
+  
+  **Phase 2 - Determine What Was Collected**
+  - Analyze archive contents (if available)
+  - Check file access logs for specific documents
+  - Look for database dumps, PST exports
+  
+  **Phase 3 - Locate Staging Areas**
+  - Check MFT for temporary directories
+  - Look for large files in unusual locations
+  - Identify archive files created
+  
+  **Phase 4 - Timeline Analysis**
+  - When did collection occur?
+  - How long did it last? (Hours, days)
+  - Was it automated or manual?
+  - What happened next? (Exfiltration)
+  
+  ### Common Patterns:
+  
+  - **Manual Collection**: User navigates directories → Copies files → Creates archive
+  - **Automated Collection**: Script runs → Searches for file types → Archives → Stages
+  - **Email Theft**: PST export → Copy to staging → Compress → Exfiltrate
+  - **Database Theft**: SQL dump → Compress → Stage → Exfiltrate
+  - **Credential Theft**: Browser data → Registry SAM → LSASS dump → Archive
+  
+  ### File Type Indicators:
+  
+  **High-Value Targets** (common collection targets):
+  - Documents: *.docx, *.xlsx, *.pdf, *.pptx
+  - Databases: *.sql, *.mdb, *.accdb, *.db
+  - Email: *.pst, *.ost, *.eml
+  - Archives: *.zip, *.7z, *.rar, *.tar.gz
+  - Source Code: *.py, *.java, *.cpp, *.cs
+  - Configuration: *.conf, *.ini, *.xml, *.json
+  - Credentials: *.kdbx (KeePass), *.agilekeychain (1Password)
+  
+  ### Archiving Command Patterns:
+  
+  ```
+  # 7-Zip
+  7z.exe a -r archive.7z C:\Users\*\Documents\*
+  7z.exe a -p<password> secure.7z sensitive_data\
+  
+  # PowerShell
+  Compress-Archive -Path C:\Data\* -DestinationPath C:\Temp\data.zip
+  
+  # RAR
+  rar.exe a -r -hp<password> archive.rar C:\Sensitive\
+  
+  # Built-in Windows
+  makecab /D CompressionType=LZX /D CompressionMemory=21 data.txt data.cab
+  ```
+  
+  ### Key Questions to Answer:
+  
+  1. What data was collected? (File types, directories, databases)
+  2. How was it collected? (Manual, scripted, automated tools)
+  3. Where was it staged? (Temporary directories, archives)
+  4. When did collection occur? (Timeline)
+  5. How much data was collected? (File sizes, counts)
+  6. Was it encrypted/compressed? (Archive passwords)
+  7. Was it exfiltrated? (Check for subsequent network activity)
+  
+  ### Volume Indicators:
+  
+  - **Small Collection**: <100MB, targeted files (credentials, specific documents)
+  - **Medium Collection**: 100MB-1GB, department data, email archives
+  - **Large Collection**: >1GB, database dumps, entire shares
+  - **Bulk Collection**: >10GB, mass exfiltration attempt
+  
+  ### Behavioral Indicators:
+  
+  - **Targeted**: Specific file types, known sensitive directories
+  - **Opportunistic**: Broad searches (*.xlsx, *.pdf), entire user profiles
+  - **Systematic**: Organized by date/type, methodical directory traversal
+  - **Rushed**: Quick bulk copies, no organization, large archives

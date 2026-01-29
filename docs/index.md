@@ -22,7 +22,14 @@ A micro-forensics workbench for analyzing artifacts.
 - [Asking Questions](user-guide.md#asking-questions) - Query modes and effort levels
 - [Timeline Management](user-guide.md#timeline-management) - Building and filtering evidence timelines
 - [Report Generation](user-guide.md#report-generation) - Creating investigation reports
+- [Investigation Playbooks](playbooks.md) - Built-in attack scenario guidance (21 playbooks)
 
+
+### Technical Reference
+
+- [Investigation Playbooks](playbooks.md) - Attack scenario playbooks and customization
+- [API Documentation](../api/README.md) - REST API endpoints and WebSocket support
+- [Worker Architecture](../api/worker/README.md) - Artifact parsing and agent execution
 
 ### Additional Resources
 

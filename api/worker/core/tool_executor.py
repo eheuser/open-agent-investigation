@@ -41,6 +41,47 @@ class ToolExecutor:
         self.stats = stats
         self.user_id = user_id
 
+    def _validate_and_clean_arguments(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        spec: Any,
+    ) -> Dict[str, Any]:
+        """
+        Validate and clean tool arguments, removing unknown parameters.
+        
+        Args:
+            tool_name: Name of the tool
+            arguments: Raw arguments from LLM
+            spec: Tool specification
+            
+        Returns:
+            Cleaned arguments dictionary with only valid parameters
+        """
+        # Get valid parameters from spec
+        params_schema = spec.parameters.get("properties", {})
+        valid_params = set(params_schema.keys())
+        
+        # Check for invalid arguments
+        provided_params = set(arguments.keys())
+        invalid_params = provided_params - valid_params
+        
+        if invalid_params:
+            logger.warning(
+                f"Tool {tool_name} received invalid parameters: {invalid_params}. "
+                f"Valid parameters are: {valid_params}. Stripping invalid parameters."
+            )
+        
+        # Return cleaned arguments
+        cleaned = {k: v for k, v in arguments.items() if k in valid_params}
+        
+        # Log what was removed
+        if invalid_params:
+            removed = {k: arguments[k] for k in invalid_params}
+            logger.info(f"Removed invalid parameters from {tool_name}: {removed}")
+        
+        return cleaned
+
     async def execute(
         self,
         tool_name: str,
@@ -67,6 +108,9 @@ class ToolExecutor:
         if not spec:
             logger.error(f"Unknown tool: {tool_name}")
             return ToolResult(status="error", error_msg=f"Unknown tool: {tool_name}")
+
+        # Validate and clean arguments
+        arguments = self._validate_and_clean_arguments(tool_name, arguments, spec)
 
         # Track tool usage
         self.stats.setdefault("tools_called", {})

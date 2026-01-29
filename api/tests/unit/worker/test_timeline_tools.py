@@ -7,6 +7,8 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from worker.tools.timeline_tools import batch_generate_embeddings
+
 
 @pytest.mark.unit
 class TestBatchGenerateEmbeddings:
@@ -16,8 +18,6 @@ class TestBatchGenerateEmbeddings:
         """
         Test successful batch generation of embeddings for timeline entries without embeddings.
         """
-        from worker.tools.timeline_tools import batch_generate_embeddings
-
         db = AsyncMock()
         investigation_id = str(uuid4())
         user_id = 1
@@ -54,8 +54,6 @@ class TestBatchGenerateEmbeddings:
         """
         Test that batch generation returns zero when no entries need embeddings.
         """
-        from worker.tools.timeline_tools import batch_generate_embeddings
-
         db = AsyncMock()
         investigation_id = str(uuid4())
         user_id = 1
@@ -82,8 +80,6 @@ class TestBatchGenerateEmbeddings:
         """
         Test batch generation with many entries.
         """
-        from worker.tools.timeline_tools import batch_generate_embeddings
-
         db = AsyncMock()
         investigation_id = str(uuid4())
         user_id = 1
@@ -114,8 +110,6 @@ class TestBatchGenerateEmbeddings:
         """
         Test that batch generation handles exceptions gracefully.
         """
-        from worker.tools.timeline_tools import batch_generate_embeddings
-
         db = AsyncMock()
         investigation_id = str(uuid4())
         user_id = 1
@@ -143,8 +137,6 @@ class TestBatchGenerateEmbeddings:
         """
         Test that batch generation only processes entries for the specified investigation.
         """
-        from worker.tools.timeline_tools import batch_generate_embeddings
-
         db = AsyncMock()
         investigation_id = str(uuid4())
         user_id = 1

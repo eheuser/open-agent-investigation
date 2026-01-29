@@ -1,0 +1,205 @@
+name: impact
+description: Investigation strategies for detecting impact - identifying destructive actions like ransomware, data destruction, service disruption, and resource hijacking
+
+playbook: |
+  ## IMPACT INVESTIGATION PLAYBOOK
+  
+  ### What is Impact?
+  Techniques attackers use to disrupt availability, integrity, or destroy data - the final destructive phase.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Ransomware Execution (Event ID 4688, Sysmon 1, 11)**
+     - Mass file encryption
+     - Indicators:
+       - Sysmon 11: Rapid file creation (encrypted copies)
+       - File extensions: .encrypted, .locked, .crypt, .enc
+       - Ransom notes: README.txt, HOW_TO_DECRYPT.html
+     - Fields: EventData.TargetFilename, EventData.NewProcessName
+     - Query: `search_events_by_content` for ransom extensions
+     - Patterns:
+       - Single process modifying hundreds/thousands of files
+       - Original files deleted, encrypted copies created
+       - Ransom note dropped in multiple directories
+     - Red flags: Bulk file modifications, encryption processes
+  
+  2. **Data Destruction (Sysmon 23, Event ID 4663)**
+     - Sysmon 23: File deletion (requires ArchiveDirectory config)
+     - Event 4663: Object access (delete operations)
+     - Fields: EventData.TargetFilename, EventData.Image
+     - Query: event_type='evtx_sysmon_23'
+     - Patterns:
+       - Mass file deletions
+       - Deletion of backups, shadow copies
+       - Wiping tools (SDelete, cipher.exe)
+     - Red flags: Deletion of critical system files, databases
+  
+  3. **Shadow Copy Deletion (Event ID 4688, Sysmon 1)**
+     - Preventing recovery from Volume Shadow Copies
+     - Commands:
+       - `vssadmin delete shadows /all /quiet`
+       - `wmic shadowcopy delete`
+       - `bcdedit /set {default} recoveryenabled No`
+       - `wbadmin delete catalog -quiet`
+     - Query: `search_events_by_content` for 'vssadmin', 'shadowcopy delete'
+     - Red flags: Shadow copy deletion before ransomware
+  
+  4. **Service Disruption (Event ID 7036, 7040)**
+     - Event 7036: Service state change (stopped)
+     - Event 7040: Service start type changed (disabled)
+     - Fields: EventData.param1 (service name), EventData.param2 (state)
+     - Query: event_type='evtx_system_7036'
+     - Target services:
+       - Backup services (Veeam, Backup Exec)
+       - Antivirus services
+       - Database services (SQL Server, MySQL)
+     - Red flags: Multiple critical services stopped
+  
+  5. **Disk Wiping (Event ID 4688, Sysmon 1)**
+     - Complete disk destruction
+     - Tools: SDelete, cipher.exe, custom wipers
+     - Commands:
+       - `cipher /w:C:\` - Wipe free space
+       - `sdelete -z C:\` - Zero free space
+       - Direct disk writes (MBR/GPT destruction)
+     - Query: `search_events_by_content` for wiping tools
+     - Red flags: Disk wiping commands, low-level disk access
+  
+  6. **Database Destruction (Event ID 4688, Sysmon 1)**
+     - Dropping databases, tables
+     - SQL commands:
+       - `DROP DATABASE`
+       - `TRUNCATE TABLE`
+       - `DELETE FROM` (without WHERE clause)
+     - Query: `search_events_by_content` for destructive SQL
+     - Red flags: Mass database operations, unauthorized SQL execution
+  
+  7. **Resource Hijacking (Sysmon 1, 3)**
+     - Cryptomining, botnet participation
+     - Indicators:
+       - High CPU processes (miners)
+       - Connections to mining pools
+       - Processes: xmrig.exe, minergate.exe
+     - Query: `search_events_by_content` for 'miner', 'pool'
+     - Red flags: Sustained high CPU, connections to mining ports (3333, 4444)
+  
+  8. **Defacement (Event ID 4663, Sysmon 11)**
+     - Web server file modifications
+     - Target files: index.html, default.aspx
+     - Query: `search_events_by_content` for web root paths
+     - Red flags: Modifications to web server content
+  
+  9. **Account Lockout (Event ID 4740, 4767)**
+     - Event 4740: Account locked out
+     - Event 4767: Account unlocked
+     - Fields: EventData.TargetUserName
+     - Query: event_type='evtx_security_4740'
+     - Patterns:
+       - Mass account lockouts (password spray aftermath)
+       - Admin account lockouts (privilege escalation attempts)
+     - Red flags: Multiple accounts locked simultaneously
+  
+  10. **Firmware/BIOS Attacks (Event ID 4688, Sysmon 1)**
+     - Rare but devastating
+     - Tools: Firmware update utilities, flashrom
+     - Query: `search_events_by_content` for firmware tools
+     - Red flags: Unexpected firmware modifications
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Impact Type**
+  - Ransomware: Check for file encryption, ransom notes
+  - Destruction: Look for mass deletions, wiping
+  - Disruption: Check for stopped services, locked accounts
+  - Hijacking: Look for cryptominers, botnet activity
+  
+  **Phase 2 - Assess Scope**
+  - How many files affected? (Encrypted, deleted)
+  - Which systems impacted? (Single host, entire network)
+  - What services disrupted? (Critical vs non-critical)
+  - Timeline: When did impact occur?
+  
+  **Phase 3 - Identify Patient Zero**
+  - Which system was impacted first?
+  - How did impact spread? (Lateral movement, network shares)
+  - What was the initial impact mechanism?
+  
+  **Phase 4 - Recovery Assessment**
+  - Are backups available? (Check for backup deletions)
+  - Were shadow copies deleted?
+  - Can files be recovered? (Decryption tools, forensic recovery)
+  - What is the recovery timeline?
+  
+  ### Common Ransomware Patterns:
+  
+  ```
+  1. Initial Execution
+     - Ransomware binary executed
+     - Process creates mutex (prevent re-infection)
+  
+  2. Defense Evasion
+     - Disable antivirus
+     - Delete shadow copies (vssadmin delete)
+     - Stop backup services
+  
+  3. Encryption
+     - Enumerate drives and network shares
+     - Encrypt files (Sysmon 11: mass file creation)
+     - Delete originals (Sysmon 23: mass file deletion)
+  
+  4. Ransom Demand
+     - Drop ransom note (README.txt)
+     - Change desktop wallpaper
+     - Display ransom message
+  ```
+  
+  ### Ransomware Indicators:
+  
+  - **File Extensions**: .locked, .encrypted, .crypto, .crypt, .enc, .[attacker_email]
+  - **Ransom Notes**: README.txt, HOW_TO_DECRYPT.html, DECRYPT_INSTRUCTIONS.txt
+  - **Processes**: Unusual executables with high file I/O
+  - **Network**: Connections to Tor, cryptocurrency payment sites
+  - **Commands**: vssadmin delete, bcdedit, wbadmin delete
+  
+  ### Data Destruction Indicators:
+  
+  - **Mass Deletions**: Sysmon 23 showing hundreds of deletions
+  - **Wiping Tools**: SDelete, cipher.exe, custom wipers
+  - **Backup Targeting**: Deletion of .bak, .vhd, .vmdk files
+  - **Shadow Copies**: vssadmin delete shadows
+  - **Catalog Deletion**: wbadmin delete catalog
+  
+  ### Service Disruption Indicators:
+  
+  - **Stopped Services**: Event 7036 (service stopped)
+  - **Disabled Services**: Event 7040 (start type changed to disabled)
+  - **Target Services**: Backup, AV, database, monitoring
+  - **Commands**: `sc stop`, `sc config`, `net stop`
+  
+  ### Key Questions to Answer:
+  
+  1. What type of impact occurred? (Ransomware, destruction, disruption)
+  2. What is the scope? (Files, systems, services affected)
+  3. When did impact occur? (Timeline)
+  4. How did it spread? (Network shares, lateral movement)
+  5. What was destroyed/encrypted? (Data inventory)
+  6. Are backups intact? (Backup status)
+  7. Can data be recovered? (Recovery options)
+  8. What is the business impact? (Downtime, data loss)
+  
+  ### Recovery Priorities:
+  
+  1. **Isolate**: Disconnect affected systems (prevent spread)
+  2. **Assess**: Determine scope and impact
+  3. **Restore**: From backups (if available and clean)
+  4. **Decrypt**: Use decryption tools (if available)
+  5. **Rebuild**: Clean rebuild if necessary
+  6. **Monitor**: Watch for re-infection
+  
+  ### Ransomware Families (Common Indicators):
+  
+  - **LockBit**: .lockbit extension, LockBit.txt ransom note
+  - **BlackCat/ALPHV**: .alphv extension, JSON ransom note
+  - **Conti**: .CONTI extension, CONTI_README.txt
+  - **REvil/Sodinokibi**: Random extension, [random]-readme.txt
+  - **Ryuk**: .RYK extension, RyukReadMe.txt

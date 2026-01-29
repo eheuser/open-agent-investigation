@@ -1,0 +1,40 @@
+name: lateral_movement
+description: Investigation strategies for detecting lateral movement - attackers moving from one system to another within a network after initial compromise
+
+playbook: |
+  ## LATERAL MOVEMENT INVESTIGATION PLAYBOOK
+
+  ### What is Lateral Movement?
+  Attackers moving from one system to another within a network, typically after initial compromise.
+
+  ### Key Indicators to Investigate:
+
+  1. **Network Logons (Event ID 4624 Type 10)**
+     - Look for: Remote Logons
+     - Fields: EventData.TargetUserName, EventData.IpAddress, EventData.LogonType
+     - Query: `query_jsonb_field` with jsonb_path='EventData.LogonType', value='10', event_type='evtx_security_4624'
+     - Follow-up: Aggregate by TargetUserName to find accounts used across systems
+
+  2. **Explicit Credential Usage (Event ID 4648)**
+     - Indicates "Run As" or explicit credential use for remote access
+     - Fields: EventData.TargetUserName, EventData.TargetServerName
+     - Query: Search for event_type='evtx_security_4648'
+     - Look for: Admin accounts, unusual target servers
+
+  3. **Remote Service Creation (Event ID 7045, Sysmon 13)**
+     - Attackers often create services to execute code remotely
+     - Fields: EventData.ServiceName, EventData.ImagePath
+     - Query: event_type='evtx_system_7045' or 'evtx_sysmon_13'
+     - Red flags: Unusual service names, suspicious paths
+
+  4. **Remote Execution Tools**
+     - PsExec: Look for PSEXESVC service creation
+     - WMI: Event ID 4688 or 1 with wmiprvse.exe as parent
+     - PowerShell Remoting: Event ID 4688 or 1 with wsmprovhost.exe
+     - RDP: Event ID 4624 LogonType 10
+     - Query: `search_events_by_content` for tool names
+
+  5. **Admin Share Access (Event ID 5140)**
+     - Access to C$, ADMIN$, IPC$ shares indicates remote admin activity
+     - Fields: EventData.ShareName, EventData.IpAddress
+     - Query: `query_jsonb_field` with jsonb_path='EventData.ShareName', operator='ILIKE', value='%$'

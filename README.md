@@ -109,6 +109,17 @@ Bounded turn execution with configurable depth:
 
 Each turn limited to 5 tool executions. Real-time progress streamed via WebSocket.
 
+### Investigation Playbooks
+
+21 built-in playbooks provide strategic guidance for common attack scenarios:
+
+- **MITRE ATT&CK Tactics**: Complete coverage of all 14 attack lifecycle phases
+- **Attack Techniques**: 7 focused playbooks for specific methods (Living off the Land, Fileless Attacks, Kerberoasting, etc.)
+- **LLM-Driven Selection**: System automatically selects most relevant playbook based on investigation question
+- **Dynamic Loading**: Add/modify/delete playbooks without code changes
+
+See [Investigation Playbooks](docs/playbooks.md) for complete list and usage guide.
+
 ## Minimal Quickstart
 
 ### Prerequisites
@@ -143,6 +154,7 @@ docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit
 - [Getting Started](docs/getting-started.md) - Installation and configuration
 - [Architecture](docs/architecture.md) - System design and data flow
 - [User Guide](docs/user-guide.md) - Common workflows
+- [Investigation Playbooks](docs/playbooks.md) - Built-in attack scenario guidance
 
 ## Architecture
 

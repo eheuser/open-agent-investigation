@@ -134,6 +134,12 @@ A micro-forensics workbench for analyzing artifacts. The system is a multi-tier 
 **Agents:**
 - `assistant_agent_v2.py` - Primary forensic agent (bounded turns)
 
+**Investigation Playbooks:**
+- 21 YAML-based playbooks for attack scenarios
+- LLM-driven automatic selection
+- Dynamic loading and hot-reload support
+- See [Investigation Playbooks](playbooks.md) for details
+
 **Location:** `api/worker/`
 
 ## Data Flow
@@ -216,7 +222,20 @@ User Question + Mode Selection
 
 ### Agent Handler Architecture
 
-The Agent Handler uses a bounded turn execution model:
+The Agent Handler uses a bounded turn execution model with investigation playbook support:
+
+**Playbook Integration:**
+
+Before each investigation, the system:
+1. Loads all available playbooks from `api/worker/agents/playbooks/`
+2. Presents playbook descriptions to LLM
+3. LLM selects most relevant playbook (or "none")
+4. Selected playbook content injected into investigation strategy
+5. Agent follows playbook guidance during execution
+
+**Example:** User asks "Find evidence of lateral movement" → LLM selects `lateral_movement.yaml` → Agent receives strategic guidance on Event IDs 4624, 4648, network logons, admin shares, etc.
+
+**Turn Execution:**
 
 ```
 Agent Job Created (status: pending)

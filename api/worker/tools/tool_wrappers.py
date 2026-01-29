@@ -815,21 +815,21 @@ def register_all_tools():
     tool_registry.register(
         ToolSpec(
             name="query_jsonb_field",
-            description="Query specific JSONB fields in event payloads. Returns paginated results (default 50 events). Use offset for pagination to explore more results.",
+            description="Query specific JSONB fields in event payloads. Returns paginated results (default 50 events). Use offset for pagination. NOTE: Does NOT support time filtering (start_time/end_time) - use count_events for time-based queries or filter results manually.",
             parameters={
                 "type": "object",
                 "properties": {
                     "jsonb_path": {
                         "type": "string",
-                        "description": "Dotted path to field (e.g., 'TargetUserName', 'system.Computer')",
+                        "description": "Dotted path to field (e.g., 'event_data.TargetUserName', 'event_data.LogonType'). Use exact field names from field dictionary.",
                     },
                     "operator": {
                         "type": "string",
                         "description": "Comparison operator (=, !=, >, <, >=, <=, LIKE, ILIKE, CONTAINS)",
                         "default": "=",
                     },
-                    "value": {"type": "string", "description": "Value to compare against"},
-                    "event_type": {"type": "string", "description": "Optional event type filter"},
+                    "value": {"type": "string", "description": "Value to compare against (e.g., '3' for LogonType 3)"},
+                    "event_type": {"type": "string", "description": "OPTIONAL event type filter (e.g., 'evtx_security_4624'). This is the ONLY filter - NO time filtering."},
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of events to return",
@@ -851,20 +851,20 @@ def register_all_tools():
     tool_registry.register(
         ToolSpec(
             name="aggregate_jsonb_field",
-            description="Aggregate values from a JSONB field to find patterns.",
+            description="Aggregate values from a JSONB field to find patterns and distributions. NOTE: This tool does NOT support time filtering (start_time/end_time). Use event_type filter if needed, or use query_jsonb_field for time-based filtering.",
             parameters={
                 "type": "object",
                 "properties": {
                     "jsonb_path": {
                         "type": "string",
-                        "description": "Dotted path to field to aggregate",
+                        "description": "Dotted path to field to aggregate (e.g., 'EventData.TargetUserName', 'EventData.IpAddress')",
                     },
                     "aggregation": {
                         "type": "string",
                         "description": "Aggregation type (count, distinct, top_values)",
                         "default": "count",
                     },
-                    "event_type": {"type": "string", "description": "Optional event type filter"},
+                    "event_type": {"type": "string", "description": "OPTIONAL event type filter (e.g., 'evtx_security_4624'). This is the ONLY filter available - NO time filtering."},
                     "limit": {
                         "type": "integer",
                         "description": "Maximum results for top_values",
@@ -876,6 +876,7 @@ def register_all_tools():
                     },
                 },
                 "required": ["jsonb_path", "description"],
+                "additionalProperties": False,
             },
             impl=aggregate_jsonb_field_wrapper,
         )

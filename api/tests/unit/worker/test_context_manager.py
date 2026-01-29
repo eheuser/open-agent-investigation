@@ -7,6 +7,8 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from worker.agents.context_manager import load_execution_phase_context, load_analysis_phase_context
+
 
 @pytest.mark.unit
 class TestLoadPhase1Context:
@@ -16,8 +18,6 @@ class TestLoadPhase1Context:
         """
         Test that load_phase1_context returns a string containing event types and JSONB fields.
         """
-        from worker.agents.context_manager import load_execution_phase_context
-
         db = AsyncMock()
         investigation_id = str(uuid4())
 
@@ -55,8 +55,6 @@ class TestLoadPhase1Context:
         """
         Test that load_phase1_context works without field dictionary.
         """
-        from worker.agents.context_manager import load_execution_phase_context
-
         db = AsyncMock()
         investigation_id = str(uuid4())
 
@@ -86,8 +84,6 @@ class TestLoadPhase1Context:
         """
         Test that load_phase1_context handles investigations with no events.
         """
-        from worker.agents.context_manager import load_execution_phase_context
-
         db = AsyncMock()
         investigation_id = str(uuid4())
 
@@ -122,8 +118,6 @@ class TestLoadPhase2Context:
         """
         Test that load_phase2_context returns a string containing timeline entries.
         """
-        from worker.agents.context_manager import load_analysis_phase_context
-
         db = AsyncMock()
         investigation_id = str(uuid4())
 
@@ -151,8 +145,6 @@ class TestLoadPhase2Context:
         """
         Test that load_phase2_context handles investigations with no timeline entries.
         """
-        from worker.agents.context_manager import load_analysis_phase_context
-
         db = AsyncMock()
         investigation_id = str(uuid4())
 
@@ -176,8 +168,6 @@ class TestLoadPhase2Context:
         """
         Test that load_phase2_context handles many timeline entries efficiently.
         """
-        from worker.agents.context_manager import load_analysis_phase_context
-
         db = AsyncMock()
         investigation_id = str(uuid4())
 

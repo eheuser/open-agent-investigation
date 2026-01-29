@@ -1,0 +1,229 @@
+name: golden_silver_tickets
+description: Investigation strategies for detecting Kerberos golden and silver ticket attacks - forged authentication tickets for persistence and privilege escalation
+
+playbook: |
+  ## GOLDEN & SILVER TICKET INVESTIGATION PLAYBOOK
+  
+  ### What are Golden/Silver Tickets?
+  Forged Kerberos tickets that allow attackers to authenticate as any user without knowing passwords.
+  
+  **Golden Ticket**: Forged TGT (Ticket Granting Ticket) using krbtgt account hash - domain-wide access
+  **Silver Ticket**: Forged service ticket using service account hash - specific service access
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Kerberos TGT Requests (Event ID 4768)**
+     - Golden tickets show unusual TGT requests
+     - Fields: EventData.TargetUserName, EventData.IpAddress, EventData.TicketEncryptionType
+     - Query: event_type='evtx_security_4768'
+     - Red flags:
+       - TGT requests from unusual IPs (not domain controllers)
+       - Encryption type downgrades (RC4 instead of AES)
+       - TGT lifetime anomalies (10 years instead of 10 hours)
+       - Requests for high-privilege accounts (krbtgt, Domain Admins)
+  
+  2. **Kerberos Service Ticket Requests (Event ID 4769)**
+     - Silver tickets show unusual service ticket requests
+     - Fields: EventData.ServiceName, EventData.TargetUserName, EventData.TicketEncryptionType
+     - Query: event_type='evtx_security_4769'
+     - Red flags:
+       - Service tickets without corresponding TGT (4768)
+       - Encryption type RC4 (attackers often use RC4 for compatibility)
+       - Service tickets for high-value services (CIFS, LDAP, HTTP)
+       - Tickets from accounts that shouldn't access the service
+  
+  3. **Unusual Account Logons (Event ID 4624)**
+     - Golden/silver tickets used for logons
+     - Fields: EventData.TargetUserName, EventData.LogonType, EventData.AuthenticationPackageName
+     - Query: event_type='evtx_security_4624' with LogonType 3 (network logon)
+     - Red flags:
+       - High-privilege accounts logging on from unusual systems
+       - Logons without corresponding credential validation
+       - AuthenticationPackageName: Kerberos (expected) but from unusual source
+  
+  4. **Kerberos Pre-Authentication Failures (Event ID 4771)**
+     - Golden tickets bypass pre-authentication
+     - Fields: EventData.TargetUserName, EventData.FailureCode
+     - Query: event_type='evtx_security_4771'
+     - Look for: Absence of 4771 events for accounts using golden tickets
+     - Red flags: Successful logons (4624) without pre-auth attempts (4771)
+  
+  5. **Account Enumeration for krbtgt (Event ID 4662)**
+     - Attackers may enumerate krbtgt account before creating golden ticket
+     - Fields: EventData.ObjectName, EventData.Properties
+     - Query: `search_events_by_content` for 'krbtgt'
+     - Red flags: Non-DC systems accessing krbtgt account properties
+  
+  6. **NTDS.dit Access (Event ID 4688, Sysmon 11)**
+     - Golden tickets require krbtgt hash from NTDS.dit
+     - Commands: ntdsutil, VSS shadow copy, DCSync
+     - Fields: EventData.CommandLine, EventData.TargetFilename
+     - Query: `search_events_by_content` for 'ntds.dit', 'ntdsutil'
+     - Red flags: NTDS.dit copied outside domain controller
+  
+  7. **DCSync Attack (Event ID 4662)**
+     - Replicating krbtgt hash for golden ticket creation
+     - Fields: EventData.Properties (GUID 1131f6aa, 1131f6ad)
+     - Query: `query_jsonb_field` for replication GUIDs
+     - Red flags: Non-DC computers performing directory replication
+  
+  8. **Mimikatz Usage (Event ID 4688, Sysmon 1)**
+     - Tool commonly used to create golden/silver tickets
+     - Commands:
+       - `kerberos::golden /user:Administrator /domain:... /sid:... /krbtgt:...`
+       - `kerberos::golden /user:... /domain:... /sid:... /target:... /service:cifs /rc4:...`
+     - Query: `search_events_by_content` for 'mimikatz', 'kerberos::golden'
+     - Red flags: Mimikatz execution, especially with kerberos module
+  
+  9. **Encryption Type Anomalies**
+     - Golden/silver tickets often use RC4 (easier to forge)
+     - Modern domains use AES128/AES256
+     - Fields: EventData.TicketEncryptionType (4768, 4769)
+     - Query: `query_jsonb_field` with jsonb_path='EventData.TicketEncryptionType', value='0x17' (RC4)
+     - Red flags: RC4 tickets in AES-only environments
+  
+  10. **Ticket Lifetime Anomalies**
+     - Golden tickets can have abnormal lifetimes
+     - Default TGT: 10 hours, renewable for 7 days
+     - Forged tickets: Can be set to years
+     - Detection: Requires detailed Kerberos logging or packet capture
+     - Red flags: Tickets that never expire, unusually long lifetimes
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Suspicious Kerberos Activity**
+  - Query Event 4768 (TGT requests) for unusual patterns
+  - Check Event 4769 (service tickets) for encryption downgrades
+  - Look for service tickets without corresponding TGTs
+  
+  **Phase 2 - Analyze Ticket Characteristics**
+  - Encryption type: RC4 vs AES (golden tickets often use RC4)
+  - Source IP: Is it a domain controller? Workstation?
+  - Account: High-privilege accounts (Domain Admin, krbtgt)
+  - Service: What services are being accessed?
+  
+  **Phase 3 - Correlate with Credential Theft**
+  - Check for NTDS.dit access (Event 4688, Sysmon 11)
+  - Look for DCSync activity (Event 4662)
+  - Search for Mimikatz usage (Event 4688, Sysmon 1)
+  - Identify LSASS dumping (Sysmon 10)
+  
+  **Phase 4 - Determine Scope**
+  - Which accounts are using forged tickets?
+  - What systems are being accessed?
+  - How long has this been happening? (Timeline)
+  - Is the krbtgt account compromised? (Requires password reset)
+  
+  ### Golden Ticket Attack Chain:
+  
+  ```
+  1. Compromise Domain Admin account
+     - Credential dumping, pass-the-hash, Kerberoasting
+  
+  2. Extract krbtgt hash
+     - DCSync (Event 4662)
+     - NTDS.dit extraction (Sysmon 11, Event 4688)
+     - LSASS dump on DC (Sysmon 10)
+  
+  3. Create golden ticket
+     - Mimikatz: kerberos::golden
+     - Requires: krbtgt hash, domain SID, domain name
+  
+  4. Use golden ticket
+     - Inject ticket into memory (kerberos::ptt)
+     - Access any resource in domain
+     - Event 4768 (TGT) may show anomalies
+     - Event 4769 (service tickets) for accessed resources
+  
+  5. Maintain persistence
+     - Golden tickets valid until krbtgt password reset (twice)
+     - Can be recreated if krbtgt hash is retained
+  ```
+  
+  ### Silver Ticket Attack Chain:
+  
+  ```
+  1. Compromise service account or computer account
+     - Kerberoasting (service accounts)
+     - Credential dumping (computer accounts)
+  
+  2. Extract service account hash
+     - LSASS dump (Sysmon 10)
+     - Kerberoasting offline cracking
+  
+  3. Create silver ticket
+     - Mimikatz: kerberos::golden /target:server /service:cifs /rc4:hash
+     - Requires: service account hash, domain SID, target server
+  
+  4. Use silver ticket
+     - Access specific service (CIFS, LDAP, HTTP, etc.)
+     - Event 4769 (service ticket) may show anomalies
+     - No corresponding 4768 (TGT) event
+  
+  5. Limitations
+     - Only works for specific service
+     - Requires service account hash for each service
+     - Less powerful than golden ticket but stealthier
+  ```
+  
+  ### Detection Queries:
+  
+  ```
+  # Find TGT requests with RC4 encryption
+  query_jsonb_field(jsonb_path='EventData.TicketEncryptionType', operator='=', value='0x17', 
+                    event_type='evtx_security_4768', description='RC4 TGT requests')
+  
+  # Find service tickets without TGTs (silver ticket indicator)
+  # 1. Get all service ticket usernames (4769)
+  aggregate_jsonb_field(jsonb_path='EventData.TargetUserName', aggregation='top_values',
+                        event_type='evtx_security_4769', description='Service ticket accounts')
+  # 2. Compare with TGT requests (4768) - missing TGTs are suspicious
+  
+  # Find krbtgt account access
+  search_events_by_content(value='krbtgt', description='krbtgt account access')
+  
+  # Find DCSync attempts
+  query_jsonb_field(jsonb_path='EventData.Properties', operator='ILIKE', value='%1131f6aa%',
+                    event_type='evtx_security_4662', description='DCSync replication')
+  
+  # Find Mimikatz kerberos module
+  search_events_by_content(value='kerberos::golden', description='Mimikatz golden ticket creation')
+  ```
+  
+  ### Encryption Type Values:
+  
+  - **0x1**: DES-CBC-CRC (obsolete, very suspicious)
+  - **0x3**: DES-CBC-MD5 (obsolete, very suspicious)
+  - **0x17**: RC4-HMAC (common in older domains, used by attackers)
+  - **0x11**: AES128-CTS-HMAC-SHA1-96 (modern, preferred)
+  - **0x12**: AES256-CTS-HMAC-SHA1-96 (modern, most secure)
+  
+  ### Key Questions to Answer:
+  
+  1. Are there TGT/service ticket anomalies? (Encryption, source, timing)
+  2. Was the krbtgt hash stolen? (DCSync, NTDS.dit access)
+  3. Which accounts are using forged tickets?
+  4. What resources are being accessed?
+  5. How long has this been happening? (Timeline)
+  6. Is this a golden ticket (domain-wide) or silver ticket (service-specific)?
+  7. Has the krbtgt password been reset? (Remediation)
+  
+  ### Remediation:
+  
+  **Golden Ticket**:
+  - Reset krbtgt password TWICE (tickets encrypted with old hash)
+  - Wait 10 hours between resets (default TGT lifetime)
+  - Invalidate all current tickets
+  - Investigate how krbtgt hash was stolen
+  
+  **Silver Ticket**:
+  - Reset compromised service account password
+  - Investigate how service account hash was obtained
+  - Check for Kerberoasting attempts (Event 4769 with RC4)
+  
+  ### Advanced Detection:
+  
+  - **Ticket Lifetime**: Requires packet capture or advanced Kerberos logging
+  - **Ticket Flags**: Forged tickets may have unusual flags
+  - **PAC Validation**: Check for PAC signature mismatches (requires DC logs)
+  - **Logon Correlation**: TGT without corresponding logon event (4624)

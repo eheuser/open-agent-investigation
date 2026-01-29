@@ -1,11 +1,13 @@
 from typing import Dict, List, Any
 
 # Data query tools (Phase 1 - Tool Execution)
+# NOTE: search_events_by_type and search_events_by_timerange are disabled
+# to encourage focused JSONB field queries instead of broad searches
 DATA_QUERY_TOOLS = {
-    "search_events_by_type",
+    # "search_events_by_type",        # DISABLED - too broad, use query_jsonb_field instead
     "query_jsonb_field",
     "aggregate_jsonb_field",
-    "search_events_by_timerange",
+    # "search_events_by_timerange",   # DISABLED - too broad, use query_jsonb_field with time filters
     "search_events_by_content",
     "get_event_by_id",
     "get_event_details",

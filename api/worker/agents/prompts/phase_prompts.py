@@ -18,36 +18,60 @@ def get_tool_execution_prompt(user_question: str, iteration: int) -> str:
 
 User's Question: "{user_question}"
 
-Execute 1-3 forensic data query tools to gather initial evidence. **MAXIMUM 5 tools enforced**.
+Execute 1-3 forensic data query tools to gather initial evidence. **MAXIMUM 3 tools enforced**.
 
 **CRITICAL - TOOL CALLS ONLY**:
-Do NOT output any text. Do NOT explain your reasoning.
+Do NOT output any text in Phase 1.
 Just execute tool calls directly. Your analysis will happen in Phase 2.
 
-**TAKE SMALL BITES**:
-- Don't try to solve the entire problem in one iteration
-- Execute 1-3 focused queries to explore a specific aspect
-- You'll have multiple iterations to build a complete picture
-- Smaller queries = better context management = better analysis
+**BEFORE YOU CALL TOOLS - THINK**:
+- What did I learn in the last iteration?
+- What specific question am I trying to answer NOW?
+- Which tool and parameters will answer that question?
+- Am I repeating a query I already ran?
+
+**INVESTIGATIVE STRATEGY - BE FOCUSED**:
+- Start with the MOST SPECIFIC queries related to the user's question
+- Use the field_dictionary to identify relevant JSONB fields
+- Prefer query_jsonb_field over broad searches
+- Query for HIGH-VALUE data, not everything
+- Think: "What specific evidence would answer this question?"
 
 **Available Tool Categories**:
-- search_events_by_type: Search for specific event types (paginated, default 50 events)
-- query_jsonb_field: Query specific JSONB fields with operators (paginated, default 50 events)
-- aggregate_jsonb_field: Aggregate and count field values (returns top N values)
-- search_events_by_timerange: Search within time windows (paginated, default 50 events)
-- hybrid_search: Advanced search combining BM25 + vector similarity (for semantic queries)
+- query_jsonb_field: Query specific JSONB fields with operators (PREFERRED - focused results, supports event_type filter)
+- aggregate_jsonb_field: Aggregate and count field values (good for overview, ONLY supports event_type filter - NO time filtering)
+- search_events_by_content: Search event data using text/patterns
+- hybrid_search: Advanced semantic search (for complex queries)
+- get_event_by_id: Retrieve specific events
+- count_events: Count events (supports event_type, start_time, end_time filters)
+- execute_sql: Advanced SQL queries (use sparingly)
 
-**PAGINATION REMINDER**:
-- If a search returns exactly 50 events, there are likely MORE events
-- Use offset parameter to page through: offset=0 (first page), offset=50 (second page)
-- Check the 'has_more' field in results to know if more data exists
-- Don't assume the first page tells the complete story
+**CRITICAL - TOOL PARAMETERS** (READ THIS):
+- ONLY use parameters EXACTLY as defined in the tool schema
+- DO NOT invent parameters like: query_name, time_start, time_end, query_string, query_jsonb_field
+- aggregate_jsonb_field: ONLY accepts jsonb_path, aggregation, event_type, limit, description
+- query_jsonb_field: ONLY accepts jsonb_path, operator, value, event_type, limit, offset, description
+- If the tool schema doesn't list a parameter, you CANNOT use it - it will cause errors
+- Check the tool specification carefully before calling
+
+**QUERY BEST PRACTICES**:
+- If a query returns >50 events: TOO BROAD - add more filters
+- If a query returns 0 events: TOO SPECIFIC - broaden or try different fields
+- Target: 5-50 events per query for optimal analysis
+- Use limit parameter to control result size
+- Combine multiple field conditions for precision
+
+**FIELD DICTIONARY USAGE**:
+- Review the field_dictionary provided in context
+- Identify which fields contain the data you need
+- Use exact field paths in query_jsonb_field
+- Example: EventData.TargetUserName, EventData.IpAddress, etc.
 
 **REQUIREMENTS**:
 - Each tool MUST have a 'description' argument (shown in UI)
-- Focus on gathering data relevant to the user's question
+- Focus on gathering HIGH-VALUE data relevant to the question
 - Don't execute complete_investigation or register_timeline_entry yet (those are for Phase 2)
-- Execute 1-3 tools, not all 5 (save capacity for follow-up queries)
+- Execute 1-3 tools maximum (quality over quantity)
 
 **EXECUTE TOOL CALLS NOW - NO TEXT OUTPUT**"""
     else:
@@ -59,10 +83,19 @@ Continue your investigation. Execute 1-3 additional forensic tools to gather mor
 Do NOT output any text. Just execute tool calls.
 Your analysis happens in Phase 2.
 
-**REMINDER - TAKE SMALL BITES**:
-- Focus on one specific aspect per iteration
-- Don't flood the context window with too much data at once
-- Execute 1-3 targeted queries based on what you've learned
+**CRITICAL - AVOID REPETITION**:
+⚠️ **DO NOT repeat queries from previous iterations!**
+- Check what you already queried
+- Build on previous results
+- If you found suspicious users, query THOSE SPECIFIC USERS
+- If you found suspicious IPs, query THOSE SPECIFIC IPs
+- Progress from broad → specific → detailed
+
+**INVESTIGATIVE PROGRESSION**:
+Iteration 1: Aggregate to find patterns (who/what/where)
+Iteration 2: Query specific suspicious entities found in iteration 1
+Iteration 3: Get detailed events for those entities
+Iteration 4+: Correlate across event types, build timeline
 
 **EXECUTE TOOL CALLS NOW - NO TEXT OUTPUT**"""
 
