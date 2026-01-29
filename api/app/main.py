@@ -26,8 +26,10 @@ from .routers import (
     embeddings,
     investigation_choices,
     reports,
+    logs,
 )
 from .utils.log_setup import get_logger
+from .services.log_streaming import setup_log_streaming
 
 logger = get_logger(__name__)
 
@@ -62,6 +64,7 @@ app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(embeddings.router, prefix="/api/v1/embeddings", tags=["embeddings"])
 app.include_router(investigation_choices.router, tags=["investigation-choices"])
 app.include_router(reports.router, tags=["reports"])
+app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
 
 
 @app.get("/health")
@@ -116,6 +119,9 @@ async def startup_event():
 
     No return value. Raises any exception propagated from logging or settings access.
     """
+        # Initialize log streaming before any other logging
+    setup_log_streaming()
+    
     logger.info("Starting Open Agent Investigation API...")
     logger.info(
         f"Database: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'configured'}"
@@ -127,6 +133,7 @@ async def startup_event():
     await cleanup_stale_jobs()
     
     logger.info("Chat router enabled")
+    logger.info("Log streaming enabled")
     logger.info("API ready")
 
 

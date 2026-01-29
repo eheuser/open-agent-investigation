@@ -26,6 +26,7 @@ from worker.core.llm_client import LLMClient
 from worker.agents.field_dictionary_finalizer import finalize_field_dictionary
 
 from app.utils.log_setup import get_logger
+from app.utils.http_log_handler import setup_worker_logging
 
 logger = get_logger(__name__)
 
@@ -862,6 +863,13 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
     """
     # Set process name for logging
     mp.current_process().name = f"Worker-{worker_index}"
+
+    # Configure HTTP logging to send logs to API server
+    setup_worker_logging(
+        api_host=settings.api_host,
+        api_port=settings.api_port,
+        process_name=f"Worker-{worker_index}"
+    )
 
     # Configure logging for this process
     logger.info(f"Worker process {worker_index} starting with ID {worker_id}")
