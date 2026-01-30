@@ -5,58 +5,64 @@ import uuid
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 import struct
+
+from .base_parser import BaseParser
 
 from app.utils.log_setup import get_logger
 
 logger = get_logger(__name__)
 
 
-async def parse_prefetch(
-    db: AsyncSession,
-    investigation_id: uuid.UUID,
-    artifact_id: int,
-    file_path: Path,
-) -> int:
+class PrefetchParser(BaseParser):
     """
-    Parse a Windows Prefetch file and insert a corresponding execution event into the database.
-
-    This function performs a minimal, self-contained parsing of a `*.pf` file to extract the
-    executable name and the most recent execution timestamp stored in the prefetch
-    structure.  The extracted information is packaged as a JSON payload and inserted
-    as a single event record using an asynchronous batch insert helper.
-
-    The implementation deliberately avoids external dependencies; for forensic-grade
-    accuracy a dedicated library such as `libscca-python` or `prefetch2es` should be
-    used instead.
-
-    Args:
-        db: An active :class:`sqlalchemy.ext.asyncio.AsyncSession` used to execute the
-            insertion query.
-        investigation_id: The UUID of the investigation to which the event belongs.
-        artifact_id: Identifier of the source artifact (e.g., the file record) within
-            the investigation.
-        file_path: Path object pointing to the prefetch file on disk.
-
-    Returns:
-        int: The number of events successfully inserted (`1` on success, `0` if the
-        file could not be parsed or lacked a valid timestamp).
-
-    Raises:
-        RuntimeError: If an unexpected error occurs during parsing or database insertion,
-        wrapping the original exception for higher-level handling.
+    Parser for Windows Prefetch files.
     """
-    logger.info(f"Parsing prefetch file: {file_path}")
 
-    try:
-        # Basic prefetch parsing (simplified - full implementation would use prefetch2es or libscca)
-        # For now, we'll do a basic parse to extract executable name and timestamps
-
+    @classmethod
+    def identify(cls, filename: str, file_path: Path) -> bool:
+        """
+        Identify Prefetch files by extension and magic bytes.
+        
+        Args:
+            filename: Original filename
+            file_path: Path to the file
+            
+        Returns:
+            True if file is a Prefetch file
+        """
+        if filename.lower().endswith('.pf'):
+            try:
+                with open(file_path, 'rb') as f:
+                    magic = f.read(4)
+                    # Prefetch files have MAM\x04 (Win10+) or SCCA (Win7/8) signature
+                    return magic in [b'MAM\x04', b'SCCA']
+            except Exception:
+                return False
+        return False
+    
+    async def _parse_impl(
+        self,
+        db: AsyncSession,
+        investigation_id: uuid.UUID,
+        artifact_id: int,
+        file_path: Path,
+    ) -> int:
+        """
+        Parse Prefetch file and extract execution metadata.
+        
+        Args:
+            db: Database session
+            investigation_id: Investigation UUID
+            artifact_id: Artifact ID
+            file_path: Path to Prefetch file
+            
+        Returns:
+            Number of events inserted
+        """
         with open(file_path, "rb") as f:
             data = f.read()
 
-        # Prefetch files have a specific header
         if len(data) < 84:
             logger.warning(f"Prefetch file too small: {file_path}")
             return 0
@@ -130,67 +136,10 @@ async def parse_prefetch(
             "payload": json.dumps(payload),
         }
 
-        await _insert_event_batch(db, investigation_id, [event])
+        await self._insert_event_batch(db, investigation_id, [event])
 
         logger.info(f"Parsed prefetch file for executable: {exe_name}")
         return 1
 
-    except Exception as e:
-        logger.error(f"Failed to parse prefetch file {file_path}: {e}", exc_info=True)
-        raise RuntimeError(f"Prefetch parsing failed: {e}")
 
-
-async def _insert_event_batch(
-    db: AsyncSession,
-    investigation_id: uuid.UUID,
-    events: list[Dict[str, Any]],
-):
-    """
-    Batch inserts a list of event dictionaries into the unified `events` table within an asynchronous database session.
-
-    Parameters
-    ----------
-    db : AsyncSession
-        The active SQLAlchemy asynchronous session used to execute the insert statement.
-    investigation_id : uuid.UUID
-        Identifier of the investigation to which all events belong; this value is added to each event payload before insertion.
-    events : list[dict[str, Any]]
-        A collection of event mappings. Each mapping must contain the keys `event_ts`, `artifact_id`,
-        `event_type` and `payload` (JSON-serializable). The function augments each dictionary with an
-        `investigation_id` entry set to the provided `investigation_id`.
-
-    Raises
-    ------
-    Exception
-        Propagates any exception raised during execution of the INSERT statement after logging the error and rolling back the transaction.
-
-    Notes
-    -----
-    - If `events` is empty, the function returns immediately without performing a database operation.
-    - The `payload` field is cast to PostgreSQL `jsonb`; callers must ensure that the value is JSON-serializable.
-    """
-    if not events:
-        return
-
-    # Add investigation_id to each event
-    for event in events:
-        event["investigation_id"] = investigation_id
-
-    # Use unified events table
-    insert_query = text(
-        """
-        INSERT INTO events (investigation_id, event_ts, artifact_id, event_type, payload)
-        VALUES (:investigation_id, :event_ts, :artifact_id, :event_type, CAST(:payload AS jsonb))
-    """
-    )
-
-    try:
-        await db.execute(insert_query, events)
-        await db.commit()
-    except Exception as e:
-        logger.error(f"Failed to insert event batch of {len(events)} events: {e}", exc_info=True)
-        await db.rollback()
-        raise
-
-
-__all__ = ["parse_prefetch"]
+__all__ = ["PrefetchParser"]

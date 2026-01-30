@@ -1,0 +1,152 @@
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Dict, Any, List
+import uuid
+import json
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
+
+
+class BaseParser(ABC):
+    """
+    Abstract base class for all artifact parsers.
+    
+    All parsers must implement:
+    - identify() class method to determine if a file can be parsed
+    - _parse_impl() method to perform the actual parsing
+    
+    The base class provides:
+    - Common database insertion logic
+    - Error handling and logging
+    - Batch insertion utilities
+    """
+    
+    @classmethod
+    @abstractmethod
+    def identify(cls, filename: str, file_path: Path) -> bool:
+        """
+        Determine if this parser can handle the given file.
+        
+        Args:
+            filename: Original filename of the artifact
+            file_path: Path to the artifact file on disk
+            
+        Returns:
+            True if this parser can handle the file, False otherwise
+        """
+        pass
+    
+    @abstractmethod
+    async def _parse_impl(
+        self,
+        db: AsyncSession,
+        investigation_id: uuid.UUID,
+        artifact_id: int,
+        file_path: Path,
+    ) -> int:
+        """
+        Parse the artifact and return the number of events inserted.
+        
+        This method should extract data from the artifact and call
+        _insert_event_batch() to store events in the database.
+        
+        Args:
+            db: Async database session
+            investigation_id: UUID of the investigation
+            artifact_id: ID of the artifact being parsed
+            file_path: Path to the artifact file
+            
+        Returns:
+            Number of events inserted into the database
+            
+        Raises:
+            RuntimeError: If parsing fails
+        """
+        pass
+    
+    async def parse(
+        self,
+        db: AsyncSession,
+        investigation_id: uuid.UUID,
+        artifact_id: int,
+        file_path: Path,
+    ) -> int:
+        """
+        Parse an artifact file and insert events into the database.
+        
+        This is the main entry point called by the dispatcher. It wraps
+        the parser-specific _parse_impl() with common error handling.
+        
+        Args:
+            db: Async database session
+            investigation_id: UUID of the investigation
+            artifact_id: ID of the artifact being parsed
+            file_path: Path to the artifact file
+            
+        Returns:
+            Number of events inserted into the database
+            
+        Raises:
+            RuntimeError: If parsing fails
+        """
+        parser_name = self.__class__.__name__
+        logger.info(f"Parsing artifact {artifact_id} with {parser_name}: {file_path}")
+        
+        try:
+            events_inserted = await self._parse_impl(db, investigation_id, artifact_id, file_path)
+            logger.info(f"{parser_name} inserted {events_inserted} events from {file_path}")
+            return events_inserted
+        except Exception as e:
+            logger.error(f"{parser_name} failed to parse {file_path}: {e}", exc_info=True)
+            raise RuntimeError(f"{parser_name} parsing failed: {e}")
+    
+    async def _insert_event_batch(
+        self,
+        db: AsyncSession,
+        investigation_id: uuid.UUID,
+        events: List[Dict[str, Any]],
+    ):
+        """
+        Insert a batch of events into the unified events table.
+        
+        This is a common utility method used by all parsers to insert events.
+        Each event dictionary must contain: event_ts, artifact_id, event_type, payload.
+        
+        Args:
+            db: Async database session
+            investigation_id: UUID of the investigation
+            events: List of event dictionaries to insert
+            
+        Raises:
+            Exception: If database insertion fails
+        """
+        if not events:
+            return
+        
+        # Add investigation_id to each event
+        for event in events:
+            event["investigation_id"] = investigation_id
+        
+        # Use unified events table
+        insert_query = text(
+            """
+            INSERT INTO events (investigation_id, event_ts, artifact_id, event_type, payload)
+            VALUES (:investigation_id, :event_ts, :artifact_id, :event_type, CAST(:payload AS jsonb))
+        """
+        )
+        
+        try:
+            await db.execute(insert_query, events)
+            await db.commit()
+        except Exception as e:
+            logger.error(f"Failed to insert event batch of {len(events):,} events: {e}", exc_info=True)
+            await db.rollback()
+            raise
+
+
+__all__ = ["BaseParser"]

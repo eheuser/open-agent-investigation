@@ -5,8 +5,9 @@ import uuid
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 from mft.mft import PyMftParser
+
+from .base_parser import BaseParser
 
 from app.utils.log_setup import get_logger
 
@@ -60,38 +61,52 @@ def _parse_timestamp(ts_value) -> datetime | None:
     return None
 
 
-async def parse_mft(
-    db: AsyncSession,
-    investigation_id: uuid.UUID,
-    artifact_id: int,
-    file_path: Path,
-) -> int:
+class MftParser(BaseParser):
     """
-    Parse an NTFS Master File Table (MFT) file and insert forensic events into the database.
-
-    This function uses **PyMftParser** to iterate over MFT entries, extracts relevant timestamps and metadata from the StandardInformation and FileName attributes, builds a JSON payload for each valid record, and batch-inserts the events into the provided asynchronous SQLAlchemy session.  Entries that lack any usable timestamp or raise parsing errors are skipped and counted.
-
-    Args:
-        db: An active :class:`sqlalchemy.ext.asyncio.AsyncSession` used to execute INSERT statements.
-        investigation_id: The UUID of the investigation to which the events belong.
-        artifact_id: Identifier of the source artifact (e.g., the file representing the MFT) within the investigation.
-        file_path: Path object pointing to the MFT file on disk.
-
-    Returns:
-        int: The total number of events successfully inserted into the database.
-
-    Raises:
-        RuntimeError: If a fatal error occurs while opening or processing the MFT file, the original exception is wrapped in a `RuntimeError` with an explanatory message.
-
-    Notes:
-    * The implementation processes entries in batches (default size 2000) to reduce transaction overhead.
-    * Only entries that provide at least one of the following timestamps are considered valid: FileName created, StandardInformation created, FileName modified, or StandardInformation modified.
-    * Timestamps are converted to ISO-8601 strings; missing values are stored as `null` in the JSON payload.
-    * Errors encountered while parsing individual entries are logged and ignored, allowing processing to continue for remaining records.
+    Parser for NTFS Master File Table (MFT) files.
     """
-    logger.info(f"Parsing MFT file: {file_path}")
-
-    try:
+    
+    @classmethod
+    def identify(cls, filename: str, file_path: Path) -> bool:
+        """
+        Identify MFT files by filename pattern and magic bytes.
+        
+        Args:
+            filename: Original filename
+            file_path: Path to the file
+            
+        Returns:
+            True if file is an MFT file
+        """
+        filename_lower = filename.lower()
+        if '$mft' in filename_lower or filename_lower.endswith('.mft'):
+            try:
+                with open(file_path, 'rb') as f:
+                    magic = f.read(5)
+                    return magic == b'FILE0'
+            except Exception:
+                return False
+        return False
+    
+    async def _parse_impl(
+        self,
+        db: AsyncSession,
+        investigation_id: uuid.UUID,
+        artifact_id: int,
+        file_path: Path,
+    ) -> int:
+        """
+        Parse MFT file and extract file system metadata.
+        
+        Args:
+            db: Database session
+            investigation_id: Investigation UUID
+            artifact_id: Artifact ID
+            file_path: Path to MFT file
+            
+        Returns:
+            Number of events inserted
+        """
         events_inserted = 0
         batch_size = 2000
         event_batch = []
@@ -302,7 +317,7 @@ async def parse_mft(
 
                 # Batch insert
                 if len(event_batch) >= batch_size:
-                    await _insert_event_batch(db, investigation_id, event_batch)
+                    await self._insert_event_batch(db, investigation_id, event_batch)
                     events_inserted += len(event_batch)
                     event_batch = []
 
@@ -314,7 +329,7 @@ async def parse_mft(
 
         # Insert remaining events
         if event_batch:
-            await _insert_event_batch(db, investigation_id, event_batch)
+            await self._insert_event_batch(db, investigation_id, event_batch)
             events_inserted += len(event_batch)
 
         logger.info(
@@ -322,61 +337,5 @@ async def parse_mft(
         )
         return events_inserted
 
-    except Exception as e:
-        logger.error(f"Failed to parse MFT file {file_path}: {e}", exc_info=True)
-        raise RuntimeError(f"MFT parsing failed: {e}")
 
-
-async def _insert_event_batch(
-    db: AsyncSession,
-    investigation_id: uuid.UUID,
-    events: list[Dict[str, Any]],
-):
-    """
-    Insert a batch of forensic events into the unified `events` table.
-
-    Parameters
-    ----------
-    db : AsyncSession
-        An active asynchronous SQLAlchemy session used to execute the insert statement.
-    investigation_id : uuid.UUID
-        The identifier of the investigation to which all supplied events belong; this value is added to each event before insertion.
-    events : list[Dict[str, Any]]
-        A collection of dictionaries representing individual events. Each dictionary must contain at least the keys `event_ts`, `artifact_id`, `event_type` and `payload`. The function augments every dictionary with the provided `investigation_id`.
-
-    Raises
-    ------
-    Exception
-        Propagates any exception raised during execution of the INSERT statement after logging the error and rolling back the transaction.
-
-    Notes
-    -----
-    * If `events` is empty, the function returns immediately without performing any database operation.
-    * The `payload` field is cast to PostgreSQL `jsonb`; callers should ensure that the value is JSON-serializable.
-    * On successful execution the transaction is committed; on failure it is rolled back and the original exception is re-raised.
-    """
-    if not events:
-        return
-
-    # Add investigation_id to each event
-    for event in events:
-        event["investigation_id"] = investigation_id
-
-    # Use unified events table
-    insert_query = text(
-        """
-        INSERT INTO events (investigation_id, event_ts, artifact_id, event_type, payload)
-        VALUES (:investigation_id, :event_ts, :artifact_id, :event_type, CAST(:payload AS jsonb))
-    """
-    )
-
-    try:
-        await db.execute(insert_query, events)
-        await db.commit()
-    except Exception as e:
-        logger.error(f"Failed to insert event batch of {len(events):,} events: {e}", exc_info=True)
-        await db.rollback()
-        raise
-
-
-__all__ = ["parse_mft"]
+__all__ = ["MftParser"]

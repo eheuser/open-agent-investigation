@@ -13,6 +13,8 @@ interface Props {
   investigationId: string;
   onUploadComplete?: () => void;
   initialFiles?: File[];
+  maxFiles?: number;  // Maximum files to upload at once
+  concurrentUploads?: number;  // Number of concurrent uploads
 }
 
 interface UploadedFile {
@@ -25,60 +27,16 @@ interface UploadedFile {
   eventCount?: number;
 }
 
-enum ArtifactClassification {
-  SYSTEM_HIVE = 0,
-  LOG_FILE = 1,
-  BINARY = 2,
-  ARCHIVE = 3,
-  UNKNOWN = 4,
-}
-
-const CLASSIFICATION_LABELS: Record<ArtifactClassification, string> = {
-  [ArtifactClassification.SYSTEM_HIVE]: 'Registry Hive',
-  [ArtifactClassification.LOG_FILE]: 'Log File (EVTX)',
-  [ArtifactClassification.BINARY]: 'Binary (EXE, DLL, Prefetch, LNK)',
-  [ArtifactClassification.ARCHIVE]: 'Archive (MFT, ZIP)',
-  [ArtifactClassification.UNKNOWN]: 'Unknown',
-};
-
-/**
- * Check file magic bytes to identify file type
- * @param file The file to check
- * @returns Promise with the detected classification or null if not detected
- */
-const checkFileMagic = async (file: File): Promise<ArtifactClassification | null> => {
-  // Read first 5 bytes to check magic signatures
-  const slice = file.slice(0, 5);
-  const buffer = await slice.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  
-  // Check for Registry Hive: starts with "regf" (0x72 0x65 0x67 0x66)
-  if (bytes.length >= 4 && 
-      bytes[0] === 0x72 && bytes[1] === 0x65 && 
-      bytes[2] === 0x67 && bytes[3] === 0x66) {
-    return ArtifactClassification.SYSTEM_HIVE;
-  }
-  
-  // Check for MFT: starts with "FILE0" (0x46 0x49 0x4C 0x45 0x30)
-  if (bytes.length >= 5 && 
-      bytes[0] === 0x46 && bytes[1] === 0x49 && 
-      bytes[2] === 0x4C && bytes[3] === 0x45 && 
-      bytes[4] === 0x30) {
-    return ArtifactClassification.ARCHIVE;
-  }
-  
-  return null;
-};
-
 const FileDropzone: React.FC<Props> = ({
   investigationId,
   onUploadComplete,
-  initialFiles
+  initialFiles,
+  maxFiles = 50,  // Default max 50 files
+  concurrentUploads = 3,  // Default 3 concurrent uploads
 }) => {
-            const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [fileClassifications, setFileClassifications] = useState<Record<string, ArtifactClassification>>({});
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
 
   // Handle initial files if provided
@@ -88,40 +46,16 @@ const FileDropzone: React.FC<Props> = ({
     }
   }, [initialFiles]);
 
-        const onDrop = useCallback(
-    async (files: File[]) => {
-      setSelectedFiles(files);
-      
-      // Auto-detect classification based on file magic and extension
-      const classifications: Record<string, ArtifactClassification> = {};
-      
-      for (const file of files) {
-        // First, try to detect by file magic bytes
-        const magicClassification = await checkFileMagic(file);
-        
-        if (magicClassification !== null) {
-          classifications[file.name] = magicClassification;
-          continue;
-        }
-        
-        // Fall back to extension-based detection
-        const ext = file.name.toLowerCase();
-        if (ext.endsWith('.evtx')) {
-          classifications[file.name] = ArtifactClassification.LOG_FILE;
-        } else if (ext.endsWith('.reg') || ext.includes('hive') || ext.includes('ntuser')) {
-          classifications[file.name] = ArtifactClassification.SYSTEM_HIVE;
-        } else if (ext.endsWith('.exe') || ext.endsWith('.dll') || ext.endsWith('.pf') || ext.endsWith('.lnk')) {
-          classifications[file.name] = ArtifactClassification.BINARY;
-        } else if (ext.endsWith('.zip') || ext.endsWith('.mft') || ext.includes('$mft')) {
-          classifications[file.name] = ArtifactClassification.ARCHIVE;
-        } else {
-          classifications[file.name] = ArtifactClassification.UNKNOWN;
-        }
+                  const onDrop = useCallback(
+    (files: File[]) => {
+      // Limit number of files
+      if (files.length > maxFiles) {
+        alert(`You can only upload up to ${maxFiles} files at once. Please select fewer files.`);
+        return;
       }
-      
-      setFileClassifications(classifications);
+      setSelectedFiles(files);
     },
-    []
+    [maxFiles]
   );
   
     // Poll for job status updates
@@ -195,77 +129,86 @@ const FileDropzone: React.FC<Props> = ({
     };
   }, [uploadedFiles, pollingInterval]);
 
-  const handleUpload = async () => {
-    setUploading(true);
-    const newUploads: UploadedFile[] = [];
-    
-    try {
-      for (const file of selectedFiles) {
-        const classification = fileClassifications[file.name] ?? ArtifactClassification.UNKNOWN;
-        
-        // Add to uploaded files with 'uploading' status
-        const uploadingFile: UploadedFile = {
-          fileName: file.name,
-          artifactId: -1,
-          jobId: -1,
-          status: 'uploading',
-          progress: 0,
-        };
-        newUploads.push(uploadingFile);
-        setUploadedFiles(prev => [...prev, uploadingFile]);
-        
-        const form = new FormData();
-        form.append('file', file);
-        form.append('investigation_id', investigationId);
-        form.append('classification', classification.toString());
+    const uploadSingleFile = async (file: File): Promise<void> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('investigation_id', investigationId);
 
-        const response = await api.post('/api/v1/artifacts/', form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (progressEvent) => {
-            const progress = progressEvent.total
-              ? Math.round((progressEvent.loaded * 100) / progressEvent.total)
-              : 0;
-            
-            setUploadedFiles(prev =>
-              prev.map(f =>
-                f.fileName === file.name && f.status === 'uploading'
-                  ? { ...f, progress }
-                  : f
-              )
-            );
-          },
-        });
-        
-        // Update with artifact_id and job_id, set status to 'queued'
-        setUploadedFiles(prev =>
-          prev.map(f =>
-            f.fileName === file.name && f.status === 'uploading'
-              ? {
-                  ...f,
-                  artifactId: response.data.artifact_id,
-                  jobId: response.data.job_id,
-                  status: 'queued',
-                  progress: 100,
-                }
-              : f
-          )
-        );
-      }
+    try {
+      const response = await api.post('/api/v1/artifacts/', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          const progress = progressEvent.total
+            ? Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            : 0;
+          
+          setUploadedFiles(prev =>
+            prev.map(f =>
+              f.fileName === file.name && f.status === 'uploading'
+                ? { ...f, progress }
+                : f
+            )
+          );
+        },
+      });
       
-      setSelectedFiles([]);
-      setFileClassifications({});
-      onUploadComplete?.();
-    } catch (error: any) {
-      console.error('Upload failed:', error);
-      
-      // Mark failed uploads
+      // Update with artifact_id and job_id, set status to 'queued'
       setUploadedFiles(prev =>
         prev.map(f =>
-          f.status === 'uploading'
-            ? { ...f, status: 'failed', error: error.message || 'Upload failed' }
+          f.fileName === file.name && f.status === 'uploading'
+            ? {
+                ...f,
+                artifactId: response.data.artifact_id,
+                jobId: response.data.job_id,
+                status: 'queued',
+                progress: 100,
+              }
             : f
         )
       );
+    } catch (error: any) {
+      console.error(`Upload failed for ${file.name}:`, error);
+      
+      // Mark this specific file as failed
+      setUploadedFiles(prev =>
+        prev.map(f =>
+          f.fileName === file.name && f.status === 'uploading'
+            ? { 
+                ...f, 
+                status: 'failed', 
+                error: error.response?.data?.detail || error.message || 'Upload failed' 
+              }
+            : f
+        )
+      );
+    }
+  };
+
+  const handleUpload = async () => {
+    setUploading(true);
+    
+    try {
+      // Initialize all files with 'uploading' status
+      const initialUploads: UploadedFile[] = selectedFiles.map(file => ({
+        fileName: file.name,
+        artifactId: -1,
+        jobId: -1,
+        status: 'uploading' as const,
+        progress: 0,
+      }));
+      
+      setUploadedFiles(prev => [...prev, ...initialUploads]);
+      
+      // Upload files in batches to avoid overwhelming the server
+      for (let i = 0; i < selectedFiles.length; i += concurrentUploads) {
+        const batch = selectedFiles.slice(i, i + concurrentUploads);
+        await Promise.all(batch.map(file => uploadSingleFile(file)));
+      }
+      
+      setSelectedFiles([]);
+      onUploadComplete?.();
+    } catch (error: any) {
+      console.error('Upload batch failed:', error);
     } finally {
       setUploading(false);
     }
@@ -311,11 +254,18 @@ const FileDropzone: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Selected Files List */}
+            {/* Selected Files List */}
       <div className="flex-1 mt-4 flex flex-col min-h-0">
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex-shrink-0">
-          Selected Files ({selectedFiles.length}):
-        </p>
+        <div className="flex items-center justify-between mb-2 flex-shrink-0">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Selected Files ({selectedFiles.length}):
+          </p>
+          {selectedFiles.length > maxFiles && (
+            <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+              Limit: {maxFiles} files max
+            </p>
+          )}
+        </div>
         
         <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-y-auto" style={{ height: '250px' }}>
           {selectedFiles.length === 0 ? (
@@ -387,26 +337,8 @@ const FileDropzone: React.FC<Props> = ({
                             {isParsing && 'Parsing...'}
                             {isCompleted && `✓ Completed - ${uploadedFile.eventCount || 0} events`}
                             {isFailed && `Failed: ${uploadedFile.error || 'Unknown error'}`}
-                          </span>
+                                                    </span>
                         </div>
-                      )}
-                      
-                      {/* Classification dropdown - hide when uploading */}
-                      {!uploadedFile && (
-                        <select
-                          value={fileClassifications[file.name] ?? ArtifactClassification.UNKNOWN}
-                          onChange={(e) => setFileClassifications(prev => ({
-                            ...prev,
-                            [file.name]: parseInt(e.target.value) as ArtifactClassification
-                          }))}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-                        >
-                          {Object.entries(CLASSIFICATION_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
                       )}
                     </div>
                   </div>
@@ -428,10 +360,9 @@ const FileDropzone: React.FC<Props> = ({
             {uploading ? 'Uploading...' : 'Upload Files'}
           </button>
           
-          <button
+                    <button
             onClick={() => {
               setSelectedFiles([]);
-              setFileClassifications({});
             }}
             disabled={uploading}
             className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

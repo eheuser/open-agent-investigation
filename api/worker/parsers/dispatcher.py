@@ -3,54 +3,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
 
-from app.models.artifact import Artifact, ArtifactClassification
+from app.models.artifact import Artifact
 from app.core.config import settings
 from app.services.rag.event_processor import process_interesting_events
-
-# Optional parser imports - may not be available in test environments
-try:
-    from .evtx_parser import parse_evtx
-
-    EVTX_AVAILABLE = True
-except ImportError:
-    EVTX_AVAILABLE = False
-    parse_evtx = None
-
-try:
-    from .registry_parser import parse_registry
-
-    REGISTRY_AVAILABLE = True
-except ImportError:
-    REGISTRY_AVAILABLE = False
-    parse_registry = None
-
-try:
-    from .prefetch_parser import parse_prefetch
-
-    PREFETCH_AVAILABLE = True
-except ImportError:
-    PREFETCH_AVAILABLE = False
-    parse_prefetch = None
-
-try:
-    from .lnk_parser import parse_lnk
-
-    LNK_AVAILABLE = True
-except ImportError:
-    LNK_AVAILABLE = False
-    parse_lnk = None
-
-try:
-    from .mft_parser import parse_mft
-
-    MFT_AVAILABLE = True
-except ImportError:
-    MFT_AVAILABLE = False
-    parse_mft = None
-
 from app.utils.log_setup import get_logger
 
+# Import all parser classes
+from .evtx_parser import EvtxParser
+from .registry_parser import RegistryParser
+from .prefetch_parser import PrefetchParser
+from .lnk_parser import LnkParser
+from .mft_parser import MftParser
+from .jumplist_parser import JumplistParser
+from .browser_history_parser import BrowserHistoryParser
+from .windows_artifacts_parser import WindowsArtifactsParser
+
 logger = get_logger(__name__)
+
+# Registry of all available parsers
+# Order matters - more specific parsers should come first
+PARSERS = [
+    EvtxParser,
+    RegistryParser,
+    PrefetchParser,
+    LnkParser,
+    MftParser,
+    JumplistParser,
+    BrowserHistoryParser,
+    WindowsArtifactsParser,
+]
 
 
 async def parse_artifact(
@@ -62,9 +43,9 @@ async def parse_artifact(
     """
     Parse an artifact and store its events in the database.
 
-    This coroutine retrieves the specified artifact file, selects a parser based on the
-    artifact’s classification and filename extension, inserts any generated events,
-    and optionally processes those events to create timeline entries with embeddings.
+    This coroutine retrieves the specified artifact file, automatically identifies
+    the appropriate parser using each parser's identify() method, parses the artifact,
+    and optionally processes events to create timeline entries with embeddings.
 
     Args:
         db: An asynchronous SQLAlchemy session used for all database operations.
@@ -78,22 +59,18 @@ async def parse_artifact(
 
     Raises:
         ValueError: If no artifact with the given `artifact_id` exists.
-        RuntimeError: If the artifact file cannot be found on disk or if a required
-            parser library (e.g., EVTX, Registry, Prefetch, LNK, MFT) is not available.
-        RuntimeError: If parsing fails for any other reason not covered by the optional
-            event-processing step.
+        RuntimeError: If the artifact file cannot be found on disk or if no parser
+            can handle the file type.
+        RuntimeError: If parsing fails for any reason.
 
     Notes:
-        * Supported classifications and their parsers are:
-          - `LOG_FILE` - currently only Windows Event Log files (`.evtx`).
-          - `SYSTEM_HIVE` - Windows Registry hive files.
-          - `BINARY` - Prefetch files (`.pf`) and shortcut files (`.lnk`).
-          - `ARCHIVE` - Master File Table dumps (`$MFT` or `.mft`).
-
-        * If a parser for the artifact’s type is unavailable, a `RuntimeError` is raised.
+        * The dispatcher automatically identifies the correct parser by calling each
+          parser's identify() class method in order until one returns True.
+        * No manual classification is required - parsers use magic bytes and file
+          patterns for identification.
         * After successful parsing, the function attempts to create timeline entries via
-          :func:`process_interesting_events`. Failures in this optional step are logged,
-          cause a session rollback, but do not abort the overall operation.
+          process_interesting_events(). Failures in this optional step are logged but
+          do not abort the overall operation.
     """
     # Get artifact
     result = await db.execute(select(Artifact).where(Artifact.artifact_id == artifact_id))
@@ -110,64 +87,33 @@ async def parse_artifact(
         raise RuntimeError(f"Artifact file not found: {file_path}")
 
     logger.info(
-        f"Parsing artifact {artifact_id} ({artifact.filename}) "
-        f"with classification {artifact.classification}"
+        f"Identifying parser for artifact {artifact_id} ({artifact.filename})"
     )
 
-    # Route to appropriate parser
-    classification = ArtifactClassification(artifact.classification)
-    events_inserted = 0
+    # Try each parser's identify() method
+    selected_parser = None
+    for parser_class in PARSERS:
+        try:
+            if parser_class.identify(artifact.filename, file_path):
+                selected_parser = parser_class()
+                logger.info(
+                    f"Selected {parser_class.__name__} for artifact {artifact_id} ({artifact.filename})"
+                )
+                break
+        except Exception as e:
+            logger.warning(
+                f"{parser_class.__name__}.identify() failed for {artifact.filename}: {e}"
+            )
+            continue
 
-    if classification == ArtifactClassification.LOG_FILE:
-        # Check file extension for specific log types
-        ext = artifact.filename.lower()
+    if not selected_parser:
+        raise RuntimeError(
+            f"No parser available for artifact {artifact_id} ({artifact.filename}). "
+            f"File type not recognized."
+        )
 
-        if ext.endswith(".evtx"):
-            if not EVTX_AVAILABLE:
-                raise RuntimeError("EVTX parser not available (evtx library not installed)")
-            events_inserted = await parse_evtx(db, investigation_id, artifact_id, file_path)
-        else:
-            logger.warning(f"Unsupported log file type: {artifact.filename}")
-            return 0
-
-    elif classification == ArtifactClassification.SYSTEM_HIVE:
-        # Registry hive
-        if not REGISTRY_AVAILABLE:
-            raise RuntimeError("Registry parser not available (regipy library not installed)")
-        events_inserted = await parse_registry(db, investigation_id, artifact_id, file_path)
-
-    elif classification == ArtifactClassification.BINARY:
-        # Check for specific binary types
-        ext = artifact.filename.lower()
-
-        if ext.endswith(".pf"):
-            if not PREFETCH_AVAILABLE:
-                raise RuntimeError("Prefetch parser not available (prefetch library not installed)")
-            events_inserted = await parse_prefetch(db, investigation_id, artifact_id, file_path)
-        elif ext.endswith(".lnk"):
-            if not LNK_AVAILABLE:
-                raise RuntimeError("LNK parser not available (lnk library not installed)")
-            events_inserted = await parse_lnk(db, investigation_id, artifact_id, file_path)
-        else:
-            # Generic binary - no parsing for now
-            logger.info(f"No parser for binary file: {artifact.filename}")
-            return 0
-
-    elif classification == ArtifactClassification.ARCHIVE:
-        # MFT or other archive formats
-        ext = artifact.filename.lower()
-
-        if "$mft" in ext or ext.endswith(".mft"):
-            if not MFT_AVAILABLE:
-                raise RuntimeError("MFT parser not available (mft library not installed)")
-            events_inserted = await parse_mft(db, investigation_id, artifact_id, file_path)
-        else:
-            logger.info(f"No parser for archive file: {artifact.filename}")
-            return 0
-
-    else:
-        logger.info(f"No parser for classification: {classification}")
-        return 0
+    # Parse the artifact using the selected parser
+    events_inserted = await selected_parser.parse(db, investigation_id, artifact_id, file_path)
 
     # After parsing, process interesting events to create timeline entries with embeddings
     if events_inserted > 0:

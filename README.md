@@ -8,7 +8,17 @@
 
 A micro-forensics workbench for analyzing artifacts. It combines forensic parsing with LLM-driven investigation workflows to reconstruct evidence timelines, identify threats, and document findings.
 
+**Quick Start**
+
+```bash
+git clone https://github.com/eheuser/open-agent-investigation.git
+cd open-agent-investigation
+docker compose up -d
+```
+
 > **Note**: This is a work in progress. See the [Roadmap](ROADMAP.md) for planned features. Contributions welcome!
+
+## Features
 
 ---
 
@@ -56,7 +66,7 @@ Monitor the application with streamed logs.
 
 ## What It Does
 
-- Parses Windows forensic artifacts (EVTX logs, registry hives, MFT, prefetch, LNK files)
+- Parses 20+ Windows forensic artifacts (EVTX logs, registry hives, MFT, prefetch, LNK files, Jump Lists, browser history, scheduled tasks, SRUM, Windows Search, notifications, and more)
 - Routes natural language queries to specialized handlers using LLM-based intent classification
 - Executes autonomous agent investigations with 16+ forensic tools
 - **Provides 20+ built-in investigation playbooks with custom playbook creation**
@@ -109,6 +119,7 @@ The system automatically classifies user intent or accepts manual mode selection
 
 ### Artifact Support
 
+#### Core Artifacts
 | Type | Format | Parser | Output Event Types |
 |------|--------|--------|-------------------|
 | Event Logs | .evtx | evtx | evtx_security_*, evtx_sysmon_* |
@@ -116,6 +127,21 @@ The system automatically classifies user intent or accepts manual mode selection
 | File System | $MFT | mft | mft_entry |
 | Prefetch | *.pf | prefetch2es | prefetch_execution |
 | Shortcuts | *.lnk | LnkParse3 | lnk_file |
+
+#### Extended Artifacts
+| Type | Format | Parser | Output Event Types |
+|------|--------|--------|-------------------|
+| Jump Lists | *.automaticDestinations-ms, *.customDestinations-ms | jumplist | jumplist_entry |
+| Browser History | History (Chrome/Edge), places.sqlite (Firefox), WebCacheV*.dat (Legacy Edge) | browser_history | browser_history |
+| Scheduled Tasks | *.job, *.xml | windows_artifacts | scheduled_task |
+| PCA Files | *.pca | windows_artifacts | pca_execution |
+| SRUM Database | srudb.dat | windows_artifacts | srum_data |
+| Windows Search | Windows.edb | windows_artifacts | windows_search |
+| Bitmap Cache | thumbcache_*.db, iconcache_*.db | windows_artifacts | bitmap_cache |
+| Notifications | wpndatabase.db | windows_artifacts | notification |
+| CryptNetUrlCache | CRL cache files | windows_artifacts | cryptnet_cache |
+
+See [Parser Documentation](api/worker/parsers/README.md) for detailed artifact specifications.
 
 ### Evidence Timeline
 

@@ -1,13 +1,13 @@
 from pathlib import Path
 from datetime import datetime, date
-from typing import Dict, Any
+from typing import Any
 import uuid
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 import LnkParse3
 
+from .base_parser import BaseParser
 from .utils import flatten_dict
 
 from app.utils.log_setup import get_logger
@@ -15,46 +15,51 @@ from app.utils.log_setup import get_logger
 logger = get_logger(__name__)
 
 
-async def parse_lnk(
-    db: AsyncSession,
-    investigation_id: uuid.UUID,
-    artifact_id: int,
-    file_path: Path,
-) -> int:
+class LnkParser(BaseParser):
     """
-    Parse a Windows LNK (shortcut) file, extract its metadata, and insert a single forensic event record into the database.
-
-    Args:
-        db: An active `AsyncSession` used to execute the INSERT operation.
-        investigation_id: The UUID of the investigation that owns the new event.
-        artifact_id: Identifier of the source artifact from which the LNK file originated.
-        file_path: Path object pointing to the `.lnk` file on disk.
-
-    Returns:
-        int: The number of events successfully inserted (always 0 or 1). A return value
-        of `0` indicates that the file was skipped because it lacked a valid forensic
-        timestamp; `1` means an event was created and stored.
-
-    Raises:
-        RuntimeError: If any unexpected error occurs while reading, parsing, or inserting
-        the LNK data. The original exception is included in the message for debugging.
-
-    Notes:
-        * The function uses :pymod:`LnkParse3` to read the binary file and obtain a JSON-serialisable
-          representation of its contents.
-        * All datetime objects found in the parsed structure are converted to Unix timestamps by
-          `_walk_data` before further processing.
-        * A forensic timestamp is selected from the LNK header fields (`write_time`, `access_time`,
-          or `creation_time`) in that order. If none of these fields contain a valid numeric value,
-          the file is considered forensically invalid and no event is created.
-        * The parsed data dictionary is flattened with :func:`flatten_dict` so that nested keys become
-          top-level entries, simplifying storage and querying.
-        * An `extracted_timestamp` field (ISO-8601 string) is added to the payload for reference,
-          alongside the original timestamp stored in the `event_ts` column of the event record.
+    Parser for Windows LNK shortcut files.
     """
-    logger.info(f"Parsing LNK file: {file_path}")
-
-    try:
+    
+    @classmethod
+    def identify(cls, filename: str, file_path: Path) -> bool:
+        """
+        Identify LNK files by extension and magic bytes.
+        
+        Args:
+            filename: Original filename
+            file_path: Path to the file
+            
+        Returns:
+            True if file is a LNK file
+        """
+        if filename.lower().endswith('.lnk'):
+            try:
+                with open(file_path, 'rb') as f:
+                    magic = f.read(4)
+                    return magic == b'\x4c\x00\x00\x00'
+            except Exception:
+                return False
+        return False
+    
+    async def _parse_impl(
+        self,
+        db: AsyncSession,
+        investigation_id: uuid.UUID,
+        artifact_id: int,
+        file_path: Path,
+    ) -> int:
+        """
+        Parse LNK file and extract metadata.
+        
+        Args:
+            db: Database session
+            investigation_id: Investigation UUID
+            artifact_id: Artifact ID
+            file_path: Path to LNK file
+            
+        Returns:
+            Number of events inserted
+        """
         with open(file_path, "rb") as f:
             lnk = LnkParse3.lnk_file(f)
             data = lnk.get_json()
@@ -107,70 +112,10 @@ async def parse_lnk(
             elif "string_data" in payload and isinstance(payload["string_data"], dict):
                 target_path = payload["string_data"].get("relative_path", "unknown")
 
-        await _insert_event_batch(db, investigation_id, [event])
+        await self._insert_event_batch(db, investigation_id, [event])
 
         logger.info(f"Parsed LNK file: {target_path}")
         return 1
-
-    except Exception as e:
-        logger.error(f"Failed to parse LNK file {file_path}: {e}", exc_info=True)
-        raise RuntimeError(f"LNK parsing failed: {e}")
-
-
-async def _insert_event_batch(
-    db: AsyncSession,
-    investigation_id: uuid.UUID,
-    events: list[Dict[str, Any]],
-):
-    """
-    Insert a batch of forensic events into the unified `events` table.
-
-    This coroutine adds the provided `investigation_id` to each event dictionary,
-    constructs an INSERT statement using SQLAlchemy's :func:`text` construct, and
-    executes it asynchronously via the given database session.  If the insertion
-    fails, the transaction is rolled back and the original exception is re-raised
-    after logging an error.
-
-    Parameters
-    ----------
-    db: AsyncSession
-        An active asynchronous SQLAlchemy session used to execute the INSERT query.
-    investigation_id: uuid.UUID
-        The identifier of the investigation to which all events belong.  This value
-        will be added to each event dictionary under the key `investigation_id`.
-    events: list[Dict[str, Any]]
-        A list of dictionaries representing individual events.  Each dictionary must
-        contain the keys `event_ts`, `artifact_id`, `event_type`, and
-        `payload`; the function will augment each with `investigation_id`.
-
-    Raises
-    ------
-    Exception
-        Propagates any exception raised during query execution after logging an
-        error message and rolling back the transaction.
-    """
-    if not events:
-        return
-
-    # Add investigation_id to each event
-    for event in events:
-        event["investigation_id"] = investigation_id
-
-    # Use unified events table
-    insert_query = text(
-        """
-        INSERT INTO events (investigation_id, event_ts, artifact_id, event_type, payload)
-        VALUES (:investigation_id, :event_ts, :artifact_id, :event_type, CAST(:payload AS jsonb))
-    """
-    )
-
-    try:
-        await db.execute(insert_query, events)
-        await db.commit()
-    except Exception as e:
-        logger.error(f"Failed to insert event batch of {len(events):,} events: {e}", exc_info=True)
-        await db.rollback()
-        raise
 
 
 def _walk_data(o: Any) -> Any:
@@ -200,4 +145,4 @@ def _walk_data(o: Any) -> Any:
     return o
 
 
-__all__ = ["parse_lnk"]
+__all__ = ["LnkParser"]

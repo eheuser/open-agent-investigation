@@ -5,9 +5,9 @@ import uuid
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 from evtx import PyEvtxParser  # type: ignore
 
+from .base_parser import BaseParser
 from .utils import flatten_dict
 
 from app.utils.log_setup import get_logger
@@ -293,43 +293,61 @@ def _flatten_event_data(event_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return flattened
 
 
-async def parse_evtx(
-    db: AsyncSession,
-    investigation_id: uuid.UUID,
-    artifact_id: int,
-    file_path: Path,
-) -> int:
+class EvtxParser(BaseParser):
     """
-    Parse a Windows EVTX file and insert its events into the database.
-
-    This function reads the specified EVTX file using :class:`PyEvtxParser`, extracts relevant
-    information from each record (event ID, channel, timestamp, and payload data), normalises
-    the payload structure, builds a canonical event type string, and inserts the events in
-    batches.  It returns the total number of events successfully inserted.
-
-    Args:
-        db: An active :class:`AsyncSession` used for database operations.
-        investigation_id: The UUID identifying the current investigation; this value is stored
-            with each inserted event to maintain provenance.
-        artifact_id: The integer identifier of the source artifact (e.g., the file record) from
-            which the EVTX data originates.
-        file_path: A :class:`pathlib.Path` pointing to the EVTX file to be processed.
-
-    Returns:
-        int: The number of events that were inserted into the database.
-
-    Raises:
-        RuntimeError: If the EVTX file cannot be opened or parsed, or if an unexpected error
-            occurs during processing.  The original exception is included in the message and
-            logged with full traceback.
+    Parser for Windows Event Log (EVTX) files.
+    
+    Extracts events from EVTX files including event ID, channel, timestamp,
+    and all event data fields.
     """
-    logger.info(f"Parsing EVTX file: {file_path}")
+    
+    @classmethod
+    def identify(cls, filename: str, file_path: Path) -> bool:
+        """
+        Identify EVTX files by extension or magic bytes.
+        
+        Args:
+            filename: Original filename
+            file_path: Path to the file
+            
+        Returns:
+            True if file is an EVTX file
+        """
+        # Check extension first
+        if filename.lower().endswith('.evtx'):
+            return True
+        
+        # Check magic bytes: EVTX files start with "ElfFile\x00"
+        try:
+            with open(file_path, 'rb') as f:
+                magic = f.read(8)
+                return magic == b'ElfFile\x00'
+        except Exception:
+            return False
+    
+    async def _parse_impl(
+        self,
+        db: AsyncSession,
+        investigation_id: uuid.UUID,
+        artifact_id: int,
+        file_path: Path,
+    ) -> int:
+        """
+        Parse EVTX file and extract events.
+        
+        Args:
+            db: Database session
+            investigation_id: Investigation UUID
+            artifact_id: Artifact ID
+            file_path: Path to EVTX file
+            
+        Returns:
+            Number of events inserted
+        """
+        events_inserted = 0
+        batch_size = 1000
+        event_batch = []
 
-    events_inserted = 0
-    batch_size = 1000
-    event_batch = []
-
-    try:
         parser = PyEvtxParser(str(file_path))
 
         for record in parser.records_json():
@@ -402,7 +420,7 @@ async def parse_evtx(
 
                 # Batch insert
                 if len(event_batch) >= batch_size:
-                    await _insert_event_batch(db, investigation_id, event_batch)
+                    await self._insert_event_batch(db, investigation_id, event_batch)
                     events_inserted += len(event_batch)
                     event_batch = []
 
@@ -412,83 +430,14 @@ async def parse_evtx(
 
         # Insert remaining events
         if event_batch:
-            await _insert_event_batch(db, investigation_id, event_batch)
+            await self._insert_event_batch(db, investigation_id, event_batch)
             events_inserted += len(event_batch)
 
-        logger.info(f"Parsed {events_inserted} events from EVTX file")
         return events_inserted
-
-    except Exception as e:
-        logger.error(f"Failed to parse EVTX file {file_path}: {e}", exc_info=True)
-        raise RuntimeError(f"EVTX parsing failed: {e}")
-
-
-async def _insert_event_batch(
-    db: AsyncSession,
-    investigation_id: uuid.UUID,
-    events: list[Dict[str, Any]],
-):
-    """
-    Insert a batch of parsed events into the unified `events` table.
-
-    This coroutine enriches each event dictionary with the provided
-    `investigation_id` and then executes a single bulk INSERT statement.
-    If the `events` collection is empty the function returns immediately
-    without performing any database work.
-
-    Parameters
-    ----------
-    db : AsyncSession
-        An active asynchronous SQLAlchemy session used to execute the query
-        and commit the transaction.
-    investigation_id : uuid.UUID
-        The identifier of the investigation to which all events belong.  It is
-        added to each event record under the `investigation_id` column.
-    events : list[dict[str, Any]]
-        A list of dictionaries representing individual events.  Each dictionary
-        must contain the keys `event_ts`, `artifact_id`, `event_type` and
-        `payload`; the function will augment it with `investigation_id`.
-
-    Raises
-    ------
-    Exception
-        Propagates any exception raised during execution of the INSERT query.
-        The database transaction is rolled back and the error is logged before
-        being re-raised.
-
-    Notes
-    -----
-    The SQL statement casts the `payload` field to `jsonb` to store it as a
-    JSON document in PostgreSQL.  Because the operation is performed with an
-    asynchronous session, callers should await this coroutine within an async
-    context.
-    """
-    if not events:
-        return
-
-    # Add investigation_id to each event
-    for event in events:
-        event["investigation_id"] = investigation_id
-
-    # Use unified events table
-    insert_query = text(
-        """
-        INSERT INTO events (investigation_id, event_ts, artifact_id, event_type, payload)
-        VALUES (:investigation_id, :event_ts, :artifact_id, :event_type, CAST(:payload AS jsonb))
-    """
-    )
-
-    try:
-        await db.execute(insert_query, events)
-        await db.commit()
-    except Exception as e:
-        logger.error(f"Failed to insert event batch of {len(events):,} events: {e}", exc_info=True)
-        await db.rollback()
-        raise
 
 
 __all__ = [
-    "parse_evtx",
+    "EvtxParser",
     "_extract_event_id",
     "_extract_channel",
     "_extract_timestamp",
