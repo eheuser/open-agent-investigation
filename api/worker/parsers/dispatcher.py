@@ -9,6 +9,7 @@ from app.services.rag.event_processor import process_interesting_events
 from app.utils.log_setup import get_logger
 
 # Import all parser classes
+from .archive_parser import ArchiveParser
 from .evtx_parser import EvtxParser
 from .registry_parser import RegistryParser
 from .prefetch_parser import PrefetchParser
@@ -22,7 +23,9 @@ logger = get_logger(__name__)
 
 # Registry of all available parsers
 # Order matters - more specific parsers should come first
+# ArchiveParser MUST come first to extract archives before other parsers
 PARSERS = [
+    ArchiveParser,  # Process archives first to extract contained files
     EvtxParser,
     RegistryParser,
     PrefetchParser,
@@ -86,7 +89,7 @@ async def parse_artifact(
     if not file_path.exists():
         raise RuntimeError(f"Artifact file not found: {file_path}")
 
-    logger.info(
+    logger.debug(
         f"Identifying parser for artifact {artifact_id} ({artifact.filename})"
     )
 

@@ -973,6 +973,153 @@ async def get_timeline_event_types(
     return {"event_types": event_types, "total_types": len(event_types)}
 
 
+@router.get("/{investigation_id}/fields")
+async def get_timeline_fields(
+    investigation_id: UUID,
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Get a sorted list of unique JSONB field names present in timeline entry data for a given investigation.
+
+    The function retrieves a sample of timeline entries - either 10 entries per event type (if no filter)
+    or 10 entries for a specific event type - and extracts the keys from their `data` column.
+    It returns those keys alphabetically, together with metadata about the operation.
+
+    Args:
+        investigation_id (UUID): Identifier of the investigation whose timeline entries are queried.
+        event_type (str, optional): If provided, limits the sample to 10 entries linked to events of this type;
+            otherwise samples 10 entries per distinct event type.
+        db (AsyncSession): Asynchronous SQLAlchemy session injected by FastAPI's dependency system.
+        user (User): The current authenticated user, also injected via dependency.
+
+    Returns:
+        dict: A mapping with three entries:
+            `fields` (list[str]): Alphabetically sorted list of unique data field names found in the sampled entries.
+            `count` (int): Number of distinct fields returned.
+            `entries_sampled` (int): Number of timeline entry rows examined to derive the field set.
+
+    Raises:
+        HTTPException: Propagated from `check_investigation_access` if the user lacks permission to view the investigation.
+    """
+    # Build query based on whether event_type filter is provided
+    if event_type:
+        # Get sample of 10 timeline entries for specific event type
+        query = """
+            SELECT te.entry_id, te.data
+            FROM timeline_entries te
+            JOIN events e ON te.event_id = e.event_id
+            WHERE te.investigation_id = :investigation_id
+              AND e.event_type = :event_type
+              AND te.is_visible = true
+            ORDER BY te.timestamp DESC
+            LIMIT 10
+        """
+        params = {"investigation_id": str(investigation_id), "event_type": event_type}
+    else:
+        # Get 10 timeline entries per event_type using window function
+        # This efficiently samples multiple entries per type
+        query = """
+            SELECT entry_id, data
+            FROM (
+                SELECT
+                    te.entry_id,
+                    te.data,
+                    ROW_NUMBER() OVER (PARTITION BY e.event_type ORDER BY te.timestamp DESC) as rn
+                FROM timeline_entries te
+                JOIN events e ON te.event_id = e.event_id
+                WHERE te.investigation_id = :investigation_id
+                  AND te.is_visible = true
+            ) AS ranked
+            WHERE rn <= 10
+        """
+        params = {"investigation_id": str(investigation_id)}
+
+    result = await db.execute(text(query), params)
+
+    rows = result.fetchall()
+
+    # Extract all unique field names from data JSONB and linked event payloads
+    field_set = set()
+
+    for row in rows:
+        data = row[1]  # data is the second column
+
+        if isinstance(data, dict):
+            # Data is already a dict (JSONB)
+            field_set.update(data.keys())
+            
+            # Also extract nested payload fields if they exist
+            if 'payload' in data and isinstance(data['payload'], dict):
+                field_set.update(data['payload'].keys())
+        elif isinstance(data, str):
+            # Data might be a JSON string
+            try:
+                data_dict = json.loads(data)
+                if isinstance(data_dict, dict):
+                    field_set.update(data_dict.keys())
+                    
+                    # Also extract nested payload fields
+                    if 'payload' in data_dict and isinstance(data_dict['payload'], dict):
+                        field_set.update(data_dict['payload'].keys())
+            except (json.JSONDecodeError, TypeError):
+                pass
+    
+    # If we didn't find many fields from timeline entry data, also sample from linked events
+    # This is useful when timeline entries have minimal data but link to rich event payloads
+    if len(field_set) < 10:
+        # Get sample of linked event payloads
+        if event_type:
+            event_query = """
+                SELECT e.payload
+                FROM timeline_entries te
+                JOIN events e ON te.event_id = e.event_id
+                WHERE te.investigation_id = :investigation_id
+                  AND e.event_type = :event_type
+                  AND te.is_visible = true
+                ORDER BY te.timestamp DESC
+                LIMIT 10
+            """
+            event_params = {"investigation_id": str(investigation_id), "event_type": event_type}
+        else:
+            event_query = """
+                SELECT e.payload
+                FROM (
+                    SELECT
+                        te.event_id,
+                        ROW_NUMBER() OVER (PARTITION BY e.event_type ORDER BY te.timestamp DESC) as rn
+                    FROM timeline_entries te
+                    JOIN events e ON te.event_id = e.event_id
+                    WHERE te.investigation_id = :investigation_id
+                      AND te.is_visible = true
+                ) AS ranked
+                JOIN events e ON ranked.event_id = e.event_id
+                WHERE ranked.rn <= 10
+            """
+            event_params = {"investigation_id": str(investigation_id)}
+        
+        event_result = await db.execute(text(event_query), event_params)
+        event_rows = event_result.fetchall()
+        
+        for event_row in event_rows:
+            payload = event_row[0]
+            if isinstance(payload, dict):
+                field_set.update(payload.keys())
+            elif isinstance(payload, str):
+                try:
+                    payload_dict = json.loads(payload)
+                    if isinstance(payload_dict, dict):
+                        field_set.update(payload_dict.keys())
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+    # Return sorted list of field names
+    fields = sorted(list(field_set))
+
+    return {"fields": fields, "count": len(fields), "entries_sampled": len(rows)}
+
+
 @router.get("/{investigation_id}/stats", response_model=TimelineStatsResponse)
 async def get_timeline_stats(
     investigation_id: UUID,

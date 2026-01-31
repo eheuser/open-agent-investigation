@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.utils.log_setup import get_logger
+from .utils import safe_json_dumps
 
 logger = get_logger(__name__)
 
@@ -117,6 +118,9 @@ class BaseParser(ABC):
         This is a common utility method used by all parsers to insert events.
         Each event dictionary must contain: event_ts, artifact_id, event_type, payload.
         
+        The payload is sanitized to remove null bytes and other characters that
+        PostgreSQL JSONB cannot handle.
+        
         Args:
             db: Async database session
             investigation_id: UUID of the investigation
@@ -128,9 +132,19 @@ class BaseParser(ABC):
         if not events:
             return
         
-        # Add investigation_id to each event
+        # Add investigation_id and sanitize payload for each event
         for event in events:
             event["investigation_id"] = investigation_id
+            
+            # Sanitize payload to remove null bytes and invalid Unicode
+            # This prevents PostgreSQL JSONB errors
+            if "payload" in event and isinstance(event["payload"], str):
+                try:
+                    # Parse JSON, sanitize, and re-serialize
+                    payload_obj = json.loads(event["payload"])
+                    event["payload"] = safe_json_dumps(payload_obj)
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Failed to sanitize payload, using as-is: {e}")
         
         # Use unified events table
         insert_query = text(

@@ -12,6 +12,23 @@ The parser system uses a dispatcher pattern (`dispatcher.py`) that routes artifa
 
 ## Supported Artifacts
 
+### Archive Parser (Special)
+
+| Parser | Artifact Type | File Extensions | Event Type | Description |
+|--------|---------------|-----------------|------------|-------------|
+| **archive_parser.py** | Archives | `.zip`, `.7z`, `.rar` | N/A (extracts files) | Recursive archive extraction for KAPE/forensic bundles |
+
+**Important:** The archive parser does NOT generate events directly. Instead, it:
+1. Extracts all files from the archive (recursively)
+2. Creates new artifacts for each extracted file
+3. Queues parsing jobs for each artifact
+4. Supports nested archives up to 5 levels deep
+
+**Safety Limits:**
+- Maximum extraction depth: 5 levels
+- Maximum total extracted size: 10 GB
+- Maximum file count: 50,000 files
+
 ### Core Parsers
 
 | Parser | Artifact Type | File Extensions | Event Type | Description |
@@ -31,6 +48,87 @@ The parser system uses a dispatcher pattern (`dispatcher.py`) that routes artifa
 | **windows_artifacts_parser.py** | Multiple Windows Artifacts | `.pca`, `.job`, `.xml`, `.db`, `.dat`, `.edb` | Various | See details below |
 
 ## Detailed Parser Documentation
+
+### Archive Parser (`archive_parser.py`)
+
+**Purpose:** Automatically extract and process forensic collection bundles (e.g., KAPE output).
+
+**Supported Formats:**
+- **ZIP** - Standard ZIP archives (`.zip`)
+- **7z** - 7-Zip archives (`.7z`)
+- **RAR** - RAR archives (`.rar`)
+
+**How It Works:**
+1. User uploads a ZIP/7z/RAR file
+2. Archive parser is selected (first in dispatcher list)
+3. Archive is extracted to temporary directory
+4. For each extracted file:
+   - Sanitize filename (replace `/` and `\` with `__` to preserve structure)
+   - Create new artifact record in database
+   - Write file to investigation's `raw_files` directory
+   - Queue parsing job for the artifact
+5. If nested archives are found, repeat recursively (up to 5 levels)
+
+**Filename Sanitization:**
+To preserve directory structure while avoiding filesystem issues, path separators are replaced:
+- `Windows/System32/winevt/logs/Security.evtx` → `Windows__System32__winevt__logs__Security.evtx`
+- This allows you to identify the original location while keeping all files in a flat directory
+
+**Safety Features:**
+```python
+# Protection against zip bombs and malicious archives
+MAX_EXTRACTION_DEPTH = 5        # Prevent infinite recursion
+MAX_TOTAL_EXTRACTED_SIZE = 10 * 1024 * 1024 * 1024  # 10 GB limit
+MAX_EXTRACTED_FILES = 50000     # Prevent excessive file creation
+```
+
+**Example Use Case:**
+```bash
+# User uploads KAPE_Output.zip containing:
+# ├── C/
+# │   ├── Windows/
+# │   │   ├── System32/
+# │   │   │   └── winevt/
+# │   │   │       └── Logs/
+# │   │   │           ├── Security.evtx
+# │   │   │           └── System.evtx
+# │   │   └── Prefetch/
+# │   │       └── CHROME.EXE-A1B2C3D4.pf
+# │   └── Users/
+# │       └── jsmith/
+# │           └── NTUSER.DAT
+# └── Registry/
+#     ├── SYSTEM
+#     └── SOFTWARE
+
+# Result:
+# - Archive parser extracts all files
+# - Creates 6 artifacts (Security.evtx, System.evtx, CHROME.EXE-*.pf, NTUSER.DAT, SYSTEM, SOFTWARE)
+# - Queues 6 parsing jobs
+# - EVTX parser processes Security.evtx and System.evtx
+# - Prefetch parser processes CHROME.EXE-*.pf
+# - Registry parser processes NTUSER.DAT, SYSTEM, SOFTWARE
+# - User sees all events in unified events table
+```
+
+**Forensic Value:**
+- Automatic processing of KAPE collections
+- Preserves directory structure in artifact filenames
+- Enables bulk upload of entire forensic images
+- Supports nested archives (e.g., KAPE output inside evidence.zip)
+
+**Limitations:**
+- No password-protected archive support
+- No split archive support (.z01, .z02, etc.)
+- Temporary directory must have sufficient space
+
+**Error Handling:**
+- Corrupted archives: Logged as error, parsing job marked as failed
+- Exceeds size limit: RuntimeError raised, extraction stops
+- Exceeds depth limit: Warning logged, recursion stops at current level
+- Individual file failures: Logged, processing continues with remaining files
+
+---
 
 ### Jump List Parser (`jumplist_parser.py`)
 
@@ -542,6 +640,7 @@ docker compose exec api psql -U postgres -d open_agent_inv -c \
 ### Required Libraries
 
 - **Core:** `sqlalchemy`, `asyncpg`, `pathlib`
+- **Archives:** `zipfile` (built-in), `py7zr`, `rarfile`
 - **EVTX:** `evtx` (Rust-based parser)
 - **Registry:** `regipy`
 - **Prefetch:** `prefetch2es`
@@ -553,10 +652,25 @@ docker compose exec api psql -U postgres -d open_agent_inv -c \
 ### All Libraries Included
 
 All required libraries are included in `requirements.txt`:
+- **Archive Extraction:** `py7zr==0.21.*`, `rarfile==4.2`
 - **Jump Lists:** `olefile==0.47`
 - **ESE Databases:** `pyesedb==20240420`
 - **Browser History:** `sqlite3` (built-in)
 - **Scheduled Tasks:** `xml.etree.ElementTree` (built-in)
+
+**Note:** RAR extraction requires `unar` binary installed on the system:
+```bash
+# Ubuntu/Debian
+apt-get install unar
+
+# Alpine (Docker)
+apk add unar
+
+# macOS
+brew install unar
+```
+
+`unar` is a free alternative to `unrar` and is available in Debian's main repositories.
 
 ---
 

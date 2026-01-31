@@ -31,12 +31,6 @@
 
 **Expanded Windows Artifact Support**
 
-- Scheduled Tasks
-- SRUM DB
-- CryptNetURL Cache
-- Automatic Destination Jump List
-- Browser History (Edge, Chrome, Opera, Firefox)
-- PCA Launch Items
 - Windows PE's
 - Flat Files (apache logs, one entry per line)
 - Binary Files

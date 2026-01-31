@@ -89,7 +89,8 @@ class WindowsArtifactsParser(BaseParser):
                     db.close()
                     if cnt == 2:
                         return True
-                except:
+                except Exception as e:
+                    logger.debug(f"SRUM DB check failed: {e}")
                     pass
             
             # SQLite database (Notification DB) - magic: "SQLite format 3\x00"
@@ -103,7 +104,8 @@ class WindowsArtifactsParser(BaseParser):
                     conn.close()
                     if has_notif_table:
                         return True
-                except:
+                except Exception as e:
+                    logger.debug(f"SQLite3 Browser History check failed: {e}")
                     pass
             
             # Windows .job file - magic: product version at specific offset
@@ -118,10 +120,12 @@ class WindowsArtifactsParser(BaseParser):
                         uuid_bytes = header[4:20]
                         if len(uuid_bytes) == 16:
                             return True
-                except:
+                except Exception as e:
+                    logger.debug(f"Windows Job check failed: {e}")
                     pass
             
             # Task Scheduler XML - check for XML with task namespace
+            # This must be checked BEFORE registry parser to avoid false positives
             try:
                 tree = ET.parse(file_path)
                 root = tree.getroot()
@@ -129,13 +133,30 @@ class WindowsArtifactsParser(BaseParser):
                 # Root tag could be: {http://schemas.microsoft.com/windows/2004/02/mit/task}Task or just Task
                 # Check if it has the namespace or has the expected structure
                 ns = {'task': 'http://schemas.microsoft.com/windows/2004/02/mit/task'}
-                # logger.debug(f"Task XML root tag: {root.tag}")
-                if ('Task' in (root.tag or '') and 
-                    (root.find('.//task:RegistrationInfo', ns) is not None or 
+                
+                # Check both namespaced and non-namespaced elements
+                if 'Task' in (root.tag or ''):
+                    # Try with namespace
+                    has_task_elements = (
+                        root.find('.//task:RegistrationInfo', ns) is not None or 
                         root.find('.//task:Actions', ns) is not None or
-                        root.find('.//task:Triggers', ns) is not None)):
-                    return True
-            except:
+                        root.find('.//task:Triggers', ns) is not None
+                    )
+                    
+                    # Try without namespace (some task XMLs don't use namespace)
+                    if not has_task_elements:
+                        has_task_elements = (
+                            root.find('.//RegistrationInfo') is not None or 
+                            root.find('.//Actions') is not None or
+                            root.find('.//Triggers') is not None
+                        )
+                    
+                    if has_task_elements:
+                        return True
+            except ET.ParseError:
+                pass
+            except Exception as e:
+                logger.debug(f"XML parsing failed for {filename}: {e}")
                 pass
             
             # CryptNetUrlCache - try to actually parse it (files typically < 100KB)
@@ -157,7 +178,7 @@ class WindowsArtifactsParser(BaseParser):
                     if url and len(url) > 0:
                         return True
                 except Exception as e:
-                    logger.error(f"CryptNetUrlCache check failed: {e}")
+                    logger.debug(f"CryptNetUrlCache check failed: {e}")
                     pass
             
             # Bitmap Cache (thumbcache/iconcache) - Windows cache format
@@ -168,13 +189,16 @@ class WindowsArtifactsParser(BaseParser):
             # PCA files - binary format with specific structure
             # These are harder to identify by magic, but have characteristic patterns
             if len(header) >= 32:
-                # PCA files often start with specific byte patterns
-                # They contain serialized .NET binary formatter data
-                if header[0:1] == b'\x00' and b'\x01\x00\x00\x00' in header[:32]:
-                    # Additional heuristic: check for .NET binary formatter signatures
-                    if b'System.' in header or b'Microsoft.' in header:
-                        return True
-            
+                try:
+                    # PCA files often start with specific byte patterns
+                    # They contain serialized .NET binary formatter data
+                    if header[0:1] == b'\x00' and b'\x01\x00\x00\x00' in header[:32]:
+                        # Additional heuristic: check for .NET binary formatter signatures
+                        if b'System.' in header or b'Microsoft.' in header:
+                            return True
+                except Exception as e:
+                    logger.debug(f"PCA Launch Item check failed: {e}")
+                    pass
             return False
             
         except Exception as e:
@@ -376,7 +400,7 @@ class WindowsArtifactsParser(BaseParser):
             tree = ET.parse(file_path)
             root = tree.getroot()
             
-            # Extract namespace
+            # Extract namespace (may or may not be present)
             ns = {'task': 'http://schemas.microsoft.com/windows/2004/02/mit/task'}
             
             # Validate this is a Task Scheduler XML by checking for expected structure
@@ -384,23 +408,51 @@ class WindowsArtifactsParser(BaseParser):
             if 'Task' not in root.tag:
                 return events
             
-            if (root.find('.//task:RegistrationInfo', ns) is None and 
-                root.find('.//task:Actions', ns) is None and
-                root.find('.//task:Triggers', ns) is None):
+            # Try with namespace first, then without
+            has_structure = (
+                root.find('.//task:RegistrationInfo', ns) is not None or 
+                root.find('.//task:Actions', ns) is not None or
+                root.find('.//task:Triggers', ns) is not None
+            )
+            
+            use_namespace = has_structure
+            
+            if not has_structure:
+                # Try without namespace
+                has_structure = (
+                    root.find('.//RegistrationInfo') is not None or 
+                    root.find('.//Actions') is not None or
+                    root.find('.//Triggers') is not None
+                )
+                use_namespace = False
+            
+            if not has_structure:
                 return events
             
             # Try to find task registration info
-            reg_info = root.find('.//task:RegistrationInfo', ns)
-            date_elem = reg_info.find('task:Date', ns) if reg_info is not None else None
-            author_elem = reg_info.find('task:Author', ns) if reg_info is not None else None
-            desc_elem = reg_info.find('task:Description', ns) if reg_info is not None else None
+            if use_namespace:
+                reg_info = root.find('.//task:RegistrationInfo', ns)
+                date_elem = reg_info.find('task:Date', ns) if reg_info is not None else None
+                author_elem = reg_info.find('task:Author', ns) if reg_info is not None else None
+                desc_elem = reg_info.find('task:Description', ns) if reg_info is not None else None
+                actions = root.findall('.//task:Exec', ns)
+            else:
+                reg_info = root.find('.//RegistrationInfo')
+                date_elem = reg_info.find('Date') if reg_info is not None else None
+                author_elem = reg_info.find('Author') if reg_info is not None else None
+                desc_elem = reg_info.find('Description') if reg_info is not None else None
+                actions = root.findall('.//Exec')
             
             # Extract actions
-            actions = root.findall('.//task:Exec', ns)
             action_commands = []
             for action in actions:
-                command = action.find('task:Command', ns)
-                args = action.find('task:Arguments', ns)
+                if use_namespace:
+                    command = action.find('task:Command', ns)
+                    args = action.find('task:Arguments', ns)
+                else:
+                    command = action.find('Command')
+                    args = action.find('Arguments')
+                
                 if command is not None:
                     cmd_text = command.text or ""
                     args_text = args.text if args is not None else ""

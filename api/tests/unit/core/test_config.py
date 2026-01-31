@@ -177,3 +177,24 @@ class TestSettingsValidation:
             # but we can add custom validators if needed
             settings = Settings()
             assert settings.worker_poll_interval == -1  # No constraint yet
+
+    def test_settings_multiple_fields(self):
+        """Test setting multiple configuration fields at once."""
+        with patch.dict(
+            os.environ,
+            {
+                "JWT_SECRET": "multi-test-secret",
+                "DATABASE_URL": "postgresql://multi@test/db",
+                "PROMETHEUS_ENABLED": "true",
+                "WORKER_POLL_INTERVAL": "15",
+                "WORKER_TIMEOUT": "120",
+                "API_PORT": "8888",
+            },
+        ):
+            settings = Settings()
+            assert settings.jwt_secret == "multi-test-secret"
+            assert settings.database_url == "postgresql://multi@test/db"
+            assert settings.prometheus_enabled is True
+            assert settings.worker_poll_interval == 15
+            assert settings.worker_timeout == 120
+            assert settings.api_port == 8888

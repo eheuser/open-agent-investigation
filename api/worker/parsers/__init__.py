@@ -4,6 +4,7 @@ Artifact parsers for Windows forensic artifacts.
 from .dispatcher import parse_artifact
 from .utils import flatten_dict
 from .base_parser import BaseParser
+from .archive_parser import ArchiveParser
 from .evtx_parser import EvtxParser
 from .registry_parser import RegistryParser
 from .prefetch_parser import PrefetchParser
@@ -17,6 +18,7 @@ __all__ = [
     "parse_artifact",
     "flatten_dict",
     "BaseParser",
+    "ArchiveParser",
     "EvtxParser",
     "RegistryParser",
     "PrefetchParser",

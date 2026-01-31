@@ -645,8 +645,13 @@ npm run type-check
 Create `.env.local` for local development:
 
 ```bash
+# Development mode (direct API access)
 VITE_API_URL=http://localhost:8000
 VITE_WS_URL=ws://localhost:8000
+
+# Docker Compose mode (via nginx proxy)
+VITE_API_URL=https://localhost
+VITE_WS_URL=wss://localhost
 ```
 
 ### Adding a New Page
@@ -772,8 +777,11 @@ server {
 Use build-time environment variables:
 
 ```bash
-# Development
+# Development (direct API access)
 VITE_API_URL=http://localhost:8000 npm run build
+
+# Docker Compose (via nginx proxy)
+VITE_API_URL=https://localhost npm run build
 
 # Staging
 VITE_API_URL=https://staging-api.example.com npm run build
@@ -835,7 +843,9 @@ const [ws, setWs] = useState<WebSocket | null>(null);
 
 useEffect(() => {
   const token = localStorage.getItem('token');
-  const wsUrl = `ws://localhost:8000/api/v1/chat/ws/${investigationId}?token=${token}`;
+  // Use environment variable for WebSocket URL
+  const wsBaseUrl = import.meta.env.VITE_WS_URL || 'wss://localhost';  // Default to nginx proxy
+  const wsUrl = `${wsBaseUrl}/api/v1/chat/ws/${investigationId}?token=${token}`;
   
   const websocket = new WebSocket(wsUrl);
   
@@ -904,10 +914,10 @@ function handleWebSocketMessage(data: any) {
 // src/lib/api.ts
 import axios from 'axios';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
-  headers: {
-    'Content-Type': 'application/json'
+  const api = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || 'https://localhost',  // Default to nginx proxy
+    headers: {
+      'Content-Type': 'application/json'
   }
 });
 
@@ -1034,10 +1044,13 @@ app.add_middleware(
 
 **Symptoms**: WebSocket shows "disconnected" in console
 
-**Solutions**:
-- Verify API is running: `curl http://localhost:8000/health`
-- Check JWT token is valid: `localStorage.getItem('token')`
-- Verify WebSocket URL is correct: `ws://localhost:8000/api/v1/chat/ws/{id}`
+  **Solutions**:
+  - Verify nginx is running: `docker compose ps ui`
+  - Verify API is accessible: `curl -k https://localhost/api/health` (Docker) or `curl http://localhost:8000/health` (dev)
+  - Check JWT token is valid: `localStorage.getItem('token')`
+  - Verify WebSocket URL:
+    - Docker: `wss://localhost/api/v1/chat/ws/{id}`
+    - Development: `ws://localhost:8000/api/v1/chat/ws/{id}`
 
 ### Events API 500 Error with Date Filters
 

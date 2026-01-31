@@ -697,9 +697,7 @@ class TestGetEventFieldsEndpoint:
         assert "fields" in data
         assert isinstance(data["fields"], list)
 
-    async def test_get_event_fields_unauthorized(
-        self, async_client: AsyncClient, test_investigation
-    ):
+    async def test_get_event_fields_unauthorized(self, async_client: AsyncClient, test_investigation):
         """
         Test that retrieving event fields without authentication returns an HTTP 401 Unauthorized response. This ensures the endpoint correctly enforces access control by rejecting unauthenticated requests.
         """
@@ -708,6 +706,92 @@ class TestGetEventFieldsEndpoint:
         )
 
         assert response.status_code == 401
+    
+    async def test_get_event_fields_samples_multiple_per_type(
+        self, async_client: AsyncClient, test_investigation, auth_headers, db_session
+    ):
+        """
+        Test that the /fields endpoint samples 10 events per event type (not just 1).
+        
+        This ensures the window function query correctly partitions by event_type
+        and retrieves multiple samples per type for comprehensive field discovery.
+        """
+        from sqlalchemy import text
+        
+        # Insert test events with different field structures for same event type
+        for i in range(15):
+            await db_session.execute(
+                text("""
+                    INSERT INTO events (investigation_id, event_ts, event_type, payload)
+                    VALUES (:inv_id, NOW(), :event_type, :payload)
+                """),
+                {
+                    "inv_id": str(test_investigation.investigation_id),
+                    "event_type": "test_event_type",
+                    "payload": json.dumps({f"field_{i}": f"value_{i}"})
+                }
+            )
+        await db_session.commit()
+        
+        # Request fields without event_type filter (should sample 10 per type)
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}/fields",
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should have discovered at least 10 unique fields (field_0 through field_9)
+        assert data["count"] >= 10
+        assert "event_types_sampled" in data
+        # Should have sampled 10 events (not just 1)
+        assert data["event_types_sampled"] >= 10
+    
+    async def test_get_event_fields_with_large_dataset(
+        self, async_client: AsyncClient, test_investigation, auth_headers, db_session
+    ):
+        """
+        Test that /fields endpoint performs efficiently with large event counts.
+        
+        Verifies that the window function approach samples correctly even when
+        there are many events per type (simulating the 2M+ event scenario).
+        """
+        from sqlalchemy import text
+        
+        # Insert events for multiple event types
+        for event_type_idx in range(3):
+            for i in range(20):  # 20 events per type
+                await db_session.execute(
+                    text("""
+                        INSERT INTO events (investigation_id, event_ts, event_type, payload)
+                        VALUES (:inv_id, NOW(), :event_type, :payload)
+                    """),
+                    {
+                        "inv_id": str(test_investigation.investigation_id),
+                        "event_type": f"type_{event_type_idx}",
+                        "payload": json.dumps({
+                            f"common_field_{i % 5}": f"value_{i}",
+                            f"unique_field_{event_type_idx}_{i}": f"data_{i}"
+                        })
+                    }
+                )
+        await db_session.commit()
+        
+        # Request should complete without timeout
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}/fields",
+            headers=auth_headers,
+            timeout=5.0  # Should complete within 5 seconds
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should have sampled 30 events total (10 per type * 3 types)
+        assert data["event_types_sampled"] == 30
+        # Should have discovered fields from all types
+        assert data["count"] > 0
 
 
 @pytest.mark.integration

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import Table, MetaData, select, text, func
 from uuid import UUID
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 import json
 import yaml
 import csv
@@ -102,7 +102,7 @@ async def list_events(
         FROM events
         WHERE investigation_id = :investigation_id
     """
-    params: dict = {"investigation_id": str(investigation_id), "limit": limit, "offset": offset}
+    params: Dict[str, Any] = {"investigation_id": str(investigation_id), "limit": limit, "offset": offset}
 
     if event_type:
         query += " AND event_type = :event_type"
@@ -218,7 +218,7 @@ async def list_events(
 
     # Get total count
     count_query = "SELECT COUNT(*) FROM events WHERE investigation_id = :investigation_id"
-    count_params = {"investigation_id": str(investigation_id)}
+    count_params: Dict[str, Any] = {"investigation_id": str(investigation_id)}
     if event_type:
         count_query += " AND event_type = :event_type"
         count_params["event_type"] = event_type
@@ -343,11 +343,14 @@ async def get_event_fields(
     """
     Get a sorted list of unique JSONB field names present in events for a given investigation.
 
-    The function retrieves a sample of events-either one per distinct `event_type` or up to ten recent events of a specified `event_type`-and extracts the keys from their `payload` column. It returns those keys alphabetically, together with metadata about the operation.
+    The function retrieves a sample of events - either 10 events per event type (if no filter) 
+    or 10 events for a specific event type - and extracts the keys from their `payload` column. 
+    It returns those keys alphabetically, together with metadata about the operation.
 
     Args:
         investigation_id (UUID): Identifier of the investigation whose events are queried.
-        event_type (str, optional): If provided, limits the sample to events of this type; otherwise a single recent event per distinct type is used.
+        event_type (str, optional): If provided, limits the sample to 10 events of this type; 
+            otherwise samples 10 events per distinct event type.
         db (AsyncSession): Asynchronous SQLAlchemy session injected by FastAPI's dependency system.
         user (User): The current authenticated user, also injected via dependency.
 
@@ -365,7 +368,7 @@ async def get_event_fields(
 
     # Build query based on whether event_type filter is provided
     if event_type:
-        # Get sample of events for specific event type
+        # Get sample of 10 events for specific event type
         query = """
             SELECT event_type, payload
             FROM events
@@ -376,12 +379,19 @@ async def get_event_fields(
         """
         params = {"investigation_id": str(investigation_id), "event_type": event_type}
     else:
-        # Get one event per event_type using DISTINCT ON
+        # Get 10 events per event_type using window function (more efficient)
+        # ROW_NUMBER() partitions by event_type and orders by event_ts
         query = """
-            SELECT DISTINCT ON (event_type) event_type, payload
-            FROM events
-            WHERE investigation_id = :investigation_id
-            ORDER BY event_type, event_ts DESC
+            SELECT event_type, payload
+            FROM (
+                SELECT 
+                    event_type, 
+                    payload,
+                    ROW_NUMBER() OVER (PARTITION BY event_type ORDER BY event_ts DESC) as rn
+                FROM events
+                WHERE investigation_id = :investigation_id
+            ) AS ranked
+            WHERE rn <= 10
         """
         params = {"investigation_id": str(investigation_id)}
 

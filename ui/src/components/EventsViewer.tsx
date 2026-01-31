@@ -189,17 +189,8 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
       const newTotal = response.data.total || 0;
       setTotal(newTotal);
       
-      // Extract common JSONB fields from events
-      if (response.data.events.length > 0) {
-        const fieldSet = new Set<string>();
-        response.data.events.slice(0, 10).forEach(event => {
-          const payload = formatPayload(event.payload);
-          if (typeof payload === 'object' && payload !== null) {
-            Object.keys(payload).forEach(key => fieldSet.add(key));
-          }
-        });
-        setCommonFields(Array.from(fieldSet).sort());
-      }
+      // Note: commonFields are now fetched via the dedicated /fields endpoint
+      // This ensures we get all available fields, not just from the current page
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load events');
       console.error('Failed to fetch events:', err);
@@ -226,18 +217,16 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
           url
         );
         
-        if (response.data.fields.length > 0) {
+        if (response.data && response.data.fields) {
           setCommonFields(response.data.fields);
-          //if (eventTypeFilter) {
-          //  console.log(`Loaded ${response.data.count} unique fields for event type '${eventTypeFilter}'`);
-          //} else {
-          //  console.log(`Loaded ${response.data.count} unique fields from ${response.data.event_types_sampled} event types`);
-          //}
         } else {
+          console.warn('No fields returned from API');
           setCommonFields([]);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to fetch available fields:', err);
+        console.error('Error details:', err.response?.data);
+        setCommonFields([]);
       }
     };
     
@@ -896,7 +885,7 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
                 <div className="relative">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
-                      Field Path
+                      Field Path {commonFields.length > 0 && `(${commonFields.length} available)`}
                     </label>
                     {commonFields.length > 0 && (
                       <button

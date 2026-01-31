@@ -299,8 +299,10 @@ export JWT_SECRET="your-secret-key-here"
 # Run database migrations (if needed)
 psql -U postgres -d open_agent_inv -f db/schema.sql
 
-# Start the API server
+# Start the API server (development mode - accessible at http://localhost:8000)
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Note: In Docker Compose mode, API is only accessible via nginx proxy at https://localhost/api/
 ```
 
 ---
@@ -461,14 +463,24 @@ playbook: |
 
 **List all playbooks**:
 ```bash
+# Development mode
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/v1/playbooks/list
+
+# Docker Compose mode
+curl -k -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/playbooks/list
 ```
 
 **Clone a base playbook**:
 ```bash
+# Development mode
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/v1/playbooks/clone/lateral_movement
+
+# Docker Compose mode
+curl -k -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/playbooks/clone/lateral_movement
 ```
 
 **Create custom playbook**:
@@ -480,16 +492,33 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
     "description": "Custom investigation workflow",
     "playbook": "## My Custom Playbook\n\n### Steps\n1. Check logs\n2. Analyze events",
     "is_enabled": true
-  }' \
-  http://localhost:8000/api/v1/playbooks/create
+      }' \
+    http://localhost:8000/api/v1/playbooks/create  # Development mode
+
+# Docker Compose mode
+curl -k -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+      "name": "Custom Ransomware Detection",
+      "description": "Detect ransomware indicators",
+      "content": "# Ransomware Playbook\n...",
+      "is_enabled": true
+    }' \
+    https://localhost/api/v1/playbooks/create
 ```
 
 **Enable playbook for investigation**:
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"playbook_id": 1, "is_enabled": true}' \
-  http://localhost:8000/api/v1/playbooks/investigation/{investigation_id}/enable
+      -d '{"playbook_id": 1, "is_enabled": true}' \
+    http://localhost:8000/api/v1/playbooks/investigation/{investigation_id}/enable  # Development mode
+
+# Docker Compose mode
+curl -k -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"playbook_id": 1, "is_enabled": true}' \
+    https://localhost/api/v1/playbooks/investigation/{investigation_id}/enable
 ```
 
 ### Database Schema
@@ -623,8 +652,14 @@ The routing system is **extensible**. To add a new handler:
 Connect to WebSocket for streaming responses:
 
 ```javascript
+// Development mode (direct API access)
 const ws = new WebSocket(
   `ws://localhost:8000/api/v1/chat/ws/${investigationId}?token=${jwtToken}`
+);
+
+// Docker Compose mode (via nginx proxy)
+const ws = new WebSocket(
+  `wss://localhost/api/v1/chat/ws/${investigationId}?token=${jwtToken}`
 );
 
 ws.onmessage = (event) => {
@@ -693,15 +728,26 @@ flake8 app/
 
 FastAPI auto-generates interactive API docs:
 
+**Development Mode** (direct API access):
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 - **OpenAPI JSON**: http://localhost:8000/openapi.json
 
+**Docker Compose Mode** (via nginx proxy):
+- **Swagger UI**: https://localhost/api/docs
+- **ReDoc**: https://localhost/api/redoc
+- **OpenAPI JSON**: https://localhost/api/openapi.json
+
 ### Testing Routing
 
 ```bash
-# Test intent classification
+# Test intent classification (development mode)
 curl -X POST http://localhost:8000/api/v1/chat/ask \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+
+# Test intent classification (Docker Compose mode)
+curl -k -X POST https://localhost/api/v1/chat/ask \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"investigation_id": "...", "question": "Show me timeline entries"}'

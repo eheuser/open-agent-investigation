@@ -874,6 +874,182 @@ class TestTimelineStats:
 
 
 @pytest.mark.integration
+class TestGetTimelineFieldsEndpoint:
+    """Test GET /api/v1/timeline/{investigation_id}/fields endpoint."""
+
+    async def test_get_timeline_fields_all_types(
+        self, async_client: AsyncClient, test_investigation, auth_headers
+    ):
+        """
+        Test retrieving all timeline fields for a given investigation.
+        
+        Verifies that the endpoint returns a proper response with fields list,
+        count, and entries_sampled metadata.
+        """
+        response = await async_client.get(
+            f"/api/v1/timeline/{test_investigation.investigation_id}/fields",
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "fields" in data
+        assert "count" in data
+        assert "entries_sampled" in data
+        assert isinstance(data["fields"], list)
+
+    async def test_get_timeline_fields_specific_event_type(
+        self, async_client: AsyncClient, test_investigation, auth_headers
+    ):
+        """
+        Test retrieving timeline fields filtered by a specific event type.
+        
+        Verifies that the event_type parameter correctly filters which
+        timeline entries are sampled for field extraction.
+        """
+        response = await async_client.get(
+            f"/api/v1/timeline/{test_investigation.investigation_id}/fields",
+            headers=auth_headers,
+            params={"event_type": "evtx_security_4624"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "fields" in data
+        assert isinstance(data["fields"], list)
+
+    async def test_get_timeline_fields_unauthorized(
+        self, async_client: AsyncClient, test_investigation
+    ):
+        """
+        Test that retrieving timeline fields without authentication returns 401.
+        """
+        response = await async_client.get(
+            f"/api/v1/timeline/{test_investigation.investigation_id}/fields"
+        )
+
+        assert response.status_code == 401
+    
+    async def test_get_timeline_fields_samples_from_events(
+        self, async_client: AsyncClient, test_investigation, auth_headers, db_session
+    ):
+        """
+        Test that timeline /fields endpoint samples from linked event payloads
+        when timeline entry data is sparse.
+        
+        This is critical for the timeline viewer to show available fields
+        even when timeline entries have minimal data but link to rich events.
+        """
+        from sqlalchemy import text
+        
+        # Create an event with rich payload
+        event_result = await db_session.execute(
+            text("""
+                INSERT INTO events (investigation_id, event_ts, event_type, payload)
+                VALUES (:inv_id, NOW(), :event_type, :payload)
+                RETURNING event_id
+            """),
+            {
+                "inv_id": str(test_investigation.investigation_id),
+                "event_type": "test_event",
+                "payload": json.dumps({
+                    "EventID": "4624",
+                    "TargetUserName": "admin",
+                    "SourceIP": "192.168.1.1",
+                    "ProcessName": "svchost.exe",
+                    "CommandLine": "C:\\Windows\\System32\\svchost.exe"
+                })
+            }
+        )
+        event_id = event_result.scalar()
+        
+        # Create timeline entry with minimal data that links to the event
+        await db_session.execute(
+            text("""
+                INSERT INTO timeline_entries 
+                (investigation_id, event_id, timestamp, entry_type, title, description, data, tags)
+                VALUES (:inv_id, :event_id, NOW(), 'event', 'Test Entry', 'Test', '{}'::jsonb, '{}')
+            """),
+            {
+                "inv_id": str(test_investigation.investigation_id),
+                "event_id": event_id
+            }
+        )
+        await db_session.commit()
+        
+        # Request fields - should discover fields from linked event payload
+        response = await async_client.get(
+            f"/api/v1/timeline/{test_investigation.investigation_id}/fields",
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should have discovered fields from the event payload
+        assert "EventID" in data["fields"]
+        assert "TargetUserName" in data["fields"]
+        assert "SourceIP" in data["fields"]
+        assert data["count"] >= 5
+    
+    async def test_get_timeline_fields_samples_multiple_per_type(
+        self, async_client: AsyncClient, test_investigation, auth_headers, db_session
+    ):
+        """
+        Test that /fields endpoint samples 10 timeline entries per event type.
+        
+        Ensures the window function query correctly partitions by event_type
+        and retrieves multiple samples per type for comprehensive field discovery.
+        """
+        from sqlalchemy import text
+        
+        # Create 15 events with different fields
+        event_ids = []
+        for i in range(15):
+            result = await db_session.execute(
+                text("""
+                    INSERT INTO events (investigation_id, event_ts, event_type, payload)
+                    VALUES (:inv_id, NOW(), :event_type, :payload)
+                    RETURNING event_id
+                """),
+                {
+                    "inv_id": str(test_investigation.investigation_id),
+                    "event_type": "test_type",
+                    "payload": json.dumps({f"field_{i}": f"value_{i}"})
+                }
+            )
+            event_ids.append(result.scalar())
+        
+        # Create timeline entries linking to these events
+        for event_id in event_ids:
+            await db_session.execute(
+                text("""
+                    INSERT INTO timeline_entries 
+                    (investigation_id, event_id, timestamp, entry_type, title, data)
+                    VALUES (:inv_id, :event_id, NOW(), 'event', 'Entry', '{}'::jsonb)
+                """),
+                {
+                    "inv_id": str(test_investigation.investigation_id),
+                    "event_id": event_id
+                }
+            )
+        await db_session.commit()
+        
+        # Request fields - should sample 10 entries and discover 10 unique fields
+        response = await async_client.get(
+            f"/api/v1/timeline/{test_investigation.investigation_id}/fields",
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should have discovered at least 10 fields (field_0 through field_9)
+        assert data["count"] >= 10
+        assert data["entries_sampled"] >= 10
+
+
+@pytest.mark.integration
 class TestTimelineEntryWithNotes:
     """Test getting timeline entry with notes."""
 

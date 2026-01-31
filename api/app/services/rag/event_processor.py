@@ -60,7 +60,7 @@ async def _batch_create_embeddings(
     """
     Batch creates vector embeddings for a list of interesting events and stores them in the database.
 
-    The function iterates over the provided `interesting_events` in batches (default size 50). For each event it formats a human-readable text representation using :func:`_format_event_for_timeline`, generates an embedding via the configured LLM provider, and inserts the resulting vector into the `embeddings` table. Each successful insert is committed immediately; failures are logged and cause a rollback of the offending transaction while allowing processing to continue.
+    The function iterates over the provided `interesting_events` in batches (default size 200). For each event it formats a human-readable text representation using :func:`_format_event_for_timeline`, generates an embedding via the configured LLM provider, and performs a bulk insert of all embeddings in the batch. If bulk insert fails, it falls back to individual inserts to identify problematic events.
 
     Args:
         db: An active :class:`sqlalchemy.ext.asyncio.AsyncSession` used for executing INSERT statements and committing transactions.
@@ -73,6 +73,10 @@ async def _batch_create_embeddings(
 
     Raises:
         None explicitly. All errors encountered while generating embeddings or inserting rows are caught, logged, and cause a rollback of the current transaction without propagating exceptions.
+    
+    Performance:
+        Batch size of 200 events provides good balance between API efficiency and memory usage.
+        Bulk inserts reduce database round-trips from 200 commits per batch to 1 commit per batch.
     """
     from .embedding import Embedder
 
@@ -105,7 +109,7 @@ async def _batch_create_embeddings(
     )
 
     created_count = 0
-    batch_size = 50  # Process 50 events at a time
+    batch_size = 200  # Process 200 events at a time
 
     for i in range(0, len(interesting_events), batch_size):
         batch = interesting_events[i : i + batch_size]
@@ -130,49 +134,72 @@ async def _batch_create_embeddings(
             )
             embeddings = await embedder.embed(texts)
 
-            # Insert embeddings one at a time with individual commits
-            for event_id, embedding_vec in zip(event_ids, embeddings):
-                try:
+            # Bulk insert embeddings for the entire batch
+            try:
+                # Build all parameters for bulk insert
+                insert_params = []
+                for event_id, embedding_vec in zip(event_ids, embeddings):
                     # Convert numpy array to list, then to PostgreSQL vector format string
                     vec_list = embedding_vec.tolist()
                     vec_str = "[" + ",".join(map(str, vec_list)) + "]"
+                    
+                    insert_params.append({
+                        "event_id": event_id,
+                        "model_name": embedding_model_name,
+                        "vec_str": vec_str,
+                    })
 
-                    result = await db.execute(
-                        text(
-                            """
-                            INSERT INTO embeddings (owner_type, owner_id, model_name, vector)
-                            VALUES ('tool', :event_id, :model_name, CAST(:vec_str AS vector))
-                            RETURNING id
+                # Execute bulk insert using executemany
+                await db.execute(
+                    text(
                         """
-                        ),
-                        {
-                            "event_id": event_id,
-                            "model_name": embedding_model_name,
-                            "vec_str": vec_str,
-                        },
-                    )
-                    row = result.fetchone()
-                    if row:
-                        created_count += 1
-                        # Commit immediately after successful insert
-                        await db.commit()
-                    else:
-                        logger.warning(f"No row returned for event {event_id}")
-                        await db.rollback()
-                except Exception as e:
-                    # Log first error with full details, rest as debug
-                    if created_count == 0:
-                        logger.error(f"Failed to insert embedding for event {event_id}: {e}")
-                    else:
-                        logger.debug(f"Failed to insert embedding for event {event_id}: {e}")
-                    # Rollback the failed transaction so we can continue
-                    try:
-                        await db.rollback()
-                    except:
-                        pass
-                    continue
+                        INSERT INTO embeddings (owner_type, owner_id, model_name, vector)
+                        VALUES ('tool', :event_id, :model_name, CAST(:vec_str AS vector))
+                    """
+                    ),
+                    insert_params,
+                )
+                
+                # Commit once per batch
+                await db.commit()
+                created_count += len(insert_params)
+                
+                logger.info(f"Created {created_count} embeddings so far...")
 
-            logger.info(f"Created {created_count} embeddings so far...")
+            except Exception as e:
+                # Log error and rollback the batch
+                logger.error(f"Failed to bulk insert embeddings for batch: {e}")
+                await db.rollback()
+                
+                # Fall back to individual inserts for this batch to identify problematic events
+                logger.info(f"Retrying batch with individual inserts to identify failures...")
+                for event_id, embedding_vec in zip(event_ids, embeddings):
+                    try:
+                        vec_list = embedding_vec.tolist()
+                        vec_str = "[" + ",".join(map(str, vec_list)) + "]"
+
+                        await db.execute(
+                            text(
+                                """
+                                INSERT INTO embeddings (owner_type, owner_id, model_name, vector)
+                                VALUES ('tool', :event_id, :model_name, CAST(:vec_str AS vector))
+                            """
+                            ),
+                            {
+                                "event_id": event_id,
+                                "model_name": embedding_model_name,
+                                "vec_str": vec_str,
+                            },
+                        )
+                        await db.commit()
+                        created_count += 1
+                    except Exception as individual_error:
+                        logger.debug(f"Failed to insert embedding for event {event_id}: {individual_error}")
+                        try:
+                            await db.rollback()
+                        except:
+                            pass
+                        continue
 
         except Exception as e:
             logger.error(f"Failed to generate embeddings for batch: {e}")
@@ -834,14 +861,23 @@ async def process_interesting_events(
                 elif event_type.startswith("lnk_"):
                     target = payload.get("target_path", payload.get("target", ""))
                     is_interesting = filter_engine.is_interesting_lnk(target)
-
+                # Low value and noisy
+                #elif event_type in (
+                #    "cryptnet_cache",
+                #    "pca_execution",
+                #    "scheduled_task",
+                #    "srum_data",
+                #    "windows_search",
+                #    "notification",
+                #):
+                #    is_interesting = True
                 if is_interesting:
                     interesting_events.append((event_id, event_type, payload))
             except Exception as e:
                 logger.debug(f"Failed to filter event {event_id}: {e}")
                 continue
 
-        logger.info(f"Found {len(interesting_events):,} interesting events")
+        logger.debug(f"Found {len(interesting_events):,} interesting events")
 
         # Second pass: batch generate embeddings
         created_count = await _batch_create_embeddings(db, interesting_events, user_id, llm_config)

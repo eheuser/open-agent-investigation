@@ -255,6 +255,7 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX idx_events_investigation ON events(investigation_id, event_ts DESC);
 CREATE INDEX idx_events_type ON events(investigation_id, event_type);
+CREATE INDEX idx_events_type_ts ON events(investigation_id, event_type, event_ts DESC);  -- For efficient field sampling
 CREATE INDEX idx_events_artifact ON events(artifact_id);
 CREATE INDEX idx_events_payload ON events USING GIN(payload);
 
@@ -283,6 +284,7 @@ CREATE TABLE IF NOT EXISTS timeline_entries (
 CREATE INDEX idx_timeline_investigation ON timeline_entries(investigation_id, timestamp DESC);
 CREATE INDEX idx_timeline_type ON timeline_entries(investigation_id, entry_type);
 CREATE INDEX idx_timeline_event ON timeline_entries(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX idx_timeline_event_visible ON timeline_entries(event_id, is_visible, timestamp DESC) WHERE event_id IS NOT NULL;  -- For efficient field sampling with JOIN
 CREATE INDEX idx_timeline_tags ON timeline_entries USING GIN(tags);
 CREATE INDEX idx_timeline_data ON timeline_entries USING GIN(data);
 CREATE INDEX idx_timeline_created ON timeline_entries(investigation_id, created_at DESC);

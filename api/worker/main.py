@@ -252,7 +252,7 @@ async def claim_parsing_job(db: AsyncSession, worker_id: uuid_pkg.UUID) -> Optio
     await db.commit()
     await db.refresh(job)
 
-    logger.info(f"Claimed parsing job {job.job_id} for artifact {job.artifact_id}")
+    logger.debug(f"Claimed parsing job {job.job_id} for artifact {job.artifact_id}")
 
     return job
 
@@ -422,7 +422,7 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
     investigation_id = job.investigation_id
 
     try:
-        logger.info(f"Processing job {job_id} for artifact {artifact_id}")
+        logger.debug(f"Processing job {job_id} for artifact {artifact_id}")
 
         # Get investigation to find user_id
         result = await db.execute(

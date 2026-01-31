@@ -17,7 +17,7 @@ from regipy.plugins.ntuser.shellbags_ntuser import ShellBagNtuserPlugin
 from notatin import PyNotatinParser
 
 from .base_parser import BaseParser
-from .utils import flatten_dict
+from .utils import flatten_dict, safe_json_dumps
 
 from app.utils.log_setup import get_logger
 
@@ -53,23 +53,36 @@ class RegistryParser(BaseParser):
         Returns:
             True if file is a Registry hive
         """
-        # Check common registry hive filenames
-        filename_lower = filename.lower()
-        registry_names = [
+        # First, check magic bytes - this is the most reliable method
+        # Registry hives start with "regf" signature
+        try:
+            with open(file_path, 'rb') as f:
+                magic = f.read(4)
+                if magic == b'regf':
+                    return True
+        except Exception:
+            pass
+        
+        # Extract just the filename without path
+        base_filename = Path(filename).name.lower()
+        
+        # Exact matches for common registry hives
+        exact_names = [
             'ntuser.dat', 'usrclass.dat', 'system', 'software', 
             'sam', 'security', 'default', 'amcache.hve'
         ]
         
-        if any(name in filename_lower for name in registry_names):
-            return True
+        # Check for exact match
+        if base_filename in exact_names:
+            # Double-check with magic bytes to avoid false positives
+            try:
+                with open(file_path, 'rb') as f:
+                    magic = f.read(4)
+                    return magic == b'regf'
+            except Exception:
+                return False
         
-        # Check magic bytes: Registry hives start with "regf"
-        try:
-            with open(file_path, 'rb') as f:
-                magic = f.read(4)
-                return magic == b'regf'
-        except Exception:
-            return False
+        return False
     
     async def _parse_impl(
         self,
@@ -187,7 +200,7 @@ class RegistryParser(BaseParser):
                                     "event_ts": event_ts,
                                     "artifact_id": artifact_id,
                                     "event_type": "registry_value",
-                                    "payload": json.dumps(payload),
+                                    "payload": safe_json_dumps(payload),
                                 }
                             )
 
@@ -220,10 +233,12 @@ class RegistryParser(BaseParser):
             return events_inserted
 
         except RegistryParsingException as e:
-            logger.error(f"Failed to parse registry hive {file_path}: {e}", exc_info=True)
+            logger.error(f"Failed to parse registry hive {file_path}: {e}")
+            logger.debug(f"Failed to parse registry hive {file_path}: {e}", exc_info=True)
             raise RuntimeError(f"Registry parsing failed: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error parsing registry hive {file_path}: {e}", exc_info=True)
+            logger.error(f"Unexpected error parsing registry hive {file_path}: {e}")
+            logger.debug(f"Unexpected error parsing registry hive {file_path}: {e}", exc_info=True)
             raise RuntimeError(f"Registry parsing failed: {e}")
 
     async def _extract_plugin_events(
@@ -431,7 +446,7 @@ class RegistryParser(BaseParser):
                         "event_ts": event_ts,
                         "artifact_id": artifact_id,
                         "event_type": f"registry_{plugin_name}",
-                        "payload": json.dumps(payload, default=str),
+                        "payload": safe_json_dumps(payload),
                     }
                 )
 

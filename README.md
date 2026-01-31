@@ -66,7 +66,8 @@ Monitor the application with streamed logs.
 
 ## What It Does
 
-- Parses 20+ Windows forensic artifacts (EVTX logs, registry hives, MFT, prefetch, LNK files, Jump Lists, browser history, scheduled tasks, SRUM, Windows Search, notifications, and more)
+- **Automatically extracts and processes archive files** (ZIP, 7z, RAR) - perfect for KAPE output bundles
+- Parses 8 categories of Windows forensic artifacts (EVTX logs, registry hives, MFT, prefetch, LNK files, Jump Lists, browser history, and Windows artifacts including scheduled tasks, SRUM, Windows Search, notifications, and more)
 - Routes natural language queries to specialized handlers using LLM-based intent classification
 - Executes autonomous agent investigations with 16+ forensic tools
 - **Provides 20+ built-in investigation playbooks with custom playbook creation**
@@ -118,6 +119,17 @@ Four specialized handlers optimize for different query types, with **real-time U
 The system automatically classifies user intent or accepts manual mode selection. **Every response includes a routing badge** showing which handler processed the query and relevant statistics.
 
 ### Artifact Support
+
+#### Archive Extraction (NEW)
+| Type | Format | Parser | Behavior |
+|------|--------|--------|----------|
+| Archives | .zip, .7z, .rar | archive | Recursive extraction up to 5 levels, auto-submits extracted files for parsing |
+
+**Archive Support Features:**
+- **Automatic KAPE bundle processing** - Upload entire KAPE output as single ZIP
+- **Recursive extraction** - Handles nested archives (e.g., evidence.zip containing KAPE_Output.zip)
+- **Safety limits** - 10 GB max size, 50,000 file limit, 5-level depth protection
+- **Preserves structure** - Directory paths encoded in filenames (e.g., `Windows__System32__Security.evtx`)
 
 #### Core Artifacts
 | Type | Format | Parser | Output Event Types |
@@ -200,14 +212,17 @@ docker compose up -d
 ### Testing
 
 ```bash
+docker compose -f docker-compose.test.yml build test-runner # if needed
 docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
 ```
 
 ### Access
 
-- UI: https://localhost
-- API: http://localhost:8000/docs
+- UI: https://localhost (port 443)
+- API: https://localhost/api/docs (proxied through nginx)
 - Default credentials: admin / admin123 (change immediately)
+
+> **Note**: The API runs on port 8000 inside the Docker network but is only accessible via the nginx reverse proxy at `https://localhost/api/`
 
 
 ## Documentation
@@ -220,18 +235,29 @@ docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit
 ## Architecture
 
 ```
-UI (React) <--HTTPS/WSS--> API (FastAPI) <--SQL--> PostgreSQL <--Poll--> Worker (AsyncIO)
-                                                        |
-                                                    PGVector
-                                                        |
-                                                   LLM Backend
+User Browser <--HTTPS/WSS--> nginx (443) <--HTTP--> API (8000) <--SQL--> PostgreSQL (5432)
+                                |
+                            Static UI Files                      |
+                                                             PGVector
+                                                                 |
+                                                            LLM Backend
+                                                                 |
+                                                            Worker (AsyncIO)
 ```
+
+**Network Architecture**:
+- **User Access**: All traffic goes through nginx on port 443 (HTTPS)
+- **API Proxy**: nginx forwards `/api/*` requests to `api:8000` (internal Docker network)
+- **WebSocket Proxy**: nginx upgrades connections for `/api/v1/chat/ws/*`
+- **Static Files**: nginx serves React UI directly
+- **No Direct API Access**: Port 8000 is NOT exposed to host (only accessible via nginx proxy)
 
 Components:
 
-- **UI**: React 18 frontend with TypeScript and TailwindCSS
-- **API**: FastAPI backend with SQLAlchemy 2.0 async ORM
-- **Database**: PostgreSQL 15 with PGVector extension
+- **UI**: React 18 frontend with TypeScript and TailwindCSS (served by nginx)
+- **nginx**: Reverse proxy for API and static file server
+- **API**: FastAPI backend with SQLAlchemy 2.0 async ORM (port 8000 internal)
+- **Database**: PostgreSQL 15 with PGVector extension (port 5432)
 - **Worker**: Async job processor with multiprocessing pool
 
 Technology stack:

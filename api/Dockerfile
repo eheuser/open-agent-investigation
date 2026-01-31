@@ -2,6 +2,7 @@ FROM python:3.12-slim AS builder
 
 # Install build tools needed for asyncpg, parsers, and git for notatin
 # Also install WeasyPrint dependencies (Cairo, Pango, GDK-PixBuf)
+# Also install unar for RAR archive extraction (free alternative to unrar)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -21,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdk-pixbuf-2.0-0 \
     libffi-dev \
     shared-mime-info \
+    unar \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust (required for pynotatin)

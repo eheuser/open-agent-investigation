@@ -212,3 +212,78 @@ class TestGetCurrentUserOptional:
         user = await get_current_user_optional(token=token, db=db)
 
         assert user is None
+
+    @patch("app.deps.verify_jwt_token")
+    @patch("app.deps.get_user_by_id")
+    async def test_get_optional_user_not_found(
+        self,
+        mock_get_user,
+        mock_verify_token,
+    ):
+        """Test that get_current_user_optional returns None when user not found in database."""
+        db = AsyncMock()
+        token = "valid_token"
+
+        mock_verify_token.return_value = {"sub": "999"}
+        mock_get_user.return_value = None
+
+        user = await get_current_user_optional(token=token, db=db)
+
+        assert user is None
+
+
+@pytest.mark.unit
+class TestDependencyEdgeCases:
+    """Test edge cases for dependency functions."""
+
+    @patch("app.deps.verify_jwt_token")
+    async def test_get_current_user_empty_token(
+        self,
+        mock_verify_token,
+    ):
+        """Test that get_current_user raises 401 with empty string token."""
+        db = AsyncMock()
+        token = ""
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user(token=token, db=db)
+
+        assert exc_info.value.status_code == 401
+
+    async def test_require_admin_with_different_roles(self):
+        """Test require_admin with various role values."""
+        # Test role = 1 (admin)
+        admin = User(user_id=1, username="admin", password_hash="hash", role=1)
+        result = await require_admin(user=admin)
+        assert result == admin
+
+        # Test role = 0 (regular user)
+        regular = User(user_id=2, username="user", password_hash="hash", role=0)
+        with pytest.raises(HTTPException) as exc_info:
+            await require_admin(user=regular)
+        assert exc_info.value.status_code == 403
+
+    @patch("app.deps.verify_jwt_token")
+    @patch("app.deps.get_user_by_id")
+    async def test_get_current_user_with_admin(
+        self,
+        mock_get_user,
+        mock_verify_token,
+    ):
+        """Test that get_current_user works correctly for admin users."""
+        db = AsyncMock()
+        token = "admin_token"
+
+        mock_verify_token.return_value = {"sub": "1"}
+        admin_user = User(
+            user_id=1,
+            username="admin",
+            password_hash="hash",
+            role=1,
+        )
+        mock_get_user.return_value = admin_user
+
+        user = await get_current_user(token=token, db=db)
+
+        assert user.username == "admin"
+        assert user.role == 1

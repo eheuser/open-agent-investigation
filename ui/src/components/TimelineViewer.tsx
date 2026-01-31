@@ -132,22 +132,8 @@ const TimelineViewer: React.FC<TimelineViewerProps> = ({ investigationId }) => {
       setEntries(response.data.entries || []);
       setTotal(response.data.total || 0);
       
-      // Extract common fields from entry data for autocomplete (supplement existing fields)
-      if (response.data.entries && response.data.entries.length > 0) {
-        const fieldSet = new Set<string>(commonFields); // Start with existing fields
-        response.data.entries.slice(0, 10).forEach((entry: TimelineEntry) => {
-          if (entry.data && typeof entry.data === 'object') {
-            // Extract top-level keys from data field
-            Object.keys(entry.data).forEach(key => fieldSet.add(key));
-            
-            // Also extract nested payload fields if they exist
-            if (entry.data.payload && typeof entry.data.payload === 'object') {
-              Object.keys(entry.data.payload).forEach(key => fieldSet.add(key));
-            }
-          }
-        });
-        setCommonFields(Array.from(fieldSet).sort());
-      }
+      // Note: commonFields are now fetched via the dedicated /fields endpoint
+      // This ensures we get all available fields, not just from the current page
     } catch (err: any) {
       console.error('Failed to fetch timeline:', err);
       setError(err.response?.data?.detail || 'Failed to load timeline');
@@ -189,44 +175,31 @@ const TimelineViewer: React.FC<TimelineViewerProps> = ({ investigationId }) => {
     const fetchAvailableFields = async () => {
       try {
         const token = localStorage.getItem('token');
-        // Fetch a sample of timeline entries to extract field names
-        let url = `/api/v1/timeline/${investigationId}?limit=100`;
+        // Build URL with optional event_type parameter
+        let url = `/api/v1/timeline/${investigationId}/fields`;
         if (eventTypeFilter) {
-          url += `&event_type=${encodeURIComponent(eventTypeFilter)}`;
+          url += `?event_type=${encodeURIComponent(eventTypeFilter)}`;
         }
         
-        const response = await axios.get(
+        const response = await axios.get<{ fields: string[]; count: number; entries_sampled: number }>(
           url,
           {
             headers: { Authorization: `Bearer ${token}` }
           }
         );
         
-        if (response.data.entries && response.data.entries.length > 0) {
-          const fieldSet = new Set<string>();
-          response.data.entries.forEach((entry: TimelineEntry) => {
-            if (entry.data && typeof entry.data === 'object') {
-              // Extract top-level keys from data field
-              Object.keys(entry.data).forEach(key => fieldSet.add(key));
-              
-              // Also extract nested payload fields if they exist
-              if (entry.data.payload && typeof entry.data.payload === 'object') {
-                Object.keys(entry.data.payload).forEach(key => fieldSet.add(key));
-              }
-            }
-          });
-          const fields = Array.from(fieldSet).sort();
-          setCommonFields(fields);
-          //if (eventTypeFilter) {
-          //  console.log(`Loaded ${fields.length} unique fields from timeline entries with event type '${eventTypeFilter}'`);
-          //} else {
-          //  console.log(`Loaded ${fields.length} unique fields from ${response.data.entries.length} timeline entries`);
-          //}
+        console.log('Timeline fields API response:', response.data);
+        if (response.data && response.data.fields) {
+          setCommonFields(response.data.fields);
+          console.log(`Loaded ${response.data.fields.length} fields from ${response.data.entries_sampled} timeline entries`);
         } else {
+          console.warn('No fields returned from API');
           setCommonFields([]);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to fetch available fields:', err);
+        console.error('Error details:', err.response?.data);
+        setCommonFields([]);
       }
     };
     
@@ -945,7 +918,7 @@ const TimelineViewer: React.FC<TimelineViewerProps> = ({ investigationId }) => {
                 <div className="relative">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
-                      Field Path
+                      Field Path {commonFields.length > 0 && `(${commonFields.length} available)`}
                     </label>
                     {commonFields.length > 0 && (
                       <button
