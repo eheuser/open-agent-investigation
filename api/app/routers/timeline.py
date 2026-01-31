@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, func
 from typing import List, Optional, Dict, Any
@@ -28,6 +28,7 @@ router = APIRouter(prefix="/api/v1/timeline", tags=["timeline"])
 @router.get("/{investigation_id}", response_model=TimelineResponse)
 async def get_timeline(
     investigation_id: UUID,
+    request: Request,
     entry_type: Optional[EntryType] = Query(None, description="Filter by entry type"),
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     tags: Optional[List[str]] = Query(None, description="Filter by tags"),
@@ -37,11 +38,12 @@ async def get_timeline(
     include_hidden: bool = Query(False, description="Include hidden entries"),
     limit: int = Query(100, le=1000, description="Max entries to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    order: str = Query("desc", description="Sort order (asc or desc)"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """
-    Fetch timeline entries for a given investigation with optional filtering, pagination, and visibility control.
+    Fetch timeline entries for a given investigation with optional filtering, pagination, visibility control, and JSONB queries.
 
     Parameters
     ----------
@@ -85,34 +87,42 @@ async def get_timeline(
     * When `event_type` is supplied, the function joins the `events` table and prefixes column references with the appropriate alias.
     * Tag filtering relies on PostgreSQL's array overlap operator; ensure the underlying column type supports this operation.
     """
-    # Build query - join with events if filtering by event_type
-    if event_type:
-        query_parts = [
-            "SELECT te.entry_id, te.investigation_id, te.event_id, te.timestamp, te.entry_type, te.title, te.description,",
-            "te.data, te.tags, te.created_by_user_id, te.created_at, te.updated_at, te.is_visible",
-            "FROM timeline_entries te",
-            "JOIN events e ON te.event_id = e.event_id",
-            "WHERE te.investigation_id = :investigation_id",
-        ]
-    else:
-        query_parts = [
-            "SELECT entry_id, investigation_id, event_id, timestamp, entry_type, title, description,",
-            "data, tags, created_by_user_id, created_at, updated_at, is_visible",
-            "FROM timeline_entries",
-            "WHERE investigation_id = :investigation_id",
-        ]
+    # Extract JSONB query parameters from request query params
+    # They come as jsonb_path_0, jsonb_operator_0, jsonb_value_0, etc.
+    query_params = dict(request.query_params)
+    jsonb_queries = []
+
+    # Parse JSONB queries from numbered parameters
+    i = 0
+    while f"jsonb_path_{i}" in query_params:
+        path = query_params.get(f"jsonb_path_{i}")
+        operator = query_params.get(f"jsonb_operator_{i}", "=")
+        value = query_params.get(f"jsonb_value_{i}")
+
+        if path:
+            jsonb_queries.append({"path": path, "operator": operator, "value": value})
+        i += 1
+
+    # Build query - join with events if filtering by event_type OR if JSONB queries are present
+    needs_event_join = event_type is not None or len(jsonb_queries) > 0
+    
+    # Always join with events table to fetch event data (LEFT JOIN to handle entries without events)
+    query_parts = [
+        "SELECT te.entry_id, te.investigation_id, te.event_id, te.timestamp, te.entry_type, te.title, te.description,",
+        "te.data, te.tags, te.created_by_user_id, te.created_at, te.updated_at, te.is_visible, e.payload as event_payload",
+        "FROM timeline_entries te",
+        "LEFT JOIN events e ON te.event_id = e.event_id" if not needs_event_join else "JOIN events e ON te.event_id = e.event_id",
+        "WHERE te.investigation_id = :investigation_id",
+    ]
     params: Dict[str, Any] = {"investigation_id": str(investigation_id)}
 
     # Filter by visibility
     if not include_hidden:
-        query_parts.append("AND is_visible = true")
+        query_parts.append("AND te.is_visible = true")
 
     # Filter by entry type
     if entry_type:
-        if event_type:
-            query_parts.append("AND te.entry_type = :entry_type")
-        else:
-            query_parts.append("AND entry_type = :entry_type")
+        query_parts.append("AND te.entry_type = :entry_type")
         params["entry_type"] = entry_type.value
 
     # Filter by event type
@@ -120,42 +130,97 @@ async def get_timeline(
         query_parts.append("AND e.event_type = :event_type")
         params["event_type"] = event_type
 
+    # Add JSONB queries if provided (query timeline entry data field OR linked event payload)
+    valid_operators = [
+        "=",
+        "!=",
+        ">",
+        "<",
+        ">=",
+        "<=",
+        "LIKE",
+        "ILIKE",
+        "CONTAINS",
+        "STARTS_WITH",
+        "ENDS_WITH",
+    ]
+    for idx, jsonb_query in enumerate(jsonb_queries):
+        path = jsonb_query["path"]
+        operator = jsonb_query["operator"]
+        value = jsonb_query["value"]
+
+        # Validate operator
+        if operator.upper() not in [op.upper() for op in valid_operators]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid JSONB operator '{operator}'. Must be one of: {', '.join(valid_operators)}",
+            )
+
+        param_path = f"jsonb_path_{idx}"
+        param_value = f"jsonb_value_{idx}"
+
+        if value is not None and value != "":
+            # Handle different operator types
+            if operator.upper() in ["LIKE", "ILIKE"]:
+                # For LIKE/ILIKE operators, convert * wildcards to SQL %
+                sql_value = value.replace("*", "%")
+                # Try timeline entry data first, then event payload
+                query_parts.append(
+                    f"AND (te.data->>:{param_path} {operator.upper()} :{param_value} OR e.payload->>:{param_path} {operator.upper()} :{param_value})"
+                )
+                params[param_value] = sql_value
+            elif operator.upper() == "CONTAINS":
+                # Contains: case-insensitive substring match
+                query_parts.append(
+                    f"AND (te.data->>:{param_path} ILIKE :{param_value} OR e.payload->>:{param_path} ILIKE :{param_value})"
+                )
+                params[param_value] = f"%{value}%"
+            elif operator.upper() == "STARTS_WITH":
+                # Starts with: case-insensitive prefix match
+                query_parts.append(
+                    f"AND (te.data->>:{param_path} ILIKE :{param_value} OR e.payload->>:{param_path} ILIKE :{param_value})"
+                )
+                params[param_value] = f"{value}%"
+            elif operator.upper() == "ENDS_WITH":
+                # Ends with: case-insensitive suffix match
+                query_parts.append(
+                    f"AND (te.data->>:{param_path} ILIKE :{param_value} OR e.payload->>:{param_path} ILIKE :{param_value})"
+                )
+                params[param_value] = f"%{value}"
+            else:
+                # Standard comparison operators
+                query_parts.append(
+                    f"AND (te.data->>:{param_path} {operator} :{param_value} OR e.payload->>:{param_path} {operator} :{param_value})"
+                )
+                params[param_value] = value
+            params[param_path] = path
+        else:
+            # Check if field exists in timeline entry data OR event payload
+            query_parts.append(f"AND (te.data ? :{param_path} OR e.payload ? :{param_path})")
+            params[param_path] = path
+
     # Filter by tags
     if tags:
-        if event_type:
-            query_parts.append("AND te.tags && :tags")
-        else:
-            query_parts.append("AND tags && :tags")
+        query_parts.append("AND te.tags && :tags")
         params["tags"] = tags
 
     # Filter by time range
     if start_time:
-        if event_type:
-            query_parts.append("AND te.timestamp >= :start_time")
-        else:
-            query_parts.append("AND timestamp >= :start_time")
+        query_parts.append("AND te.timestamp >= :start_time")
         params["start_time"] = start_time
 
     if end_time:
-        if event_type:
-            query_parts.append("AND te.timestamp <= :end_time")
-        else:
-            query_parts.append("AND timestamp <= :end_time")
+        query_parts.append("AND te.timestamp <= :end_time")
         params["end_time"] = end_time
 
     # Search filter
     if search:
-        if event_type:
-            query_parts.append("AND (te.title ILIKE :search OR te.description ILIKE :search)")
-        else:
-            query_parts.append("AND (title ILIKE :search OR description ILIKE :search)")
+        query_parts.append("AND (te.title ILIKE :search OR te.description ILIKE :search)")
         params["search"] = f"%{search}%"
 
     # Order and pagination
-    if event_type:
-        query_parts.append("ORDER BY te.timestamp DESC")
-    else:
-        query_parts.append("ORDER BY timestamp DESC")
+    sort_direction = "DESC" if order.lower() == "desc" else "ASC"
+    query_parts.append(f"ORDER BY te.timestamp {sort_direction}")
     query_parts.append("LIMIT :limit OFFSET :offset")
     params["limit"] = limit
     params["offset"] = offset
@@ -168,6 +233,11 @@ async def get_timeline(
     # Build entry objects
     entries = []
     for row in rows:
+        # Include event_payload in the data field if it exists
+        entry_data = row[7] or {}
+        if row[13]:  # event_payload exists
+            entry_data['event_payload'] = row[13]
+        
         entry = TimelineEntryRead(
             entry_id=row[0],
             investigation_id=str(row[1]),
@@ -176,7 +246,7 @@ async def get_timeline(
             entry_type=row[4],
             title=row[5],
             description=row[6],
-            data=row[7] or {},
+            data=entry_data,
             tags=row[8] or [],
             created_by_user_id=row[9],
             created_at=row[10],
@@ -187,31 +257,19 @@ async def get_timeline(
         entries.append(entry)
 
     # Get total count WITH ALL THE SAME FILTERS
-    if event_type:
-        count_query_parts = [
-            "SELECT COUNT(*) FROM timeline_entries te",
-            "JOIN events e ON te.event_id = e.event_id",
-            "WHERE te.investigation_id = :investigation_id",
-        ]
-    else:
-        count_query_parts = [
-            "SELECT COUNT(*) FROM timeline_entries",
-            "WHERE investigation_id = :investigation_id",
-        ]
+    count_query_parts = [
+        "SELECT COUNT(*) FROM timeline_entries te",
+        "LEFT JOIN events e ON te.event_id = e.event_id" if not needs_event_join else "JOIN events e ON te.event_id = e.event_id",
+        "WHERE te.investigation_id = :investigation_id",
+    ]
     count_params: Dict[str, Any] = {"investigation_id": str(investigation_id)}
 
     # Apply ALL the same filters as the main query
     if not include_hidden:
-        if event_type:
-            count_query_parts.append("AND te.is_visible = true")
-        else:
-            count_query_parts.append("AND is_visible = true")
+        count_query_parts.append("AND te.is_visible = true")
 
     if entry_type:
-        if event_type:
-            count_query_parts.append("AND te.entry_type = :entry_type")
-        else:
-            count_query_parts.append("AND entry_type = :entry_type")
+        count_query_parts.append("AND te.entry_type = :entry_type")
         count_params["entry_type"] = entry_type.value
 
     if event_type:
@@ -219,32 +277,61 @@ async def get_timeline(
         count_params["event_type"] = event_type
 
     if tags:
-        if event_type:
-            count_query_parts.append("AND te.tags && :tags")
-        else:
-            count_query_parts.append("AND tags && :tags")
+        count_query_parts.append("AND te.tags && :tags")
         count_params["tags"] = tags
 
     if start_time:
-        if event_type:
-            count_query_parts.append("AND te.timestamp >= :start_time")
-        else:
-            count_query_parts.append("AND timestamp >= :start_time")
+        count_query_parts.append("AND te.timestamp >= :start_time")
         count_params["start_time"] = start_time
 
     if end_time:
-        if event_type:
-            count_query_parts.append("AND te.timestamp <= :end_time")
-        else:
-            count_query_parts.append("AND timestamp <= :end_time")
+        count_query_parts.append("AND te.timestamp <= :end_time")
         count_params["end_time"] = end_time
 
     if search:
-        if event_type:
-            count_query_parts.append("AND (te.title ILIKE :search OR te.description ILIKE :search)")
-        else:
-            count_query_parts.append("AND (title ILIKE :search OR description ILIKE :search)")
+        count_query_parts.append("AND (te.title ILIKE :search OR te.description ILIKE :search)")
         count_params["search"] = f"%{search}%"
+
+    # Add JSONB queries to count query
+    for idx, jsonb_query in enumerate(jsonb_queries):
+        path = jsonb_query["path"]
+        operator = jsonb_query["operator"]
+        value = jsonb_query["value"]
+
+        param_path = f"jsonb_path_{idx}"
+        param_value = f"jsonb_value_{idx}"
+
+        if value is not None and value != "":
+            if operator.upper() in ["LIKE", "ILIKE"]:
+                sql_value = value.replace("*", "%")
+                count_query_parts.append(
+                    f"AND (te.data->>:{param_path} {operator.upper()} :{param_value} OR e.payload->>:{param_path} {operator.upper()} :{param_value})"
+                )
+                count_params[param_value] = sql_value
+            elif operator.upper() == "CONTAINS":
+                count_query_parts.append(
+                    f"AND (te.data->>:{param_path} ILIKE :{param_value} OR e.payload->>:{param_path} ILIKE :{param_value})"
+                )
+                count_params[param_value] = f"%{value}%"
+            elif operator.upper() == "STARTS_WITH":
+                count_query_parts.append(
+                    f"AND (te.data->>:{param_path} ILIKE :{param_value} OR e.payload->>:{param_path} ILIKE :{param_value})"
+                )
+                count_params[param_value] = f"{value}%"
+            elif operator.upper() == "ENDS_WITH":
+                count_query_parts.append(
+                    f"AND (te.data->>:{param_path} ILIKE :{param_value} OR e.payload->>:{param_path} ILIKE :{param_value})"
+                )
+                count_params[param_value] = f"%{value}"
+            else:
+                count_query_parts.append(
+                    f"AND (te.data->>:{param_path} {operator} :{param_value} OR e.payload->>:{param_path} {operator} :{param_value})"
+                )
+                count_params[param_value] = value
+            count_params[param_path] = path
+        else:
+            count_query_parts.append(f"AND (te.data ? :{param_path} OR e.payload ? :{param_path})")
+            count_params[param_path] = path
 
     count_query = text(" ".join(count_query_parts))
     count_result = await db.execute(count_query, count_params)

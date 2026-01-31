@@ -68,6 +68,7 @@ Monitor the application with streamed logs.
 
 - **Automatically extracts and processes archive files** (ZIP, 7z, RAR) - perfect for KAPE output bundles
 - Parses 8 categories of Windows forensic artifacts (EVTX logs, registry hives, MFT, prefetch, LNK files, Jump Lists, browser history, and Windows artifacts including scheduled tasks, SRUM, Windows Search, notifications, and more)
+- **Extracts comprehensive file metadata** (hashes, entropy, strings, PE headers) for unknown file types via catch-all parser
 - Routes natural language queries to specialized handlers using LLM-based intent classification
 - Executes autonomous agent investigations with 16+ forensic tools
 - **Provides 20+ built-in investigation playbooks with custom playbook creation**
@@ -152,6 +153,20 @@ The system automatically classifies user intent or accepts manual mode selection
 | Bitmap Cache | thumbcache_*.db, iconcache_*.db | windows_artifacts | bitmap_cache |
 | Notifications | wpndatabase.db | windows_artifacts | notification |
 | CryptNetUrlCache | CRL cache files | windows_artifacts | cryptnet_cache |
+
+#### Catch-All Parser
+| Type | Format | Parser | Output Event Types |
+|------|--------|--------|-------------------|
+| File Metadata | Any file (fallback) | file_metadata | file_metadata |
+
+**File Metadata Parser Features:**
+- **Hash Calculation** - MD5, SHA1, SHA256 for all files
+- **Entropy Analysis** - Detect encrypted/compressed files (0.0-8.0 scale)
+- **String Extraction** - ASCII and Unicode strings (up to 32 KB)
+- **File Type Detection** - Magic byte identification (PE, ZIP, PDF, etc.)
+- **PE Header Analysis** - Extract compile timestamp, architecture, DLL/EXE flag
+- **Automatic Fallback** - Processes any file not matched by specialized parsers
+- **Error Recovery** - Automatically invoked when specialized parsers fail (e.g., corrupted EVTX files)
 
 See [Parser Documentation](api/worker/parsers/README.md) for detailed artifact specifications.
 

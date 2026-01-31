@@ -18,12 +18,14 @@ from .mft_parser import MftParser
 from .jumplist_parser import JumplistParser
 from .browser_history_parser import BrowserHistoryParser
 from .windows_artifacts_parser import WindowsArtifactsParser
+from .file_metadata_parser import FileMetadataParser
 
 logger = get_logger(__name__)
 
 # Registry of all available parsers
 # Order matters - more specific parsers should come first
 # ArchiveParser MUST come first to extract archives before other parsers
+# FileMetadataParser MUST come last as the catch-all fallback
 PARSERS = [
     ArchiveParser,  # Process archives first to extract contained files
     EvtxParser,
@@ -34,6 +36,7 @@ PARSERS = [
     JumplistParser,
     BrowserHistoryParser,
     WindowsArtifactsParser,
+    FileMetadataParser,  # Catch-all parser - MUST be last
 ]
 
 
@@ -116,7 +119,36 @@ async def parse_artifact(
         )
 
     # Parse the artifact using the selected parser
-    events_inserted = await selected_parser.parse(db, investigation_id, artifact_id, file_path)
+    # If parsing fails, fall back to FileMetadataParser
+    try:
+        events_inserted = await selected_parser.parse(db, investigation_id, artifact_id, file_path)
+    except Exception as e:
+        # Only fall back to FileMetadataParser if the selected parser was NOT already FileMetadataParser
+        if not isinstance(selected_parser, FileMetadataParser):
+            logger.warning(
+                f"{selected_parser.__class__.__name__} failed to parse artifact {artifact_id} "
+                f"({artifact.filename}): {e}. Falling back to FileMetadataParser."
+            )
+            try:
+                # Use FileMetadataParser as fallback
+                fallback_parser = FileMetadataParser()
+                events_inserted = await fallback_parser.parse(db, investigation_id, artifact_id, file_path)
+                logger.info(
+                    f"FileMetadataParser successfully processed artifact {artifact_id} as fallback "
+                    f"({events_inserted} events inserted)"
+                )
+            except Exception as fallback_error:
+                logger.error(
+                    f"FileMetadataParser fallback also failed for artifact {artifact_id}: {fallback_error}"
+                )
+                raise RuntimeError(
+                    f"Both {selected_parser.__class__.__name__} and FileMetadataParser failed to parse "
+                    f"artifact {artifact_id} ({artifact.filename})"
+                )
+        else:
+            # FileMetadataParser itself failed - re-raise the error
+            logger.error(f"FileMetadataParser failed for artifact {artifact_id}: {e}")
+            raise
 
     # After parsing, process interesting events to create timeline entries with embeddings
     if events_inserted > 0:

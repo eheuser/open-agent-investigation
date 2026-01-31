@@ -240,15 +240,17 @@ class FilterEngine:
         # If event doesn't match channel+event_id, it's not interesting
         if not is_interesting_event:
             return (False, timestamp)
+
+        # Carve out for null IP events
+        if event_dict.get("event_data.IpAddress", "") == "-" or event_dict.get("event_data.IpAddress", "") == "127.0.0.1":
+            return (False, timestamp)
         
-        # Event matches channel+event_id, so it's interesting by default
-        # But we can boost priority if it also has LOLBins or interesting ports
+        # TODO This is slow
         if evtx_config.get("lol_bins", False):
             for v in event_dict.values():
                 if isinstance(v, str):
                     for lolbin in self.LOLBINS:
                         if lolbin in v.casefold():
-                            # LOLBin detected - definitely interesting
                             return (True, timestamp)
 
         interesting_ports = evtx_config.get("interesting_ports", [])
@@ -267,11 +269,10 @@ class FilterEngine:
                 pass
 
             if dest_port in interesting_ports or source_port in interesting_ports:
-                # Interesting port detected
                 return (True, timestamp)
 
-        # Event matched channel+event_id, so return True
-        return (True, timestamp)
+        # event id and channel isn't enough
+        return (False, timestamp)
 
     def is_interesting_registry(self, key_path: str) -> bool:
         """

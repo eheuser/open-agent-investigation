@@ -47,6 +47,12 @@ The parser system uses a dispatcher pattern (`dispatcher.py`) that routes artifa
 | **browser_history_parser.py** | Browser History | `History` (Chrome/Edge), `places.sqlite` (Firefox), `WebCacheV*.dat` (Legacy Edge) | `browser_history` | Web browsing activity |
 | **windows_artifacts_parser.py** | Multiple Windows Artifacts | `.pca`, `.job`, `.xml`, `.db`, `.dat`, `.edb` | Various | See details below |
 
+### Catch-All Parser
+
+| Parser | Artifact Type | File Extensions | Event Type | Description |
+|--------|---------------|-----------------|------------|-------------|
+| **file_metadata_parser.py** | Any File (Fallback) | All files | `file_metadata` | Static analysis and metadata extraction |
+
 ## Detailed Parser Documentation
 
 ### Archive Parser (`archive_parser.py`)
@@ -380,6 +386,177 @@ This multi-purpose parser handles various Windows forensic artifacts:
 SELECT Id, Type, Payload, ExpiryTime, ArrivalTime
 FROM Notification
 ORDER BY ArrivalTime DESC
+```
+
+---
+
+### File Metadata Parser (`file_metadata_parser.py`)
+
+**Purpose:** Catch-all parser that extracts comprehensive metadata and performs static analysis on any file that doesn't match a specialized parser.
+
+**Event Type:** `file_metadata`
+
+**Extracted Information:**
+
+#### 1. File Hashes
+- **MD5** - Fast hash for deduplication
+- **SHA1** - Standard forensic hash
+- **SHA256** - Cryptographically secure hash
+
+#### 2. File Metadata
+- File size (bytes)
+- Modified time (from filesystem)
+- Created time (from filesystem)
+- Accessed time (from filesystem)
+
+#### 3. File Type Detection
+- **Magic Bytes** - First 20 bytes in hex
+- **File Type** - Detected type (PE, ZIP, PDF, etc.)
+- **Description** - Human-readable type description
+
+**Supported File Types:**
+- Windows Executables (PE, ELF)
+- Archives (ZIP, RAR, 7z, GZIP, BZIP2)
+- Documents (PDF, Office formats)
+- Images (JPEG, PNG, GIF, BMP, TIFF, ICO)
+- Forensic Artifacts (EVTX, Registry, MFT, LNK)
+- Databases (SQLite)
+
+#### 4. Entropy Analysis
+- **Shannon Entropy** (0.0 - 8.0)
+- High entropy (~8.0) indicates encryption or compression
+- Low entropy indicates structured or repetitive data
+- Calculated on first 64 KB sample for performance
+
+#### 5. String Extraction
+- **ASCII Strings** - Printable ASCII characters (min 4 chars)
+- **Unicode Strings** - UTF-16 LE strings (min 4 chars)
+- Up to 32 KB of string data extracted
+- Deduplication applied
+- Limited to 500 unique strings per type
+
+#### 6. PE Header Analysis (Windows Executables)
+- **PE Type** - PE32 or PE32+
+- **Machine Type** - i386, x64, ARM, ARM64, IA64
+- **Number of Sections**
+- **Compile Timestamp** - When executable was built
+- **Is DLL** - Whether file is a DLL
+- **Is Executable** - Whether file is an EXE
+
+**Payload Fields:**
+```json
+{
+  "artifact_type": "file_metadata",
+  "filename": "example.exe",
+  "file_size": 1024000,
+  "modified_time": "2024-01-15T10:30:00",
+  "created_time": "2024-01-15T10:30:00",
+  "accessed_time": "2024-01-15T10:30:00",
+  "hashes": {
+    "md5": "5d41402abc4b2a76b9719d911017c592",
+    "sha1": "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d",
+    "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706..."
+  },
+  "file_type": {
+    "magic_bytes": "4d5a9000",
+    "file_type": "PE",
+    "description": "Windows Executable (PE)"
+  },
+  "entropy": 7.2345,
+  "strings": {
+    "ascii_strings": ["kernel32.dll", "GetProcAddress", ...],
+    "unicode_strings": ["Microsoft Corporation", ...],
+    "total_strings": 234,
+    "truncated": false
+  },
+  "pe_info": {
+    "pe_type": "PE32+",
+    "machine": "x64",
+    "num_sections": 6,
+    "compile_timestamp": "2024-01-01T12:00:00",
+    "is_dll": false,
+    "is_executable": true
+  }
+}
+```
+
+**Forensic Value:**
+- **File Identification** - Hash-based lookups in threat intelligence databases
+- **Malware Detection** - High entropy may indicate packed/encrypted malware
+- **String Analysis** - Extract URLs, file paths, registry keys, function names
+- **PE Analysis** - Identify executable characteristics and compile timestamps
+- **Timeline Reconstruction** - File timestamps provide activity context
+- **Baseline Creation** - Document all files in forensic collection
+
+**Performance Considerations:**
+- **Size Limit:** Files larger than 500 MB skip full analysis (metadata only)
+- **Streaming:** Files read in 8 KB chunks to minimize memory usage
+- **Sampling:** Entropy calculated on first 64 KB for performance
+- **String Limits:** Maximum 32 KB of string data, 500 unique strings per type
+
+**Use Cases:**
+1. **Unknown File Types** - Analyze files without specialized parsers
+2. **Malware Triage** - Quick hash and entropy analysis
+3. **Bulk Processing** - Extract metadata from entire forensic collections
+4. **Baseline Creation** - Document all files in investigation
+5. **String Searching** - Find IOCs (URLs, IPs, file paths) in binary files
+
+**Limitations:**
+- No deep binary analysis (disassembly, decompilation)
+- Limited to 500 MB files for full analysis
+- String extraction may miss obfuscated strings
+- PE analysis is basic (no import table, sections, resources)
+
+**Example Workflow:**
+```bash
+# Upload unknown binary file
+# → FileMetadataParser triggered (catch-all)
+# → Hash calculated: SHA256 = abc123...
+# → Entropy: 7.8 (high - possibly packed)
+# → Strings extracted: "kernel32.dll", "VirtualAlloc", "CreateRemoteThread"
+# → PE info: x64 executable, compiled 2024-01-01
+# → Submit hash to VirusTotal for threat intelligence
+# → Search strings for IOCs in other artifacts
+```
+
+**Integration with Other Parsers:**
+The file metadata parser serves as a **fallback** in two ways:
+
+1. **Primary Fallback (Catch-All)**: Registered **last** in the dispatcher parser list
+   - If no specialized parser identifies the file, FileMetadataParser is selected
+   - Ensures unknown file types still get documented
+
+2. **Error Fallback**: Automatically invoked when specialized parsers fail
+   - If any parser (EVTX, Registry, etc.) throws an exception during parsing
+   - Dispatcher automatically retries with FileMetadataParser
+   - Prevents complete parsing failure - at minimum, file metadata is extracted
+   - Logs original error and fallback attempt for debugging
+
+This dual-fallback approach ensures:
+1. Specialized parsers (EVTX, Registry, etc.) are tried first
+2. Files matching specialized parsers get deep analysis
+3. Unknown files still get documented with metadata
+4. Corrupted/malformed files get metadata extraction instead of complete failure
+5. **Every uploaded file generates at least one event**
+
+**Error Handling:**
+- **Parser Failures**: If a specialized parser fails, FileMetadataParser is automatically invoked as fallback
+- **Large files** (>500 MB): Metadata-only extraction, analysis skipped
+- **Hash calculation failures**: Logged as warning, continues with remaining analysis
+- **String extraction failures**: Logged as warning, empty strings returned
+- **PE parsing failures**: Logged as debug, PE info omitted from payload
+- **FileMetadataParser failures**: If FileMetadataParser itself fails, error is raised (no further fallback)
+
+**Fallback Workflow Example:**
+```
+1. User uploads corrupted Security.evtx file
+2. EvtxParser.identify() returns True (matches .evtx extension)
+3. EvtxParser.parse() throws exception (corrupted file)
+4. Dispatcher catches exception and logs warning
+5. Dispatcher invokes FileMetadataParser.parse() as fallback
+6. FileMetadataParser extracts: hashes, file size, timestamps, entropy
+7. Result: 1 file_metadata event created instead of complete failure
+8. Investigator can still see file existed and check hash against known good files
 ```
 
 ---

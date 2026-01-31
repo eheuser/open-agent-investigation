@@ -296,3 +296,171 @@ class TestFormatGenericEvent:
         payload = {"key": "value", "number": 123}
 
         title, description = _format_generic_event("custom_event_type", payload)
+        
+        assert "custom_event_type" in title
+        assert isinstance(description, str)
+
+
+@pytest.mark.unit
+class TestFormatEventForTimeline:
+    """Test _format_event_for_timeline function."""
+
+    def test_format_evtx_sysmon_event(self):
+        """Test formatting a Sysmon EVTX event for timeline."""
+        event_type = "evtx_sysmon_1"
+        payload = {
+            "event_id": 1,
+            "event_data.Image": "C:\\Windows\\System32\\cmd.exe",
+            "event_data.CommandLine": "cmd.exe /c whoami",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "Process Created" in title
+        assert "cmd.exe" in title
+
+    def test_format_evtx_security_event(self):
+        """Test formatting a Security EVTX event for timeline."""
+        event_type = "evtx_security_4624"
+        payload = {
+            "event_id": 4624,
+            "event_data.TargetUserName": "admin",
+            "event_data.LogonType": "10",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "Successful Logon" in title
+
+    def test_format_evtx_system_event(self):
+        """Test formatting a System EVTX event for timeline."""
+        event_type = "evtx_system_7045"
+        payload = {
+            "event_id": 7045,
+            "event_data.ServiceName": "TestService",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "Service Installed" in title
+
+    def test_format_evtx_powershell_event(self):
+        """Test formatting a PowerShell EVTX event for timeline."""
+        event_type = "evtx_powershell_4104"
+        payload = {
+            "event_id": 4104,
+            "event_data.ScriptBlockText": "Get-Process",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "PowerShell Execution" in title
+
+    def test_format_mft_event(self):
+        """Test formatting an MFT event for timeline."""
+        event_type = "mft_entry"
+        payload = {
+            "path": "C:\\Users\\test\\file.exe",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "File Activity" in title
+
+    def test_format_registry_event(self):
+        """Test formatting a registry event for timeline."""
+        event_type = "registry_value"
+        payload = {
+            "key_path": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "Registry Key" in title
+
+    def test_format_prefetch_event(self):
+        """Test formatting a prefetch event for timeline."""
+        event_type = "prefetch_execution"
+        payload = {
+            "executable": "NOTEPAD.EXE",
+            "run_count": 5,
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "Prefetch" in title
+
+    def test_format_lnk_event(self):
+        """Test formatting an LNK event for timeline."""
+        event_type = "lnk_file"
+        payload = {
+            "target_path": "C:\\Windows\\System32\\cmd.exe",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "LNK File" in title
+
+    def test_format_generic_event(self):
+        """Test formatting a generic/unknown event for timeline."""
+        event_type = "unknown_type"
+        payload = {
+            "field1": "value1",
+            "field2": "value2",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        assert "unknown_type" in title
+
+    def test_format_event_file_metadata(self):
+        """Test formatting a file metadata event for timeline."""
+        event_type = "file_metadata"
+        payload = {
+            "filename": "malware.exe",
+            "file_size": 102400,
+            "hashes.sha256": "abc123...",
+        }
+        
+        title, description = _format_event_for_timeline(event_type, payload)
+        
+        # Should use generic formatting
+        assert "file_metadata" in title
+        assert isinstance(description, str)
+
+
+@pytest.mark.unit
+class TestBatchCreateEmbeddings:
+    """Test _batch_create_embeddings function."""
+
+    @pytest.mark.asyncio
+    async def test_batch_create_embeddings_empty_list(self):
+        """Test batch embedding with empty lists."""
+        db_mock = AsyncMock()
+        mock_llm_config = MagicMock()
+        
+        interesting_events = []
+        
+        # Should handle empty lists gracefully
+        count = await _batch_create_embeddings(
+            db_mock, interesting_events, 1, mock_llm_config
+        )
+        
+        # Should return 0 for empty list
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_batch_create_embeddings_no_provider(self):
+        """Test batch embedding when no provider is configured."""
+        db_mock = AsyncMock()
+        mock_llm_config = MagicMock()
+        mock_llm_config.embedding_provider = None  # No provider
+        
+        interesting_events = [(1, "evtx_sysmon_1", {"event_data.Image": "cmd.exe"})]
+        
+        # Should return 0 when no provider
+        count = await _batch_create_embeddings(
+            db_mock, interesting_events, 1, mock_llm_config
+        )
+        
+        assert count == 0

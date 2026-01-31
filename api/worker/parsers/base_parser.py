@@ -103,7 +103,8 @@ class BaseParser(ABC):
             logger.info(f"{parser_name} inserted {events_inserted} events from {file_path}")
             return events_inserted
         except Exception as e:
-            logger.error(f"{parser_name} failed to parse {file_path}: {e}", exc_info=True)
+            logger.error(f"{parser_name} failed to parse {file_path}: {e}")
+            logger.debug(f"{parser_name} failed to parse {file_path}: {e}", exc_info=True)
             raise RuntimeError(f"{parser_name} parsing failed: {e}")
     
     async def _insert_event_batch(

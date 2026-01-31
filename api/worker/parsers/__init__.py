@@ -13,6 +13,7 @@ from .mft_parser import MftParser
 from .jumplist_parser import JumplistParser
 from .browser_history_parser import BrowserHistoryParser
 from .windows_artifacts_parser import WindowsArtifactsParser
+from .file_metadata_parser import FileMetadataParser
 
 __all__ = [
     "parse_artifact",
@@ -27,4 +28,5 @@ __all__ = [
     "JumplistParser",
     "BrowserHistoryParser",
     "WindowsArtifactsParser",
+    "FileMetadataParser",
 ]
