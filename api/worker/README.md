@@ -47,7 +47,7 @@ The Worker service is responsible for:
 ✅ **Tool Descriptions** - Every tool execution shows user-friendly description in UI  
 ✅ **Investigation Context** - Agents load timeline, chat history, and available data  
 ✅ **Seamless Continuation** - Resume incomplete investigations in same chat bubble  
-✅ **Extensible** - Easy to add new parsers and tools  
+✅ **Extensible** - Easy to add parsers and tools  
 
 ---
 
@@ -300,7 +300,7 @@ async def parse_artifact(
 ```
 
 **Supported Parsers** (9 total):
-1. **ArchiveParser** - Archives (`*.zip`, `*.7z`, `*.rar`) - **NEW: Recursive extraction for KAPE bundles**
+1. **ArchiveParser** - Archives (`*.zip`, `*.7z`, `*.rar`) - Recursive extraction for forensic bundles
 2. **EvtxParser** - Windows Event Logs (`.evtx`)
 3. **RegistryParser** - Registry hives (`SYSTEM`, `SOFTWARE`, `SAM`, `SECURITY`, `NTUSER.DAT`)
 4. **PrefetchParser** - Prefetch files (`*.pf`)
@@ -311,10 +311,10 @@ async def parse_artifact(
 9. **WindowsArtifactsParser** - Multiple artifacts (`.pca`, `.job`, `.xml`, `.db`, `.dat`, `.edb`)
 
 **Archive Extraction Features:**
-- **Automatic KAPE processing**: Upload entire KAPE output as single ZIP
+- **Automatic processing**: Upload entire forensic collections as single ZIP
 - **Recursive extraction**: Handles nested archives up to 5 levels deep
 - **Safety limits**: 10 GB max size, 50,000 file limit
-- **Auto-submission**: Each extracted file becomes a new artifact with queued parsing job
+- **Auto-submission**: Each extracted file becomes an artifact with queued parsing job
 - **Preserves structure**: Directory paths encoded in filenames (e.g., `Windows__System32__Security.evtx`)
 
 See [Parser Documentation](parsers/README.md) for detailed specifications.
@@ -756,7 +756,7 @@ python -m worker.agents.assistant_agent \
 # Note: CLI harness is deprecated, use direct agent execution
 ```
 
-### Adding a New Parser
+### Adding Parsers
 
 1. Create parser file in `worker/parsers/`:
    ```python
@@ -794,7 +794,7 @@ python -m worker.agents.assistant_agent \
            return await parse_my_artifact(db, investigation_id, artifact)
    ```
 
-### Adding a New Agent
+### Adding Agents
 
 1. Create agent class in `worker/agents/`:
    ```python

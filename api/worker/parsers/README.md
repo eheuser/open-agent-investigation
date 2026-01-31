@@ -16,7 +16,7 @@ The parser system uses a dispatcher pattern (`dispatcher.py`) that routes artifa
 
 | Parser | Artifact Type | File Extensions | Event Type | Description |
 |--------|---------------|-----------------|------------|-------------|
-| **archive_parser.py** | Archives | `.zip`, `.7z`, `.rar` | N/A (extracts files) | Recursive archive extraction for KAPE/forensic bundles |
+| **archive_parser.py** | Archives | `.zip`, `.7z`, `.rar` | N/A (extracts files) | Recursive archive extraction for forensic collection bundles |
 
 **Important:** The archive parser does NOT generate events directly. Instead, it:
 1. Extracts all files from the archive (recursively)
@@ -29,7 +29,7 @@ The parser system uses a dispatcher pattern (`dispatcher.py`) that routes artifa
 - Maximum total extracted size: 10 GB
 - Maximum file count: 50,000 files
 
-### Core Parsers
+### Artifact Parsers
 
 | Parser | Artifact Type | File Extensions | Event Type | Description |
 |--------|---------------|-----------------|------------|-------------|
@@ -38,11 +38,6 @@ The parser system uses a dispatcher pattern (`dispatcher.py`) that routes artifa
 | **prefetch_parser.py** | Prefetch Files | `.pf` | `prefetch_execution` | Program execution tracking |
 | **lnk_parser.py** | Shortcuts | `.lnk` | `lnk_file` | Shortcut file metadata |
 | **mft_parser.py** | Master File Table | `$MFT`, `.mft` | `mft_entry` | NTFS file system records |
-
-### New Parsers (Expanded Support)
-
-| Parser | Artifact Type | File Extensions | Event Type | Description |
-|--------|---------------|-----------------|------------|-------------|
 | **jumplist_parser.py** | Jump Lists | `.automaticDestinations-ms`, `.customDestinations-ms` | `jumplist_entry` | Recently accessed files |
 | **browser_history_parser.py** | Browser History | `History` (Chrome/Edge), `places.sqlite` (Firefox), `WebCacheV*.dat` (Legacy Edge) | `browser_history` | Web browsing activity |
 | **windows_artifacts_parser.py** | Multiple Windows Artifacts | `.pca`, `.job`, `.xml`, `.db`, `.dat`, `.edb` | Various | See details below |
@@ -57,7 +52,7 @@ The parser system uses a dispatcher pattern (`dispatcher.py`) that routes artifa
 
 ### Archive Parser (`archive_parser.py`)
 
-**Purpose:** Automatically extract and process forensic collection bundles (e.g., KAPE output).
+**Purpose:** Automatically extract and process forensic collection bundles.
 
 **Supported Formats:**
 - **ZIP** - Standard ZIP archives (`.zip`)
@@ -90,7 +85,7 @@ MAX_EXTRACTED_FILES = 50000     # Prevent excessive file creation
 
 **Example Use Case:**
 ```bash
-# User uploads KAPE_Output.zip containing:
+# User uploads forensic_collection.zip containing:
 # ├── C/
 # │   ├── Windows/
 # │   │   ├── System32/
@@ -117,11 +112,11 @@ MAX_EXTRACTED_FILES = 50000     # Prevent excessive file creation
 # - User sees all events in unified events table
 ```
 
-**Forensic Value:**
-- Automatic processing of KAPE collections
-- Preserves directory structure in artifact filenames
-- Enables bulk upload of entire forensic images
-- Supports nested archives (e.g., KAPE output inside evidence.zip)
+**Why This Matters:**
+- Upload entire forensic collections as a single ZIP file
+- No need to extract archives manually before upload
+- Preserves directory structure for context
+- Handles complex evidence packages (e.g., nested archive bundles)
 
 **Limitations:**
 - No password-protected archive support
@@ -155,11 +150,11 @@ MAX_EXTRACTED_FILES = 50000     # Prevent excessive file creation
 }
 ```
 
-**Forensic Value:**
-- Track recently accessed files per application
-- Identify file access patterns
-- Detect evidence of file interaction
-- Reconstruct user activity timeline
+**Why This Matters:**
+- Shows which files a user recently opened in each application
+- Helps reconstruct user activity timelines
+- Can reveal deleted files that were recently accessed
+- Useful for identifying exfiltrated documents
 
 ---
 
@@ -208,11 +203,11 @@ MAX_EXTRACTED_FILES = 50000     # Prevent excessive file creation
 - **Library:** `pyesedb`
 - **Timestamp Format:** FILETIME (100-nanosecond intervals since 1601-01-01)
 
-**Forensic Value:**
-- Reconstruct web browsing timeline
-- Identify accessed URLs and search terms
-- Detect suspicious website visits
-- Correlate with other artifacts
+**Why This Matters:**
+- Shows what websites the user visited and when
+- Reveals search terms and downloaded files
+- Can identify phishing sites or malicious downloads
+- Correlates with network logs and malware execution
 
 **Limitations:**
 - Limited to 10,000 most recent entries per database (configurable)
@@ -226,7 +221,7 @@ This multi-purpose parser handles various Windows forensic artifacts:
 #### 1. CryptNetUrlCache
 **Files:** Certificate revocation list cache files  
 **Event Type:** `cryptnet_cache`  
-**Forensic Value:** PKI activity, certificate validation, CRL download tracking
+**Why This Matters:** Tracks certificate validation activity (useful for SSL/TLS analysis and identifying certificate-based attacks)
 
 **Payload Fields:**
 ```json
@@ -247,7 +242,7 @@ This multi-purpose parser handles various Windows forensic artifacts:
 #### 2. Program Compatibility Assistant (PCA)
 **Files:** `.pca` files  
 **Event Type:** `pca_execution`  
-**Forensic Value:** Program execution tracking, compatibility issues
+**Why This Matters:** Shows which programs were executed and when (useful for malware execution timelines)
 
 **Payload Fields:**
 ```json
@@ -262,7 +257,7 @@ This multi-purpose parser handles various Windows forensic artifacts:
 #### 3. Scheduled Tasks
 **Files:** `.job` (legacy), `.xml` (modern)  
 **Event Type:** `scheduled_task`  
-**Forensic Value:** Persistence mechanisms, automated execution
+**Why This Matters:** Identifies persistence mechanisms and automated malware execution
 
 **Payload Fields (XML):**
 ```json
@@ -289,7 +284,7 @@ This multi-purpose parser handles various Windows forensic artifacts:
 #### 4. SRUM Database
 **Files:** `srudb.dat`  
 **Event Type:** `srum_data`  
-**Forensic Value:** Application resource usage, network activity, energy consumption
+**Why This Matters:** Shows which applications used network bandwidth (useful for identifying data exfiltration)
 
 **Library:** `pyesedb`
 
@@ -319,7 +314,7 @@ This multi-purpose parser handles various Windows forensic artifacts:
 #### 5. Windows Search Database
 **Files:** `Windows.edb`  
 **Event Type:** `windows_search`  
-**Forensic Value:** Indexed file and email metadata, user search history
+**Why This Matters:** Reveals files the user searched for or accessed (even if deleted)
 
 **Library:** `pyesedb`
 
@@ -352,7 +347,7 @@ This multi-purpose parser handles various Windows forensic artifacts:
 #### 6. Bitmap Cache
 **Files:** `thumbcache_*.db`, `iconcache_*.db`  
 **Event Type:** `bitmap_cache`  
-**Forensic Value:** File access evidence via thumbnails
+**Why This Matters:** Proves a user viewed specific images or documents (thumbnails persist even after file deletion)
 
 **Payload Fields:**
 ```json
@@ -367,7 +362,7 @@ This multi-purpose parser handles various Windows forensic artifacts:
 #### 7. Windows Notification Database
 **Files:** `wpndatabase.db` (SQLite)  
 **Event Type:** `notification`  
-**Forensic Value:** System and application notifications
+**Why This Matters:** Can show evidence of ransomware or malware notifications
 
 **Payload Fields:**
 ```json
@@ -619,7 +614,7 @@ async def parse_<artifact_type>(
 
 ---
 
-## Adding New Parsers
+## Adding Parsers
 
 ### Step 1: Create Parser File
 

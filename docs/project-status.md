@@ -109,19 +109,19 @@ See [ROADMAP.md](../ROADMAP.md) for detailed plans.
 
 | OS | Python | Node | Docker | Status |
 |----|--------|------|--------|--------|
-| Ubuntu 22.04 | 3.11 | 18.x | 24.0 | ✅ |
-| macOS 13+ | 3.11 | 18.x | 24.0 | ✅ |
-| Windows 11 (WSL2) | 3.11 | 18.x | 24.0 | ✅ |
+| Ubuntu 22.04 | 3.11 | 18.x | 24.0 | Supported |
+| macOS 13+ | 3.11 | 18.x | 24.0 | Supported |
+| Windows 11 (WSL2) | 3.11 | 18.x | 24.0 | Supported |
 
 ### LLM Providers
 
 | Provider | Model | Status |
 |----------|-------|--------|
-| OpenAI | GPT-4 | ✅ Fully tested |
-| OpenAI | GPT-3.5 | ✅ Tested |
-| Ollama | Llama 3 | ⚠️ Limited testing |
-| Ollama | Mistral | ⚠️ Limited testing |
-| Azure OpenAI | GPT-4 | ⚠️ Limited testing |
+| OpenAI | GPT-4 | Fully tested |
+| OpenAI | GPT-3.5 | Tested |
+| Ollama | Llama 3 | Limited testing |
+| Ollama | Mistral | Limited testing |
+| Azure OpenAI | GPT-4 | Limited testing |
 
 ## Performance Metrics
 
@@ -149,9 +149,9 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for details.
 
 ## Support
 
-- 📚 [Documentation](index.md)
-- 💬 [GitHub Discussions](https://github.com/eheuser/open-agent-investigation/discussions)
-- 🐛 [Issue Tracker](https://github.com/eheuser/open-agent-investigation/issues)
+- [Documentation](index.md)
+- [GitHub Discussions](https://github.com/eheuser/open-agent-investigation/discussions)
+- [Issue Tracker](https://github.com/eheuser/open-agent-investigation/issues)
 
 ---
 

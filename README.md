@@ -6,9 +6,9 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-A micro-forensics workbench for analyzing artifacts. It combines forensic parsing with LLM-driven investigation workflows to reconstruct evidence timelines, identify threats, and document findings.
+A micro-forensics workbench. Upload forensic artifacts, ask questions in natural language, and let agents help you analyze Windows artifacts, build timelines, and generate reports.
 
-**Quick Start**
+## Quick Start
 
 ```bash
 git clone https://github.com/eheuser/open-agent-investigation.git
@@ -16,365 +16,409 @@ cd open-agent-investigation
 docker compose up -d
 ```
 
-> **Note**: This is a work in progress. See the [Roadmap](ROADMAP.md) for planned features. Contributions welcome!
+Access the web interface at `https://localhost` (default credentials: `admin` / `admin123`)
 
-## Features
+**Note:** This project is under active development. See the [Roadmap](ROADMAP.md) for planned features.
 
----
+## Key Features
 
-**Chat with RAG and agentic functionality**
+### AI-Assisted Investigation
+- Natural language queries with intelligent routing to specialized handlers
+- Autonomous agent investigations using 16+ forensic tools
+- Semantic search over embedded event data (RAG with hybrid BM25 + vector similarity)
+- 20+ built-in investigation playbooks covering MITRE ATT&CK tactics
 
-Leverage an inline agent to search through the event data or a similarity with re-ranker to find forensically significant events.
-![image](docs/img/chat.png)
+### Artifact Processing
+- Automatic extraction of forensic collection archives (ZIP, 7z, RAR)
+- Support for 8+ Windows artifact categories (EVTX, Registry, MFT, Prefetch, Browser History, etc.)
+- Comprehensive file metadata extraction with hash calculation and entropy analysis
+- Automatic event deduplication and normalization
 
----
+### Investigation Workflow
+- Build chronological evidence timelines with automatic event linking
+- Create custom investigation playbooks or clone built-in templates
+- Generate investigation reports in PDF and Markdown formats
+- Real-time agent progress streaming via WebSocket
 
-**Analyze raw events**
+### Query and Analysis
+- Advanced JSONB field queries for complex data filtering
+- Event aggregation for pattern discovery
+- SQL execution for custom analysis
+- Diagram generation (GraphViz/Mermaid) for relationship visualization
 
-Develop compound queries quickly and easily for manual searches.
-![image](docs/img/events.png)
+## What Makes This Different
 
----
+**Traditional DFIR tools** require you to know exactly what you're looking for and where to find it. You write queries, parse logs, and manually correlate events across multiple artifacts.
 
-**Agents use Playbooks**
+**Open Agent Investigation** lets you ask questions in plain English. The AI agent understands forensic concepts, selects appropriate tools, queries the right artifacts, and explains what it finds. It's like having an experienced analyst helping you investigate.
 
-Based on your query the agent will load a Playbook, similar to SKILLS.md.
-![image](docs/img/playbooks.png)
+**Example workflow:**
+1. Upload a forensic collection archive (or individual artifacts)
+2. Ask: "Find evidence of lateral movement"
+3. Agent automatically:
+   - Selects the lateral movement playbook
+   - Queries Event ID 4624 (network logons)
+   - Analyzes source IPs and target accounts
+   - Identifies suspicious patterns
+   - Adds significant events to your timeline
+   - Explains findings in natural language
 
----
+You can continue the conversation, ask follow-up questions, or switch to manual querying when needed.
 
-**Build timelines**
+## Who Should Use This
 
-Track investigations by adding events to the investigation timeline.
-![image](docs/img/timeline.png)
+**DFIR Practitioners** who want to:
+- Speed up initial triage and pattern identification
+- Leverage AI to suggest investigation paths
+- Automate repetitive analysis tasks
+- Learn from built-in playbooks covering common attack techniques
 
----
+**Incident Responders** who need to:
+- Quickly analyze forensic collections from compromised systems
+- Correlate events across multiple artifact types
+- Generate timeline reports for stakeholders
+- Document findings with cited evidence
 
-**Generate reports**
+**SOC Analysts** investigating:
+- EDR alerts requiring host-based artifact analysis
+- Suspicious authentication patterns
+- Lateral movement indicators
+- Persistence mechanisms
 
-Produce PDF documents from the collected evidence.
-![image](docs/img/report.png)
+**Security Researchers** exploring:
+- Forensic automation techniques
+- LLM applications in digital forensics
+- RAG-based semantic search over forensic data
 
----
+## Project Goals
 
-**Monitor**
+This project explores how AI can augment forensic analysis by:
+- Reducing time spent on repetitive queries and pattern matching
+- Suggesting investigation paths based on known attack techniques
+- Automating timeline construction and evidence correlation
+- Making forensic analysis more accessible to junior analysts
 
-Monitor the application with streamed logs.
-![image](docs/img/logging.png)
+## Roadmap
 
----
+**Near-term:**
+- Additional Windows artifact parsers (Amcache, ShimCache, BITS)
+- Memory forensics integration (Volatility)
+- Enhanced playbook system with user contributions
+- Improved agent reasoning and tool selection
 
-## What It Does
-
-- **Automatically extracts and processes archive files** (ZIP, 7z, RAR) - perfect for KAPE output bundles
-- Parses 8 categories of Windows forensic artifacts (EVTX logs, registry hives, MFT, prefetch, LNK files, Jump Lists, browser history, and Windows artifacts including scheduled tasks, SRUM, Windows Search, notifications, and more)
-- **Extracts comprehensive file metadata** (hashes, entropy, strings, PE headers) for unknown file types via catch-all parser
-- Routes natural language queries to specialized handlers using LLM-based intent classification
-- Executes autonomous agent investigations with 16+ forensic tools
-- **Provides 20+ built-in investigation playbooks with custom playbook creation**
-- Builds chronological evidence timelines with automatic event deduplication
-- Generates investigation reports with PDF and Markdown export
-- Provides semantic search over embedded event data using hybrid BM25 and vector similarity
-
-## Who It Is For
-
-- Digital forensic investigators analyzing Windows systems
-- Incident response teams triaging security events
-- Security operations centers (SOCs) investigating alerts
-- Researchers exploring forensic automation techniques
-
-## Why Was It Created?
-- Practice interleaving agent/RAG logic
-- Experience building a RAG + ReRanker
-
-## Futures
-- Expand artifact parsers
-- Expand OS compatibility
-- Tune Agent + RAG components
+**Long-term:**
+- Linux and macOS artifact support
+- Network traffic analysis (PCAP parsing)
+- Multi-investigation correlation
+- Community playbook repository
 
 
-## High-Level Capabilities
+## How It Works
 
-### Query Routing with Visual Feedback
+### Intelligent Query Routing
 
-Four specialized handlers optimize for different query types, with **real-time UI feedback** showing which handler was selected:
+The system automatically routes your questions to the most appropriate handler:
 
-- **Agent Handler** 🤖: Complex multi-step investigations with tool execution (16+ tools)
-  - Shows selected playbook (e.g., "Lateral Movement Detection")
-  - Displays effort level (Quick/Standard/Thorough) and max turns
-  - Real-time tool execution progress
+- **Agent Handler**: Complex multi-step investigations with autonomous tool execution
+  - Example: "Find evidence of credential dumping"
+  - Uses 16+ forensic tools to query events, aggregate patterns, and build timelines
+  - Follows investigation playbooks based on MITRE ATT&CK tactics
   
-- **Timeline Handler** ⏱️: Timeline CRUD operations with 5 specialized tools
-  - Shows operation type (query/add/update/delete)
-  - Displays number of entries affected
+- **Augmented Chat**: Semantic search using RAG (Retrieval-Augmented Generation)
+  - Example: "Is there evidence of lateral movement?"
+  - Expands your query into forensic search terms
+  - Retrieves relevant events using hybrid keyword + vector similarity
+  - Synthesizes findings with source citations
   
-- **General Chat** 💬: Fast metadata queries without tool overhead
-  - Shows query type (metadata/summary/help)
-  - Lists context sources used
-  
-- **Augmented Chat** ✨: Semantic search using RAG with hybrid BM25 + vector retrieval
-  - Shows number of sources retrieved
-  - Displays query expansion terms count
-  - Shows embedding provider used
+- **Timeline Handler**: Direct timeline manipulation
+  - Example: "Show timeline entries from March 20-24"
+  - Query, add, update, or delete timeline entries
+  - Get timeline statistics
 
-The system automatically classifies user intent or accepts manual mode selection. **Every response includes a routing badge** showing which handler processed the query and relevant statistics.
+- **General Chat**: Quick metadata and context queries
+  - Example: "How many events are in this investigation?"
+  - Fast responses without tool overhead
+  - Answers from investigation metadata only
 
-### Artifact Support
+The system uses LLM-based intent classification to route queries automatically, or you can manually select the mode.
 
-#### Archive Extraction (NEW)
-| Type | Format | Parser | Behavior |
-|------|--------|--------|----------|
-| Archives | .zip, .7z, .rar | archive | Recursive extraction up to 5 levels, auto-submits extracted files for parsing |
+### Supported Artifacts
 
-**Archive Support Features:**
-- **Automatic KAPE bundle processing** - Upload entire KAPE output as single ZIP
-- **Recursive extraction** - Handles nested archives (e.g., evidence.zip containing KAPE_Output.zip)
-- **Safety limits** - 10 GB max size, 50,000 file limit, 5-level depth protection
-- **Preserves structure** - Directory paths encoded in filenames (e.g., `Windows__System32__Security.evtx`)
+#### Archive Processing
+Upload entire forensic collections as a single ZIP file. The system automatically extracts all files recursively and queues them for parsing.
 
-#### Core Artifacts
-| Type | Format | Parser | Output Event Types |
-|------|--------|--------|-------------------|
-| Event Logs | .evtx | evtx | evtx_security_*, evtx_sysmon_* |
-| Registry | SYSTEM, SOFTWARE, SAM, SECURITY, NTUSER.DAT | regipy | registry_value, registry_* |
-| File System | $MFT | mft | mft_entry |
-| Prefetch | *.pf | prefetch2es | prefetch_execution |
-| Shortcuts | *.lnk | LnkParse3 | lnk_file |
+**Supported formats:** ZIP, 7z, RAR  
+**Safety limits:** 10 GB max size, 50,000 files, 5-level nesting depth  
+**Structure preservation:** Directory paths encoded in filenames (e.g., `Windows__System32__Security.evtx`)
 
-#### Extended Artifacts
-| Type | Format | Parser | Output Event Types |
-|------|--------|--------|-------------------|
-| Jump Lists | *.automaticDestinations-ms, *.customDestinations-ms | jumplist | jumplist_entry |
-| Browser History | History (Chrome/Edge), places.sqlite (Firefox), WebCacheV*.dat (Legacy Edge) | browser_history | browser_history |
-| Scheduled Tasks | *.job, *.xml | windows_artifacts | scheduled_task |
-| PCA Files | *.pca | windows_artifacts | pca_execution |
-| SRUM Database | srudb.dat | windows_artifacts | srum_data |
-| Windows Search | Windows.edb | windows_artifacts | windows_search |
-| Bitmap Cache | thumbcache_*.db, iconcache_*.db | windows_artifacts | bitmap_cache |
-| Notifications | wpndatabase.db | windows_artifacts | notification |
-| CryptNetUrlCache | CRL cache files | windows_artifacts | cryptnet_cache |
+#### Windows Artifacts
 
-#### Catch-All Parser
-| Type | Format | Parser | Output Event Types |
-|------|--------|--------|-------------------|
-| File Metadata | Any file (fallback) | file_metadata | file_metadata |
+**Event Logs** (.evtx)  
+Security, System, Application, Sysmon logs  
+Parsed using: evtx (Rust-based parser)
 
-**File Metadata Parser Features:**
-- **Hash Calculation** - MD5, SHA1, SHA256 for all files
-- **Entropy Analysis** - Detect encrypted/compressed files (0.0-8.0 scale)
-- **String Extraction** - ASCII and Unicode strings (up to 32 KB)
-- **File Type Detection** - Magic byte identification (PE, ZIP, PDF, etc.)
-- **PE Header Analysis** - Extract compile timestamp, architecture, DLL/EXE flag
-- **Automatic Fallback** - Processes any file not matched by specialized parsers
-- **Error Recovery** - Automatically invoked when specialized parsers fail (e.g., corrupted EVTX files)
+**Registry** (SYSTEM, SOFTWARE, SAM, SECURITY, NTUSER.DAT)  
+Registry hives with plugin-based value extraction  
+Parsed using: regipy
 
-See [Parser Documentation](api/worker/parsers/README.md) for detailed artifact specifications.
+**File System** ($MFT)  
+NTFS Master File Table with full file metadata  
+Parsed using: mft
+
+**Prefetch** (*.pf)  
+Program execution tracking  
+Parsed using: prefetch2es
+
+**Shortcuts** (*.lnk)  
+LNK file metadata and targets  
+Parsed using: LnkParse3
+
+**Jump Lists** (*.automaticDestinations-ms, *.customDestinations-ms)  
+Recently accessed files per application  
+Parsed using: olefile
+
+**Browser History** (Chrome, Firefox, Edge)  
+Web browsing activity and downloads  
+Parsed using: sqlite3, pyesedb
+
+**Scheduled Tasks** (*.job, *.xml)  
+Scheduled task definitions and metadata  
+Parsed using: xml.etree.ElementTree
+
+**SRUM** (srudb.dat)  
+System Resource Usage Monitor database  
+Parsed using: pyesedb
+
+**Windows Search** (Windows.edb)  
+Indexed file and email metadata  
+Parsed using: pyesedb
+
+**Other Artifacts**  
+PCA files, bitmap cache, notifications, CryptNetUrlCache
+
+**Unknown Files**  
+Automatic fallback to file metadata extraction (hashes, entropy, strings, PE headers)
+
+See [Parser Documentation](api/worker/parsers/README.md) for complete specifications.
 
 ### Evidence Timeline
 
-Event-first architecture prevents data duplication:
+Build chronological timelines of significant events during your investigation:
 
-- Timeline entries reference events by ID
-- Complete event payloads auto-fetched on demand
-- Unique constraint prevents duplicate entries
-- Immutable source events preserve forensic integrity
+- Timeline entries reference source events by ID (no data duplication)
+- Complete event data auto-fetched when viewing timeline
+- Automatic deduplication prevents duplicate entries
+- Add findings, observations, and notes to provide context
+- Export timelines to reports for stakeholder review
 
 ### Agent Execution
 
-Bounded turn execution with configurable depth:
+Agents use a bounded turn-based execution model:
 
-- Quick: 3 turns maximum
-- Standard: 6 turns maximum
-- Thorough: 9 turns maximum
-- Dynamic extension: Up to 30 total turns with justification
+**Effort Levels:**
+- Quick: 3 turns (fast triage)
+- Standard: 6 turns (balanced investigation)
+- Thorough: 9 turns (deep analysis)
+- Dynamic: Agent can request up to 30 turns with justification
 
-Each turn limited to 5 tool executions. Real-time progress streamed via WebSocket.
+**Execution:**
+- Each turn allows up to 5 tool executions
+- Real-time progress streamed to UI via WebSocket
+- Stop execution at any time
+- Resume incomplete investigations seamlessly
 
 ### Investigation Playbooks
 
-**Built-in Playbooks**: 20 immutable YAML playbooks provide strategic guidance for common attack scenarios:
+Playbooks guide the AI agent through common investigation scenarios based on MITRE ATT&CK tactics:
 
-- **MITRE ATT&CK Tactics**: Complete coverage of all 14 attack lifecycle phases
-- **Attack Techniques**: 6 focused playbooks for specific methods (Living off the Land, Fileless Attacks, Kerberoasting, etc.)
-- **LLM-Driven Selection**: System automatically selects most relevant playbook based on investigation question
+**Built-in Playbooks (20):**
+- 14 MITRE ATT&CK tactics (Initial Access, Execution, Persistence, etc.)
+- 6 attack techniques (Lateral Movement, Kerberoasting, Living off the Land, etc.)
+- Automatically selected based on your question
+- Immutable templates ensuring consistent analysis
 
-**Custom Playbooks**: Create, edit, and manage your own investigation playbooks:
+**Custom Playbooks:**
+- Clone built-in playbooks and customize for your environment
+- Create organization-specific investigation workflows
+- Enable/disable per investigation
+- Markdown format with syntax highlighting
 
-- **Full CRUD Operations**: Create, view, edit, delete, and clone playbooks via UI
-- **Clone Base Playbooks**: Start from built-in playbooks and customize for your needs
-- **Per-Investigation Control**: Enable/disable playbooks for specific investigations
-- **Database-Backed**: Custom playbooks persist across sessions and users
-- **Markdown Support**: Rich formatting with code blocks and syntax highlighting
+**Example:** Ask "Find lateral movement" → Agent loads the Lateral Movement playbook → Queries Event ID 4624 (network logons), 4648 (explicit credentials), 5140 (network shares) → Analyzes patterns → Registers findings to timeline
 
-See [Investigation Playbooks](docs/playbooks.md) for complete list and usage guide.
+See [Investigation Playbooks](docs/playbooks.md) for the complete list.
 
-## Minimal Quickstart
+## Installation
 
 ### Prerequisites
 
-- Docker 20.10+
-- Docker Compose 2.0+
+- Docker 20.10+ and Docker Compose 2.0+
 - LLM API access (OpenAI, Ollama, or compatible endpoint)
+- 4 GB RAM minimum (8 GB recommended)
+- 20 GB disk space for artifacts and database
 
-### Installation
+### Setup
 
 ```bash
 git clone https://github.com/eheuser/open-agent-investigation.git
 cd open-agent-investigation
 docker compose up -d
 ```
+
+### First Steps
+
+1. **Access the web interface:** `https://localhost` (accept self-signed certificate)
+2. **Login:** Default credentials are `admin` / `admin123` (change immediately in Settings)
+3. **Configure LLM:**
+   - Navigate to Settings > LLM Configuration
+   - Add your OpenAI API key, or configure Ollama/local LLM endpoint
+   - Select model (e.g., gpt-4, llama3)
+   - Save configuration
+4. **Create an investigation:**
+   - Click "Create Investigation" on the dashboard
+   - Enter a title (e.g., "Ransomware Analysis - March 2024")
+5. **Upload artifacts:**
+   - Upload individual files or entire forensic collection as ZIP
+   - System automatically parses and extracts events
+6. **Start investigating:**
+   - Ask questions in the chat interface
+   - Review events in the Events tab
+   - Build timeline in the Timeline tab
+   - Generate reports when complete
 
 ### Testing
 
 ```bash
-docker compose -f docker-compose.test.yml build test-runner # if needed
 docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
 ```
 
-### Access
-
-- UI: https://localhost (port 443)
-- API: https://localhost/api/docs (proxied through nginx)
-- Default credentials: admin / admin123 (change immediately)
-
-> **Note**: The API runs on port 8000 inside the Docker network but is only accessible via the nginx reverse proxy at `https://localhost/api/`
-
 
 ## Documentation
-- [Full Documentation](docs/index.md) - Documentation Index
-- [Getting Started](docs/getting-started.md) - Installation and configuration
-- [Architecture](docs/architecture.md) - System design and data flow
-- [User Guide](docs/user-guide.md) - Common workflows
-- [Investigation Playbooks](docs/playbooks.md) - Built-in and custom playbook management
+
+- [Getting Started Guide](docs/getting-started.md) - Detailed installation and configuration
+- [User Guide](docs/user-guide.md) - Common investigation workflows
+- [Investigation Playbooks](docs/playbooks.md) - Playbook reference and customization
+- [Architecture Overview](docs/architecture.md) - System design and components
+- [API Documentation](api/README.md) - REST API and WebSocket reference
+- [Parser Documentation](api/worker/parsers/README.md) - Supported artifacts and formats
 
 ## Architecture
 
 ```
 User Browser <--HTTPS/WSS--> nginx (443) <--HTTP--> API (8000) <--SQL--> PostgreSQL (5432)
-                                |
-                            Static UI Files                      |
-                                                             PGVector
-                                                                 |
-                                                            LLM Backend
-                                                                 |
-                                                            Worker (AsyncIO)
+                                |                        |                      |
+                            Static UI              Worker (AsyncIO)         PGVector
+                                                        |                      |
+                                                   LLM Backend            Embeddings
 ```
 
-**Network Architecture**:
-- **User Access**: All traffic goes through nginx on port 443 (HTTPS)
-- **API Proxy**: nginx forwards `/api/*` requests to `api:8000` (internal Docker network)
-- **WebSocket Proxy**: nginx upgrades connections for `/api/v1/chat/ws/*`
-- **Static Files**: nginx serves React UI directly
-- **No Direct API Access**: Port 8000 is NOT exposed to host (only accessible via nginx proxy)
+**Components:**
 
-Components:
+- **UI**: React 18 frontend with TypeScript and TailwindCSS
+- **nginx**: Reverse proxy and static file server (HTTPS on port 443)
+- **API**: FastAPI backend with async SQLAlchemy ORM
+- **Worker**: Multiprocessing job processor for parsing and agent execution
+- **Database**: PostgreSQL 15 with PGVector extension for vector similarity search
+- **LLM**: OpenAI, Ollama, or compatible endpoint for AI capabilities
 
-- **UI**: React 18 frontend with TypeScript and TailwindCSS (served by nginx)
-- **nginx**: Reverse proxy for API and static file server
-- **API**: FastAPI backend with SQLAlchemy 2.0 async ORM (port 8000 internal)
-- **Database**: PostgreSQL 15 with PGVector extension (port 5432)
-- **Worker**: Async job processor with multiprocessing pool
+**Technology Stack:**
+- Python 3.11+, FastAPI 0.110, React 18.2, PostgreSQL 15, Node.js 18+
 
-Technology stack:
+## Security Considerations
 
-- Python 3.11+
-- FastAPI 0.110
-- React 18.2
-- PostgreSQL 15
-- Node.js 18+
-
-## License
-
-GNU General Public License v3.0. See [LICENSE](LICENSE) for full text.
-
-## Security
-
-### Authentication
-
+**Authentication:**
 - JWT token-based authentication (24-hour expiration)
-- Argon2id password hashing (m=65536, t=3, p=4)
+- Argon2id password hashing with memory-hard parameters
 - Role-based access control (regular users, administrators)
 
-### Data Protection
-
-- API keys encrypted at rest using pg_crypto
-- SSL/TLS for production deployments
+**Data Protection:**
+- API keys encrypted at rest using PostgreSQL pg_crypto
+- SSL/TLS for all network communication
 - Prepared statements prevent SQL injection
-- No plaintext password storage or transmission
+- No plaintext password storage
 
+**Deployment:**
+- Change default admin password immediately
+- Use strong passwords (12+ characters, mixed case, numbers, symbols)
+- Configure firewall rules to restrict access
+- Regularly update dependencies for security patches
+- Review audit logs for suspicious activity
 
-### Operating Systems
+## System Requirements
 
+**Operating Systems:**
 - Linux (Ubuntu 20.04+, Debian 11+)
 - macOS 12+
 - Windows 10/11 with WSL2
 
-### LLM Providers
+**Browsers:**
+- Chrome 100+, Firefox 100+, Safari 15+, Edge 100+
 
-- OpenAI (GPT-5.2, GPT-4o, GPT_4.1)
-- Ollama/LM Studio (Llama 3, Mistral, Mixtral)
+**LLM Providers:**
+- OpenAI (GPT-4, GPT-3.5-turbo)
+- Ollama (Llama 3, Mistral, Mixtral)
 - Azure OpenAI Service
-- LM Studio (OpenAI-compatible endpoint)
-- Custom OpenAI-compatible endpoints
+- Any OpenAI-compatible endpoint (LM Studio, etc.)
 
-### Browsers
+## Current Limitations
 
-- Chrome 100+
-- Firefox 100+
-- Safari 15+
-- Edge 100+
+- **Windows artifacts only** - Linux and macOS support planned
+- **No memory forensics** - Volatility integration on roadmap
+- **No network analysis** - PCAP parsing planned
+- **Single investigation per session** - Multi-investigation correlation planned
+- **PostgreSQL only** - No alternative database backends
 
-## Known Limitations
+## Frequently Asked Questions
 
-- Windows artifacts only (no Linux or macOS forensics)
-- No memory forensics (Volatility integration planned)
-- No network traffic analysis (PCAP support planned)
-- Single investigation per user session
-- PostgreSQL only (no alternative database backends)
+**Q: Do I need OpenAI to use this?**  
+A: No. You can use Ollama or any OpenAI-compatible local LLM. No internet connection required for local models.
 
-## FAQ
+**Q: What's the difference between Agent and Augmented Chat modes?**  
+A: Agent mode uses autonomous tool execution for complex multi-step investigations. Augmented Chat uses semantic search (RAG) for finding relevant events. Agent is more thorough but slower. Augmented Chat is faster for targeted searches.
 
-### How does query routing work?
+**Q: Can I use this on real investigations?**  
+A: Yes, but verify AI-generated findings manually. The agent can miss subtle indicators or make incorrect correlations. Always validate conclusions with traditional forensic methods.
 
-The system uses LLM-based intent classification to route queries to the most appropriate handler. Users can also manually select the routing mode (Auto, Agent, Timeline, Augmented Chat). Fallback keyword matching is used when LLM is unavailable.
+**Q: How much data can it handle?**  
+A: Tested with 1+ million events per investigation. Practical limits depend on available RAM and storage. Recommend 8 GB RAM and SSD storage for large investigations.
 
-### What is the difference between Agent and Augmented Chat modes?
+**Q: Is this production-ready?**  
+A: This is an active development project. Use for research, learning, and experimental investigations. Not recommended for mission-critical production use without thorough testing in your environment.
 
-Agent mode executes a bounded turn loop with 16+ forensic tools for complex multi-step investigations. Augmented Chat mode uses RAG (retrieval-augmented generation) with hybrid BM25 and vector search for semantic queries over embedded event data. Agent mode is more thorough but slower and more expensive. Augmented Chat is faster and optimized for semantic search.
-
-### How are timeline entries different from events?
-
-Events are immutable forensic records stored in the events table. Timeline entries reference events by ID and auto-fetch complete payloads. This event-first design prevents data duplication and ensures timeline accuracy.
-
-### Can I use local LLMs instead of OpenAI?
-
-Yes. Configure Ollama or LM Studio as your LLM provider. Both support OpenAI-compatible endpoints. No internet connection required for local models.
-
-### What is the maximum investigation size?
-
-Tested with over 1 million events per investigation. Practical limits depend on available RAM and storage. See resource requirements in [docs/getting-started.md](docs/getting-started.md).
+**Q: Can I contribute?**  
+A: Absolutely! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Contributions welcome for parsers, playbooks, bug fixes, and documentation.
 
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Areas where you can help:
 
-- 🐛 [Report a bug](https://github.com/eheuser/open-agent-investigation/issues/new?template=bug_report.yml)
-- 💡 [Request a feature](https://github.com/eheuser/open-agent-investigation/issues/new?template=feature_request.yml)
-- 📖 [Improve documentation](CONTRIBUTING.md)
-- 🔒 [Report security issue](SECURITY.md)
+- **Parsers**: Add support for additional Windows artifacts or other operating systems
+- **Playbooks**: Create investigation playbooks for specific attack scenarios
+- **Tools**: Develop agent tools for specialized analysis
+- **Documentation**: Improve guides, add examples, fix typos
+- **Bug Reports**: Report issues with detailed reproduction steps
+- **Feature Requests**: Suggest improvements or additional capabilities
 
-## Support
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
-- 📚 [Documentation](docs/index.md)
-- 💬 [GitHub Discussions](https://github.com/eheuser/open-agent-investigation/discussions)
-- 🐛 [Issue Tracker](https://github.com/eheuser/open-agent-investigation/issues)
+**Security Issues:** Report security vulnerabilities privately via [SECURITY.md](SECURITY.md)
+
+## Support and Community
+
+- **Documentation**: [docs/index.md](docs/index.md)
+- **Discussions**: [GitHub Discussions](https://github.com/eheuser/open-agent-investigation/discussions)
+- **Bug Reports**: [Issue Tracker](https://github.com/eheuser/open-agent-investigation/issues)
+- **Security Issues**: [SECURITY.md](SECURITY.md)
 
 ## Acknowledgments
 
-- Built with [FastAPI](https://fastapi.tiangolo.com/), [React](https://react.dev/), and [PostgreSQL](https://www.postgresql.org/)
-- Forensic parsers: [evtx](https://github.com/omerbenamram/evtx), [regipy](https://github.com/mkorman90/regipy), [LnkParse3](https://github.com/Matmaus/LnkParse3)
-- Vector search powered by [pgvector](https://github.com/pgvector/pgvector)
+This project builds on excellent open-source tools:
+
+- **Frameworks**: [FastAPI](https://fastapi.tiangolo.com/), [React](https://react.dev/), [PostgreSQL](https://www.postgresql.org/)
+- **Parsers**: [evtx](https://github.com/omerbenamram/evtx), [regipy](https://github.com/mkorman90/regipy), [LnkParse3](https://github.com/Matmaus/LnkParse3), [prefetch2es](https://github.com/forensicmatt/prefetch2es)
+- **Vector Search**: [pgvector](https://github.com/pgvector/pgvector)
+
+Thank you to the DFIR community for sharing knowledge and tools that make projects like this possible.
 
 ## License
 
@@ -382,4 +426,4 @@ GNU General Public License v3.0 - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Star ⭐ this repo if you find it useful!**
+**Found this useful? Star the repo and share with the DFIR community!**

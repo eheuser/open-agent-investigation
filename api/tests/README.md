@@ -1,23 +1,23 @@
-# Open Agent Investigation - Test Suite
+# Test Suite
 
 Comprehensive test suite for the Open Agent Investigation platform.
 
-**TL:DR;**
+**Quick Start:**
 ```shell
 docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit/ -v --tb=short
 ```
 
-## 📋 Overview
+## Overview
 
-This test suite follows a three-tier testing strategy:
+The test suite uses a three-tier strategy:
 
-1. **Unit Tests** (~730 tests) - Fast, isolated tests for individual functions and classes
-2. **Integration Tests** (~200 tests) - Database and API endpoint tests with real PostgreSQL
-3. **End-to-End Tests** (planned) - Full workflow tests with all components
+1. **Unit Tests** (730+ tests) - Fast, isolated tests for individual functions
+2. **Integration Tests** (200+ tests) - Database and API endpoint tests
+3. **End-to-End Tests** (planned) - Full workflow tests
 
-**Current Status**: 1201 tests, 70.39% coverage, targeting 80%
+**Current Status:** 1201 tests, 70.39% coverage (targeting 80%)
 
-## 🏗️ Structure
+## Structure
 
 ```
 tests/
@@ -113,7 +113,7 @@ tests/
     └── Dockerfile.mock-llm      # Docker image for mock LLM
 ```
 
-## 🚀 Running Tests
+## Running Tests
 
 ### Prerequisites
 
@@ -194,7 +194,7 @@ docker compose -f docker-compose.test.yml run --rm test-runner \
 docker compose -f docker-compose.test.yml down -v
 ```
 
-## 📊 Coverage
+## Coverage
 
 **Current Coverage**: 70.39% (1201 tests)
 **Target**: 80% line coverage
@@ -259,7 +259,7 @@ xdg-open htmlcov/index.html  # Linux
 start htmlcov/index.html  # Windows
 ```
 
-## 🧪 Test Markers
+## Test Markers
 
 Tests are organized using pytest markers:
 
@@ -278,7 +278,7 @@ pytest tests/ -v -m integration    # Only integration tests
 pytest tests/ -v -m "not slow"     # Exclude slow tests
 ```
 
-## 🏭 Factories
+## Factories
 
 Data factories are provided for generating test data:
 
@@ -305,7 +305,7 @@ entry = TimelineEntryFactory.build(
 )
 ```
 
-## 🔧 Fixtures
+## Fixtures
 
 Common fixtures available in `conftest.py`:
 
@@ -335,7 +335,7 @@ Common fixtures available in `conftest.py`:
 - `mock_embedding_service` - Deterministic embedding generation
 - `deterministic_uuid` - Sequential UUID generator
 
-## 🎯 Test Principles
+## Test Principles
 
 1. **Avoid Over-Mocking** - Integration tests use real database sessions, not mocks
 2. **Function-Scoped Fixtures** - Each test gets a fresh database to avoid state leakage
@@ -344,7 +344,7 @@ Common fixtures available in `conftest.py`:
 5. **Docker Testing** - Always use Docker containers for consistency
 6. **Coverage Quality** - Focus on meaningful tests that verify business logic
 
-## 📝 Writing Tests
+## Writing Tests
 
 ### Unit Test Example
 
@@ -432,7 +432,7 @@ class TestFullWorkflow:
         # ... (timeline verification)
 ```
 
-## 🐛 Debugging Tests
+## Debugging Tests
 
 ### Enable SQL Logging
 
@@ -471,7 +471,7 @@ Run with `-s` to see print output:
 pytest tests/ -v -s
 ```
 
-## 🔄 Continuous Integration
+## Continuous Integration
 
 Tests run automatically on:
 - Every push to `main` or `develop` branches
@@ -483,7 +483,7 @@ GitHub Actions workflow (`.github/workflows/tests.yml`):
 3. **Docker Tests** - Full stack in Docker
 4. **Code Quality** - Linting, formatting, type checking
 
-## 📈 Performance
+## Performance
 
 Test execution times (approximate):
 - **Unit tests**: ~15 seconds (870+ tests)
@@ -491,9 +491,9 @@ Test execution times (approximate):
 - **E2E tests**: ~2 minutes (planned)
 - **Full suite**: ~24 seconds (1201 tests total)
 
-## 🤝 Contributing
+## Contributing
 
-When adding new features:
+When adding features:
 
 1. **Write tests first** (TDD approach)
 2. **Maintain coverage** (aim for 80%+)
@@ -501,14 +501,14 @@ When adding new features:
 4. **Follow naming conventions** (`test_*` for functions, `Test*` for classes)
 5. **Document complex tests** (docstrings explaining what/why)
 
-## 📚 Resources
+## Resources
 
 - [Pytest Documentation](https://docs.pytest.org/)
 - [FastAPI Testing](https://fastapi.tiangolo.com/tutorial/testing/)
 - [SQLAlchemy Async Testing](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)
 - [Factory Boy](https://factoryboy.readthedocs.io/)
 
-## ❓ Troubleshooting
+## Troubleshooting
 
 ### Database Connection Errors
 

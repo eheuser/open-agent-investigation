@@ -32,8 +32,7 @@ class ArchiveParser(BaseParser):
     Parser for archive files (ZIP, 7z, RAR).
     
     Recursively extracts all files from archives and submits them as new artifacts
-    for parsing. This enables automatic processing of KAPE output and other
-    forensic collection bundles.
+    for parsing. This enables automatic processing of forensic collection bundles.
     """
     
     @classmethod

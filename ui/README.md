@@ -1,8 +1,8 @@
-# Open Agent Investigation - UI
+# UI Component
 
-The **UI** is a modern React-based web application that provides an interactive interface for digital forensic investigations.
+Modern React-based web interface for digital forensic investigations.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
@@ -16,29 +16,32 @@ The **UI** is a modern React-based web application that provides an interactive 
 
 ## Overview
 
-The UI provides:
-- **Investigation Dashboard** - Create and manage investigations
-- **Chat Interface** - Ask natural language questions with 4 routing modes (Auto, Agent, Timeline, Augmented Chat)
-- **Evidence Timeline Viewer** - Chronological view of events, findings, and observations with advanced filtering
-- **Events Table** - Browse and filter forensic events with JSONB field queries
-- **Playbook Manager** - Create, edit, clone, and manage investigation playbooks
-- **Query Replication** - One-click query replication from chat to Events tab
-- **Mode Selector** - Manual routing mode selection (Auto/Agent/Timeline/Augmented Chat)
-- **RAG Results Display** - Expandable tool execution cards for query expansion and source retrieval
-- **Settings Panel** - Configure LLM providers, embedding providers, and user preferences
-- **Real-time Updates** - WebSocket streaming for agent progress and reasoning
-- **Persistent Filters** - Filter state preserved when switching between tabs
+The UI provides a complete investigation workflow:
+
+**Core Features:**
+- Investigation dashboard for case management
+- Natural language chat interface with intelligent routing
+- Evidence timeline builder with advanced filtering
+- Event browser with JSONB field queries
+- Investigation playbook manager
+- Real-time agent progress via WebSocket
+- Report generation (PDF and Markdown)
+
+**User Experience:**
+- Persistent filter state across tabs
+- One-click query replication from chat to manual queries
+- Expandable tool execution cards with copy-to-clipboard
+- Dark mode support
+- Responsive design for various screen sizes
 
 ### Technology Stack
 
-- **React 18.2** - Component-based UI framework
-- **TypeScript** - Type-safe JavaScript
-- **Vite** - Fast build tool and dev server
-- **TailwindCSS 3.4** - Utility-first CSS framework
-- **React Router 6** - Client-side routing
-- **ReactFlow 11** - Graph visualization
-- **Axios** - HTTP client
-- **React Markdown** - Markdown rendering with syntax highlighting
+- React 18.2 with TypeScript for type safety
+- Vite for fast development and builds
+- TailwindCSS 3.4 for styling
+- React Router 6 for navigation
+- Axios for API communication
+- React Markdown for formatted responses
 
 ---
 
@@ -151,14 +154,14 @@ npm run dev
 
 **Features**:
 - View all investigations
-- Create new investigation
+- Create investigation
 - Delete investigation
 - Search/filter investigations
 - View investigation metadata (created date, owner)
 
 **Screenshot Flow**:
 ```
-Dashboard → Click "New Investigation"
+Dashboard → Click "Create Investigation"
   → Enter title: "Ransomware Investigation - March 2024"
   → Click "Create"
   → Redirects to investigation detail page
@@ -326,7 +329,7 @@ User: "Find failed logon attempts"
   - Clone to create editable copies
   - Always enabled for all investigations
 - **Custom Playbooks** (user-created, mutable):
-  - Create new playbooks from scratch
+  - Create playbooks from scratch
   - Edit existing playbooks (name, description, content)
   - Delete playbooks
   - Enable/disable globally
@@ -654,7 +657,7 @@ VITE_API_URL=https://localhost
 VITE_WS_URL=wss://localhost
 ```
 
-### Adding a New Page
+### Adding Pages
 
 1. Create page component in `src/pages/`:
    ```tsx
@@ -680,7 +683,7 @@ VITE_WS_URL=wss://localhost
    <Link to="/my-page">My Page</Link>
    ```
 
-### Adding a New Component
+### Adding Components
 
 1. Create component file:
    ```tsx
@@ -1152,11 +1155,11 @@ To enable Augmented Chat mode, configure embedding provider in Settings:
 RAG results are displayed as expandable tool execution cards:
 
 **Query Expansion**:
-- Collapsed: "Query Expansion ✓ Complete"
+- Collapsed: "Query Expansion - Complete"
 - Expanded: Shows all generated search terms in JSON format
 
 **Retrieved Sources (X results)**:
-- Collapsed: "Retrieved Sources (50 results) ✓ Complete"
+- Collapsed: "Retrieved Sources (50 results) - Complete"
 - Expanded: Shows all sources with:
   - Index number
   - Owner type (tool, timeline, chat, note)
@@ -1167,9 +1170,9 @@ RAG results are displayed as expandable tool execution cards:
 
 ## Routing System Extensibility
 
-### Adding New Handlers
+### Adding Handlers
 
-The routing system is designed to be extensible. To add a new handler:
+The routing system is designed to be extensible. To add a handler:
 
 **Backend** (`api/app/services/handlers/`):
 
@@ -1216,7 +1219,7 @@ The routing system is designed to be extensible. To add a new handler:
    ```
 
 4. **Update classification prompt** (`api/app/services/chat_router.py`):
-   - Add new intent category to `CLASSIFICATION_PROMPT_SYSTEM`
+   - Add intent category to `CLASSIFICATION_PROMPT_SYSTEM`
    - Add routing case in `route_chat_message()`
 
 **Frontend** (`ui/src/components/chat/`):
@@ -1262,7 +1265,7 @@ async def handle_X(
     }
 ```
 
-This makes the system **fully extensible** - add new handlers without modifying core routing logic.
+This makes the system **fully extensible** - add handlers without modifying core routing logic.
 
 ## Further Reading
 
