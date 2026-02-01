@@ -1,0 +1,219 @@
+# Autoruns Analysis Configuration
+# 
+# This file defines the registry locations and patterns to search for
+# Windows autostart persistence mechanisms.
+#
+# You can add new categories, locations, or modify existing ones to
+# customize the analysis for your environment.
+
+categories:
+  - name: "Logon"
+    description: "Programs that run at user logon"
+    locations:
+      - name: "Run"
+        registry_paths:
+          - "Microsoft\\Windows\\CurrentVersion\\Run"
+          - "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+        enabled: true
+        
+      - name: "RunOnce"
+        registry_paths:
+          - "Microsoft\\Windows\\CurrentVersion\\RunOnce"
+          - "Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce"
+        enabled: true
+        
+      - name: "Run (Policies)"
+        registry_paths:
+          - "Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\Run"
+          - "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\Run"
+        enabled: true
+        
+      - name: "RunServices"
+        registry_paths:
+          - "Microsoft\\Windows\\CurrentVersion\\RunServices"
+          - "Software\\Microsoft\\Windows\\CurrentVersion\\RunServices"
+        enabled: true
+        
+      - name: "RunServicesOnce"
+        registry_paths:
+          - "Microsoft\\Windows\\CurrentVersion\\RunServicesOnce"
+          - "Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce"
+        enabled: true
+
+  - name: "Services"
+    description: "Windows Services configured to start automatically"
+    locations:
+      - name: "Services"
+        registry_paths:
+          - "ControlSet001\\Services"
+          - "ControlSet002\\Services"
+          - "CurrentControlSet\\Services"
+        value_filters:
+          Start: ["0", "1", "2"]  # Boot, System, Auto
+          Type: ["1", "16", "32"]  # Kernel, Own Process, Share Process
+        enabled: true
+
+  - name: "Scheduled Tasks"
+    description: "Tasks scheduled to run at specific times or events"
+    locations:
+      - name: "Task Scheduler"
+        registry_paths:
+          - "Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks"
+          - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks"
+        enabled: true
+
+  - name: "Winlogon"
+    description: "Programs that run during Windows logon process"
+    locations:
+      - name: "Userinit"
+        registry_paths:
+          - "Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+          - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+        value_names:
+          - "Userinit"
+          - "Shell"
+          - "VmApplet"
+          - "AppSetup"
+          - "Taskman"
+          - "System"
+        enabled: true
+        
+      - name: "Notify"
+        registry_paths:
+          - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\Notify"
+          - "Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\Notify"
+        enabled: true
+
+  - name: "Explorer"
+    description: "Shell extensions and Explorer add-ons"
+    locations:
+      - name: "Shell Extensions"
+        registry_paths:
+          - "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved"
+          - "Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved"
+        enabled: true
+        
+      - name: "Browser Helper Objects"
+        registry_paths:
+          - "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Browser Helper Objects"
+          - "Microsoft\\Windows\\CurrentVersion\\Explorer\\Browser Helper Objects"
+        enabled: true
+        
+      - name: "Toolbar Extensions"
+        registry_paths:
+          - "Software\\Microsoft\\Internet Explorer\\Toolbar"
+          - "Microsoft\\Internet Explorer\\Toolbar"
+        enabled: true
+
+  - name: "Drivers"
+    description: "Kernel-mode drivers configured to load at boot"
+    locations:
+      - name: "Boot Drivers"
+        registry_paths:
+          - "ControlSet001\\Services"
+          - "ControlSet002\\Services"
+          - "CurrentControlSet\\Services"
+        value_filters:
+          Start: ["0", "1"]  # Boot, System
+          Type: ["1"]  # Kernel driver
+        enabled: true
+
+  - name: "Codecs"
+    description: "Installed multimedia codecs and filters"
+    locations:
+      - name: "Codecs"
+        registry_paths:
+          - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Drivers32"
+          - "Microsoft\\Windows NT\\CurrentVersion\\Drivers32"
+        enabled: true
+
+  - name: "Image Hijacks"
+    description: "Image File Execution Options (IFEO) debugger hijacks"
+    locations:
+      - name: "IFEO"
+        registry_paths:
+          - "Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options"
+          - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options"
+        value_names:
+          - "Debugger"
+        enabled: true
+
+  - name: "AppInit"
+    description: "DLLs loaded into every process via AppInit_DLLs"
+    locations:
+      - name: "AppInit DLLs"
+        registry_paths:
+          - "Microsoft\\Windows NT\\CurrentVersion\\Windows"
+          - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows"
+        value_names:
+          - "AppInit_DLLs"
+          - "LoadAppInit_DLLs"
+        enabled: true
+
+  - name: "Boot Execute"
+    description: "Native applications that run before Windows starts"
+    locations:
+      - name: "BootExecute"
+        registry_paths:
+          - "ControlSet001\\Control\\Session Manager"
+          - "ControlSet002\\Control\\Session Manager"
+          - "CurrentControlSet\\Control\\Session Manager"
+        value_names:
+          - "BootExecute"
+          - "SetupExecute"
+          - "Execute"
+          - "S0InitialCommand"
+        enabled: true
+
+  - name: "LSA Providers"
+    description: "Local Security Authority (LSA) security packages"
+    locations:
+      - name: "Authentication Packages"
+        registry_paths:
+          - "ControlSet001\\Control\\Lsa"
+          - "ControlSet002\\Control\\Lsa"
+          - "CurrentControlSet\\Control\\Lsa"
+        value_names:
+          - "Authentication Packages"
+          - "Notification Packages"
+          - "Security Packages"
+        enabled: true
+
+  - name: "Print Monitors"
+    description: "Print spooler monitors (common malware persistence)"
+    locations:
+      - name: "Print Monitors"
+        registry_paths:
+          - "ControlSet001\\Control\\Print\\Monitors"
+          - "ControlSet002\\Control\\Print\\Monitors"
+          - "CurrentControlSet\\Control\\Print\\Monitors"
+        enabled: true
+
+  - name: "Network Providers"
+    description: "Network provider DLLs"
+    locations:
+      - name: "Network Providers"
+        registry_paths:
+          - "ControlSet001\\Control\\NetworkProvider\\Order"
+          - "ControlSet002\\Control\\NetworkProvider\\Order"
+          - "CurrentControlSet\\Control\\NetworkProvider\\Order"
+        value_names:
+          - "ProviderOrder"
+        enabled: true
+
+  - name: "WMI"
+    description: "WMI Event Consumers (common for persistence)"
+    locations:
+      - name: "WMI Consumers"
+        registry_paths:
+          - "Software\\Microsoft\\WBEM\\ESS"
+          - "Microsoft\\WBEM\\ESS"
+        enabled: true
+
+  - name: "Office"
+    description: "Microsoft Office add-ins and macros"
+    locations:
+      - name: "Office Add-ins"
+        registry_paths:
+          - "Software\\Microsoft\\Office"
+        enabled: true

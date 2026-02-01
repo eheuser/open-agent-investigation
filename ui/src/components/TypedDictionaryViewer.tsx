@@ -240,7 +240,7 @@ const TypedDictionaryViewer: React.FC<TypedDictionaryViewerProps> = ({
       case 'scalar':
         return (
           <div className="flex items-center gap-2">
-            <span className="text-gray-900 dark:text-gray-100 font-mono text-sm">
+            <span className="text-gray-900 dark:text-gray-100 font-mono text-sm break-all overflow-wrap-anywhere">
               {typedValue.value}
             </span>
             <button
@@ -265,7 +265,7 @@ const TypedDictionaryViewer: React.FC<TypedDictionaryViewerProps> = ({
                 {typedValue.badge}
               </span>
             )}
-            <code className="text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-xs font-mono">
+            <code className="text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-xs font-mono break-all overflow-wrap-anywhere">
               {typedValue.value}
             </code>
             <button
@@ -291,7 +291,7 @@ const TypedDictionaryViewer: React.FC<TypedDictionaryViewerProps> = ({
                 {typedValue.badge}
               </span>
             )}
-            <code className="text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-xs font-mono">
+            <code className="text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-xs font-mono break-all overflow-wrap-anywhere">
               {typedValue.value}
             </code>
             <button
@@ -459,10 +459,10 @@ const TypedDictionaryViewer: React.FC<TypedDictionaryViewerProps> = ({
         </h4>
       )}
       <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-        <table className="w-full">
+        <table className="w-full table-fixed">
           <colgroup>
-            <col className="w-1/3" />
-            <col className="w-2/3" />
+            <col style={{ width: '30%' }} />
+            <col style={{ width: '70%' }} />
           </colgroup>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {entries.map(([key, value]) => {
@@ -472,10 +472,10 @@ const TypedDictionaryViewer: React.FC<TypedDictionaryViewerProps> = ({
                   key={key}
                   className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                 >
-                  <td className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 align-top">
+                  <td className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 align-top break-words">
                     <span className="font-mono break-words">{key}</span>
                   </td>
-                  <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100 align-top">
+                  <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100 align-top break-words overflow-hidden">
                     {renderValue(key, typedValue)}
                   </td>
                 </tr>

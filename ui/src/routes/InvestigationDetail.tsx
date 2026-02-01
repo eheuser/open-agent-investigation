@@ -7,6 +7,7 @@ import ReportGenerator from '../components/ReportGenerator';
 import LogsViewer from '../components/LogsViewer';
 import JobsModal from '../components/JobsModal';
 import UploadModal from '../components/chat/UploadModal';
+import AnalysisViewer from '../components/analysis/AnalysisViewer';
 import { useInvestigation } from '../hooks/useInvestigations';
 import { useJobs } from '../contexts/JobsContext';
 import { WebSocketProvider } from '../contexts/WebSocketContext';
@@ -17,12 +18,13 @@ import {
   ChatBubbleLeftRightIcon,
   TableCellsIcon,
   DocumentChartBarIcon,
-  RectangleStackIcon
+  RectangleStackIcon,
+  BeakerIcon
 } from '@heroicons/react/24/outline';
 
 
 
-type TabType = 'chat' | 'events' | 'timeline' | 'report' | 'logs';
+type TabType = 'chat' | 'events' | 'analysis' | 'timeline' | 'report' | 'logs';
 
 const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ investigationId }) => {
   const { investigation, isLoading, error } = useInvestigation(investigationId);
@@ -199,6 +201,21 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
           </button>
           
           <button
+            onClick={() => setActiveTab('analysis')}
+            className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${
+              activeTab === 'analysis'
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <BeakerIcon className="w-4 h-4" />
+            Analysis
+            {activeTab === 'analysis' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
+            )}
+          </button>
+          
+          <button
             onClick={() => {
               setActiveTab('timeline');
               // If timeline needs refresh, do it when switching to the tab
@@ -282,6 +299,10 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
               replicatedQuery={replicatedQuery}
               onQueryApplied={() => setReplicatedQuery(null)}
             />
+          </div>
+          
+          <div className={`h-full ${activeTab === 'analysis' ? '' : 'hidden'}`}>
+            <AnalysisViewer investigationId={investigationId} />
           </div>
           
           <div className={`h-full bg-white dark:bg-gray-900 ${activeTab === 'timeline' ? '' : 'hidden'}`}>
