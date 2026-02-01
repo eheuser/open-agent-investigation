@@ -123,6 +123,59 @@ class TestCreateLLMConfig:
         assert added_config.embedding_api_key == "sk-embed123"
         assert added_config.embedding_model_name == "text-embedding-ada-002"
 
+    async def test_create_llm_config_with_concurrent_and_reranker(self, mock_db):
+        """
+        Test creating an LLM config with concurrent calls and reranker settings.
+        """
+        result = await create_llm_config(
+            db=mock_db,
+            user_id=1,
+            provider_name="openai",
+            api_endpoint="https://api.openai.com/v1/chat/completions",
+            api_key="sk-test123",
+            model_name="gpt-4",
+            max_context_length=128000,
+            temperature=0.7,
+            allow_concurrent_llm_calls=True,
+            embedding_provider="openai",
+            embedding_api_url="https://api.openai.com/v1/embeddings",
+            embedding_api_key="sk-embed123",
+            embedding_model_name="text-embedding-3-small",
+            embedding_max_context_length=8192,
+            reranker_model_name="text-embedding-3-large",
+            reranker_max_context_length=8192,
+            allow_concurrent_embedding_calls=True,
+        )
+
+        added_config = mock_db.add.call_args[0][0]
+        assert added_config.allow_concurrent_llm_calls is True
+        assert added_config.embedding_max_context_length == 8192
+        assert added_config.reranker_model_name == "text-embedding-3-large"
+        assert added_config.reranker_max_context_length == 8192
+        assert added_config.allow_concurrent_embedding_calls is True
+
+    async def test_create_llm_config_new_fields_defaults(self, mock_db):
+        """
+        Test that new fields have correct defaults when not provided.
+        """
+        result = await create_llm_config(
+            db=mock_db,
+            user_id=1,
+            provider_name="openai",
+            api_endpoint="https://api.openai.com/v1/chat/completions",
+            api_key="sk-test123",
+            model_name="gpt-4",
+            max_context_length=8192,
+            temperature=0.7,
+            # Don't provide new fields
+        )
+
+        added_config = mock_db.add.call_args[0][0]
+        assert added_config.allow_concurrent_llm_calls is False
+        assert added_config.allow_concurrent_embedding_calls is False
+        assert added_config.embedding_max_context_length == 8192
+        assert added_config.reranker_max_context_length == 8192
+
     async def test_create_llm_config_inactive(self, mock_db):
         """
         Test that creating an LLM configuration with `is_active=False` correctly stores the inactive flag.
@@ -707,3 +760,65 @@ class TestLLMConfigCRUDEdgeCases:
 
         # Only temperature should be updated
         assert result == updated_config
+
+    async def test_update_llm_config_concurrent_flags(self, mock_db):
+        """
+        Test updating concurrent call flags.
+        """
+        config_id = 1
+        updated_config = LLMProviderConfig(
+            config_id=config_id,
+            user_id=1,
+            provider_name="openai",
+            api_endpoint="https://api.openai.com/v1/chat/completions",
+            model_name="gpt-4",
+            max_context_length=8192,
+            temperature=0.7,
+            allow_concurrent_llm_calls=True,
+            allow_concurrent_embedding_calls=True,
+        )
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = updated_config
+        mock_db.execute.return_value = mock_result
+
+        result = await update_llm_config(
+            db=mock_db,
+            config_id=config_id,
+            allow_concurrent_llm_calls=True,
+            allow_concurrent_embedding_calls=True,
+        )
+
+        assert result.allow_concurrent_llm_calls is True
+        assert result.allow_concurrent_embedding_calls is True
+
+    async def test_update_llm_config_reranker_settings(self, mock_db):
+        """
+        Test updating reranker model and token limits.
+        """
+        config_id = 1
+        updated_config = LLMProviderConfig(
+            config_id=config_id,
+            user_id=1,
+            provider_name="openai",
+            api_endpoint="https://api.openai.com/v1/chat/completions",
+            model_name="gpt-4",
+            max_context_length=8192,
+            temperature=0.7,
+            reranker_model_name="text-embedding-3-large",
+            reranker_max_context_length=16384,
+        )
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = updated_config
+        mock_db.execute.return_value = mock_result
+
+        result = await update_llm_config(
+            db=mock_db,
+            config_id=config_id,
+            reranker_model_name="text-embedding-3-large",
+            reranker_max_context_length=16384,
+        )
+
+        assert result.reranker_model_name == "text-embedding-3-large"
+        assert result.reranker_max_context_length == 16384

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { useLocation } from 'react-router-dom';
 import api from '../services/api';
 
 interface LLMConfig {
@@ -16,16 +17,22 @@ interface LLMConfig {
   min_p?: number | null;
   timeout: number;
   is_active: boolean;
+  allow_concurrent_llm_calls: boolean;
   // Embedding configuration (optional - required for RAG)
   embedding_provider?: string | null;
   embedding_api_url?: string | null;
   embedding_api_key_masked?: string;
   embedding_model_name?: string | null;
+  embedding_max_context_length?: number | null;
+  reranker_model_name?: string | null;
+  reranker_max_context_length?: number | null;
+  allow_concurrent_embedding_calls: boolean;
   created_at: string;
   updated_at: string;
 }
 
 const Settings: React.FC = () => {
+  const location = useLocation();
   const [configs, setConfigs] = useState<LLMConfig[]>([]);
   const [activeConfig, setActiveConfig] = useState<LLMConfig | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -34,6 +41,9 @@ const Settings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [configToDelete, setConfigToDelete] = useState<number | null>(null);
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
+  const [llmEndpointType, setLlmEndpointType] = useState('localhost');
+  const [embeddingEndpointType, setEmbeddingEndpointType] = useState('localhost');
 
   const [formData, setFormData] = useState({
     provider_name: 'local',
@@ -47,15 +57,36 @@ const Settings: React.FC = () => {
     min_p: undefined as number | undefined,
     timeout: 300,
     is_active: true,
+    allow_concurrent_llm_calls: false,
     // Embedding configuration
     embedding_provider: '' as string | undefined,
     embedding_api_url: 'http://host.docker.internal:1234/v1/embeddings' as string | undefined,
     embedding_api_key: '' as string | undefined,
     embedding_model_name: '' as string | undefined,
+    embedding_max_context_length: 8192,
+    reranker_model_name: '' as string | undefined,
+    reranker_max_context_length: 8192,
+    allow_concurrent_embedding_calls: false,
   });
 
   useEffect(() => {
     loadConfigs();
+    
+    // Check if user was redirected here from login due to missing config
+    // Show welcome banner if no configs exist
+    const checkWelcome = async () => {
+      try {
+        const response = await api.get('/api/v1/llm-config/');
+        if (!response.data || response.data.length === 0) {
+          setShowWelcomeBanner(true);
+        }
+      } catch (err) {
+        // If error, assume no configs
+        setShowWelcomeBanner(true);
+      }
+    };
+    
+    checkWelcome();
   }, []);
 
   const loadConfigs = async () => {
@@ -141,6 +172,37 @@ const Settings: React.FC = () => {
 
   const startEdit = (config: LLMConfig) => {
     setEditingId(config.config_id);
+    
+    // Detect endpoint type for LLM
+    if (config.api_endpoint.includes('api.openai.com')) {
+      setLlmEndpointType('openai');
+    } else if (config.api_endpoint.includes('generativelanguage.googleapis.com') || config.api_endpoint.includes('aiplatform.googleapis.com')) {
+      setLlmEndpointType('google');
+    } else if (config.api_endpoint.includes('api.anthropic.com')) {
+      setLlmEndpointType('anthropic');
+    } else if (config.api_endpoint.includes('openrouter.ai')) {
+      setLlmEndpointType('openrouter');
+    } else if (config.api_endpoint.includes('host.docker.internal') || config.api_endpoint.includes('localhost')) {
+      setLlmEndpointType('localhost');
+    } else {
+      setLlmEndpointType('custom');
+    }
+    
+    // Detect endpoint type for embeddings
+    if (config.embedding_api_url?.includes('api.openai.com')) {
+      setEmbeddingEndpointType('openai');
+    } else if (config.embedding_api_url?.includes('generativelanguage.googleapis.com') || config.embedding_api_url?.includes('aiplatform.googleapis.com')) {
+      setEmbeddingEndpointType('google');
+    } else if (config.embedding_api_url?.includes('api.cohere.ai')) {
+      setEmbeddingEndpointType('cohere');
+    } else if (config.embedding_api_url?.includes('openrouter.ai')) {
+      setEmbeddingEndpointType('openrouter');
+    } else if (config.embedding_api_url?.includes('host.docker.internal') || config.embedding_api_url?.includes('localhost')) {
+      setEmbeddingEndpointType('localhost');
+    } else {
+      setEmbeddingEndpointType('custom');
+    }
+    
     setFormData({
       provider_name: config.provider_name,
       api_endpoint: config.api_endpoint,
@@ -153,15 +215,22 @@ const Settings: React.FC = () => {
       min_p: config.min_p ?? undefined,
       timeout: config.timeout,
       is_active: config.is_active,
+      allow_concurrent_llm_calls: config.allow_concurrent_llm_calls,
       // Embedding configuration
       embedding_provider: config.embedding_provider ?? '',
       embedding_api_url: config.embedding_api_url ?? '',
       embedding_api_key: '', // Don't populate for security
       embedding_model_name: config.embedding_model_name ?? '',
+      embedding_max_context_length: config.embedding_max_context_length ?? 8192,
+      reranker_model_name: config.reranker_model_name ?? '',
+      reranker_max_context_length: config.reranker_max_context_length ?? 8192,
+      allow_concurrent_embedding_calls: config.allow_concurrent_embedding_calls,
     });
   };
 
   const resetForm = () => {
+    setLlmEndpointType('localhost');
+    setEmbeddingEndpointType('localhost');
     setFormData({
       provider_name: 'local',
       api_endpoint: 'http://host.docker.internal:1234/v1/chat/completions',
@@ -174,11 +243,16 @@ const Settings: React.FC = () => {
       min_p: undefined,
       timeout: 300,
       is_active: true,
+      allow_concurrent_llm_calls: false,
       // Embedding configuration
       embedding_provider: '',
       embedding_api_url: 'http://host.docker.internal:1234/v1/embeddings',
       embedding_api_key: '',
       embedding_model_name: '',
+      embedding_max_context_length: 8192,
+      reranker_model_name: '',
+      reranker_max_context_length: 8192,
+      allow_concurrent_embedding_calls: false,
     });
   };
 
@@ -205,6 +279,43 @@ const Settings: React.FC = () => {
           </button>
         </div>
 
+        {/* Instructions */}
+        <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+            Configuration Requirements
+          </h3>
+          <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-1.5">
+            <li className="flex items-start gap-2">
+              <span className="text-red-500 font-bold mt-0.5">*</span>
+              <span><strong>LLM Configuration (Required):</strong> An active LLM provider is required for all natural language processing, agent investigations, and chat functionality.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-yellow-600 dark:text-yellow-500 font-bold mt-0.5">•</span>
+              <span><strong>Embedding Configuration (Optional):</strong> Configure embeddings to enable RAG (Retrieval-Augmented Generation) for semantic search. Without embeddings, "Augmented Chat" mode will be disabled.</span>
+            </li>
+          </ul>
+        </div>
+
+        {showWelcomeBanner && configs.length === 0 && (
+          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="flex items-start gap-3">
+              <InformationCircleIcon className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                  Welcome! Configure Your LLM Provider
+                </h3>
+                <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                  To start using Open Agent Investigation, you need to configure an LLM provider. 
+                  This allows the system to process natural language queries and perform automated analysis.
+                </p>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  Click <strong>"+ Add Configuration"</strong> above to get started.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
             <p className="text-red-800 dark:text-red-200">{error}</p>
@@ -217,7 +328,14 @@ const Settings: React.FC = () => {
             <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
               New LLM Configuration
             </h2>
-            <ConfigForm formData={formData} setFormData={setFormData} />
+            <ConfigForm 
+              formData={formData} 
+              setFormData={setFormData}
+              llmEndpointType={llmEndpointType}
+              setLlmEndpointType={setLlmEndpointType}
+              embeddingEndpointType={embeddingEndpointType}
+              setEmbeddingEndpointType={setEmbeddingEndpointType}
+            />
             <div className="flex gap-2 mt-4">
               <button
                 type="submit"
@@ -254,6 +372,10 @@ const Settings: React.FC = () => {
               isEditing={editingId === activeConfig.config_id}
               formData={formData}
               setFormData={setFormData}
+              llmEndpointType={llmEndpointType}
+              setLlmEndpointType={setLlmEndpointType}
+              embeddingEndpointType={embeddingEndpointType}
+              setEmbeddingEndpointType={setEmbeddingEndpointType}
               onUpdate={handleUpdate}
               onCancelEdit={() => {
                 setEditingId(null);
@@ -288,9 +410,13 @@ const Settings: React.FC = () => {
                   onDelete={handleDeleteClick}
                   onSetActive={handleSetActive}
                   isEditing={editingId === config.config_id}
-                  formData={formData}
-                  setFormData={setFormData}
-                  onUpdate={handleUpdate}
+                                formData={formData}
+              setFormData={setFormData}
+              llmEndpointType={llmEndpointType}
+              setLlmEndpointType={setLlmEndpointType}
+              embeddingEndpointType={embeddingEndpointType}
+              setEmbeddingEndpointType={setEmbeddingEndpointType}
+              onUpdate={handleUpdate}
                   onCancelEdit={() => {
                     setEditingId(null);
                     resetForm();
@@ -353,7 +479,48 @@ const Settings: React.FC = () => {
 const ConfigForm: React.FC<{
   formData: any;
   setFormData: (data: any) => void;
-}> = ({ formData, setFormData }) => (
+  llmEndpointType: string;
+  setLlmEndpointType: (type: string) => void;
+  embeddingEndpointType: string;
+  setEmbeddingEndpointType: (type: string) => void;
+}> = ({ formData, setFormData, llmEndpointType, setLlmEndpointType, embeddingEndpointType, setEmbeddingEndpointType }) => {
+  // LLM endpoint presets
+  const llmEndpoints: Record<string, string> = {
+    openai: 'https://api.openai.com/v1/chat/completions',
+    google: 'https://generativelanguage.googleapis.com/v1beta/models/',
+    anthropic: 'https://api.anthropic.com/v1/messages',
+    openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+    localhost: 'http://host.docker.internal:1234/v1/chat/completions',
+    custom: formData.api_endpoint,
+  };
+
+  // Embedding endpoint presets
+  const embeddingEndpoints: Record<string, string> = {
+    openai: 'https://api.openai.com/v1/embeddings',
+    google: 'https://generativelanguage.googleapis.com/v1beta/models/',
+    cohere: 'https://api.cohere.ai/v1/embed',
+    openrouter: 'https://openrouter.ai/api/v1/embeddings',
+    localhost: 'http://host.docker.internal:1234/v1/embeddings',
+    custom: formData.embedding_api_url || '',
+  };
+
+  // Handle LLM endpoint type change
+  const handleLlmEndpointTypeChange = (type: string) => {
+    setLlmEndpointType(type);
+    if (type !== 'custom') {
+      setFormData({ ...formData, api_endpoint: llmEndpoints[type] });
+    }
+  };
+
+  // Handle embedding endpoint type change
+  const handleEmbeddingEndpointTypeChange = (type: string) => {
+    setEmbeddingEndpointType(type);
+    if (type !== 'custom') {
+      setFormData({ ...formData, embedding_api_url: embeddingEndpoints[type] });
+    }
+  };
+
+  return (
   <div className="grid grid-cols-2 gap-4">
     <div>
       <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
@@ -379,7 +546,24 @@ const ConfigForm: React.FC<{
         required
       />
     </div>
-    <div className="col-span-2">
+    <div>
+      <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+        LLM Provider
+      </label>
+      <select
+        value={llmEndpointType}
+        onChange={(e) => handleLlmEndpointTypeChange(e.target.value)}
+        className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+      >
+        <option value="openai">OpenAI</option>
+        <option value="google">Google (Gemini/Vertex)</option>
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="localhost">Localhost (Docker)</option>
+        <option value="custom">Custom URL</option>
+      </select>
+    </div>
+    <div>
       <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
         API Endpoint
       </label>
@@ -388,6 +572,7 @@ const ConfigForm: React.FC<{
         value={formData.api_endpoint}
         onChange={(e) => setFormData({ ...formData, api_endpoint: e.target.value })}
         className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+        disabled={llmEndpointType !== 'custom'}
         required
       />
     </div>
@@ -491,16 +676,84 @@ const ConfigForm: React.FC<{
         required
       />
     </div>
+    <div className="col-span-2">
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={formData.allow_concurrent_llm_calls}
+          onChange={(e) => setFormData({ ...formData, allow_concurrent_llm_calls: e.target.checked })}
+          className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
+        />
+        <div>
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Allow Concurrent LLM Calls
+          </span>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Enable parallel LLM requests for high-capacity public APIs (OpenAI, Anthropic, etc.). 
+            Disable for local endpoints with limited GPU resources (Ollama, LM Studio).
+          </p>
+        </div>
+      </label>
+    </div>
     
     {/* Embedding Configuration Section */}
     <div className="col-span-2 mt-6 pt-6 border-t border-gray-300 dark:border-gray-600">
-      <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-        Embedding Configuration (Optional - Required for RAG)
-      </h3>
+      <div className="flex items-start gap-2 mb-4">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Embedding Configuration
+        </h3>
+        <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded">
+          Optional
+        </span>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        Configure embeddings to enable semantic search via RAG (Retrieval-Augmented Generation). Without this, "Augmented Chat" mode will not be available.
+      </p>
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded p-3 mb-4">
+        <p className="text-xs text-blue-800 dark:text-blue-200 mb-2">
+          <strong>💡 Embedding Model (Required for RAG):</strong> Used for initial embedding generation during artifact parsing. 
+          Choose a smaller/faster model (e.g., <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">text-embedding-3-small</code>) since this runs on all events.
+        </p>
+        <p className="text-xs text-blue-800 dark:text-blue-200">
+          <strong>🎯 Reranker Model (Optional):</strong> If configured with a <em>different</em> model name, enables advanced reranking of top candidates for better relevance. 
+          Choose a larger/more capable model (e.g., <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">text-embedding-3-large</code>). 
+          <strong>Leave empty to skip reranking and use vector similarity only.</strong>
+        </p>
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-            Embedding Provider
+            Embedding Provider Type
+          </label>
+          <select
+            value={embeddingEndpointType}
+            onChange={(e) => handleEmbeddingEndpointTypeChange(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+          >
+            <option value="openai">OpenAI</option>
+            <option value="google">Google (Gemini/Vertex)</option>
+            <option value="cohere">Cohere</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="localhost">Localhost (Docker)</option>
+            <option value="custom">Custom URL</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+            Embedding API URL
+          </label>
+          <input
+            type="url"
+            value={formData.embedding_api_url || ''}
+            onChange={(e) => setFormData({ ...formData, embedding_api_url: e.target.value || undefined })}
+            className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+            disabled={embeddingEndpointType !== 'custom'}
+            placeholder="e.g., http://host.docker.internal:1234/v1/embeddings"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+            Embedding Provider Name
           </label>
           <select
             value={formData.embedding_provider || ''}
@@ -508,9 +761,9 @@ const ConfigForm: React.FC<{
             className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
           >
             <option value="">None (RAG disabled)</option>
-            <option value="openai">OpenAI</option>
-            <option value="cohere">Cohere</option>
-            <option value="ollama">Ollama</option>
+            <option value="openai">openai</option>
+            <option value="cohere">cohere</option>
+            <option value="ollama">ollama</option>
           </select>
         </div>
         <div>
@@ -522,20 +775,69 @@ const ConfigForm: React.FC<{
             value={formData.embedding_model_name || ''}
             onChange={(e) => setFormData({ ...formData, embedding_model_name: e.target.value || undefined })}
             className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-            placeholder="e.g., text-embedding-ada-002"
+            placeholder="e.g., text-embedding-3-small"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+            Embedding Max Tokens
+          </label>
+          <input
+            type="number"
+            value={formData.embedding_max_context_length}
+            onChange={(e) => setFormData({ ...formData, embedding_max_context_length: parseInt(e.target.value) })}
+            min="1"
+            max="1000000"
+            className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+            placeholder="8192"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+            Reranker Model <span className="text-xs text-gray-500 dark:text-gray-400">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={formData.reranker_model_name || ''}
+            onChange={(e) => setFormData({ ...formData, reranker_model_name: e.target.value || undefined })}
+            className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+            placeholder="Leave empty to skip reranking"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+            Reranker Max Tokens <span className="text-xs text-gray-500 dark:text-gray-400">(optional)</span>
+          </label>
+          <input
+            type="number"
+            value={formData.reranker_max_context_length}
+            onChange={(e) => setFormData({ ...formData, reranker_max_context_length: parseInt(e.target.value) })}
+            min="1"
+            max="1000000"
+            className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+            placeholder="8192"
+            disabled={!formData.reranker_model_name}
           />
         </div>
         <div className="col-span-2">
-          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-            Embedding API URL
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.allow_concurrent_embedding_calls}
+              onChange={(e) => setFormData({ ...formData, allow_concurrent_embedding_calls: e.target.checked })}
+              className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Allow Concurrent Embedding/Reranking Calls
+              </span>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Enable parallel embedding and reranking requests for high-capacity public APIs. 
+                Batches large requests (50+ embeddings, 100+ reranks) into parallel API calls. 
+                Disable for local endpoints with limited GPU resources.
+              </p>
+            </div>
           </label>
-          <input
-            type="url"
-            value={formData.embedding_api_url || ''}
-            onChange={(e) => setFormData({ ...formData, embedding_api_url: e.target.value || undefined })}
-            className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-            placeholder="e.g., http://host.docker.internal:1234/v1/embeddings"
-          />
         </div>
         <div className="col-span-2">
           <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
@@ -553,6 +855,7 @@ const ConfigForm: React.FC<{
     </div>
   </div>
 );
+};
 
 // Config Card Component
 const ConfigCard: React.FC<{
@@ -563,6 +866,10 @@ const ConfigCard: React.FC<{
   isEditing: boolean;
   formData: any;
   setFormData: (data: any) => void;
+  llmEndpointType: string;
+  setLlmEndpointType: (type: string) => void;
+  embeddingEndpointType: string;
+  setEmbeddingEndpointType: (type: string) => void;
   onUpdate: (id: number) => void;
   onCancelEdit: () => void;
 }> = ({
@@ -573,13 +880,24 @@ const ConfigCard: React.FC<{
   isEditing,
   formData,
   setFormData,
+  llmEndpointType,
+  setLlmEndpointType,
+  embeddingEndpointType,
+  setEmbeddingEndpointType,
   onUpdate,
   onCancelEdit,
 }) => {
   if (isEditing) {
     return (
       <div>
-        <ConfigForm formData={formData} setFormData={setFormData} />
+                    <ConfigForm 
+              formData={formData} 
+              setFormData={setFormData}
+              llmEndpointType={llmEndpointType}
+              setLlmEndpointType={setLlmEndpointType}
+              embeddingEndpointType={embeddingEndpointType}
+              setEmbeddingEndpointType={setEmbeddingEndpointType}
+            />
         <div className="flex gap-2 mt-4">
           <button
             onClick={() => onUpdate(config.config_id)}
@@ -647,6 +965,10 @@ const ConfigCard: React.FC<{
           <span className="font-medium text-gray-700 dark:text-gray-300">Timeout:</span>{' '}
           <span className="text-gray-900 dark:text-white">{config.timeout}s</span>
         </div>
+        <div>
+          <span className="font-medium text-gray-700 dark:text-gray-300">Concurrent LLM:</span>{' '}
+          <span className="text-gray-900 dark:text-white">{config.allow_concurrent_llm_calls ? 'Enabled' : 'Disabled'}</span>
+        </div>
         {config.embedding_provider && (
           <>
             <div className="col-span-2 mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
@@ -657,8 +979,34 @@ const ConfigCard: React.FC<{
               <span className="text-gray-900 dark:text-white">{config.embedding_provider}</span>
             </div>
             <div>
-              <span className="font-medium text-gray-700 dark:text-gray-300">Model:</span>{' '}
+              <span className="font-medium text-gray-700 dark:text-gray-300">Embedding Model:</span>{' '}
               <span className="text-gray-900 dark:text-white">{config.embedding_model_name || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300">Embedding Max Tokens:</span>{' '}
+              <span className="text-gray-900 dark:text-white">{config.embedding_max_context_length?.toLocaleString() || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300">Reranker Model:</span>{' '}
+              {config.reranker_model_name && config.reranker_model_name !== config.embedding_model_name ? (
+                <span className="text-gray-900 dark:text-white">
+                  {config.reranker_model_name} 
+                  <span className="ml-2 text-xs bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 px-2 py-0.5 rounded">Active</span>
+                </span>
+              ) : (
+                <span className="text-gray-500 dark:text-gray-400">
+                  Not configured 
+                  <span className="ml-2 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">Vector similarity only</span>
+                </span>
+              )}
+            </div>
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300">Reranker Max Tokens:</span>{' '}
+              <span className="text-gray-900 dark:text-white">{config.reranker_max_context_length?.toLocaleString() || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300">Concurrent Embedding:</span>{' '}
+              <span className="text-gray-900 dark:text-white">{config.allow_concurrent_embedding_calls ? 'Enabled' : 'Disabled'}</span>
             </div>
             <div className="col-span-2">
               <span className="font-medium text-gray-700 dark:text-gray-300">Endpoint:</span>{' '}

@@ -268,3 +268,132 @@ async def test_list_investigations_multiple(
     titles = {inv["title"] for inv in data}
     assert "Investigation 1" in titles
     assert "Investigation 2" in titles
+
+
+@pytest.mark.asyncio
+async def test_get_field_dictionary_status_empty(
+    async_client: AsyncClient,
+    test_investigation: Investigation,
+    auth_headers: dict
+):
+    """Test getting field dictionary status when no fields exist."""
+    response = await async_client.get(
+        f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status",
+        headers=auth_headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_fields"] == 0
+    assert data["pending_fields"] == 0
+    assert data["completed_fields"] == 0
+    assert data["event_types"] == 0
+    assert data["is_complete"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_field_dictionary_status_with_fields(
+    async_client: AsyncClient,
+    test_investigation: Investigation,
+    auth_headers: dict,
+    db_session
+):
+    """Test getting field dictionary status with some fields populated."""
+    from sqlalchemy import text
+    
+    # Insert some test field dictionary entries
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO field_dictionary 
+            (investigation_id, event_type, field_name, description, sample_values)
+            VALUES 
+            (:inv_id, 'evtx_security_4624', 'TargetUserName', 'Account targeted by logon', ARRAY['admin', 'user']),
+            (:inv_id, 'evtx_security_4624', 'LogonType', 'Type of logon event', ARRAY['2', '3', '10']),
+            (:inv_id, 'evtx_security_4625', 'FailureReason', NULL, ARRAY['Bad password'])
+        """
+        ),
+        {"inv_id": str(test_investigation.investigation_id)}
+    )
+    await db_session.commit()
+    
+    response = await async_client.get(
+        f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status",
+        headers=auth_headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_fields"] == 3
+    assert data["pending_fields"] == 1  # FailureReason has NULL description
+    assert data["completed_fields"] == 2
+    assert data["event_types"] == 2
+    assert data["is_complete"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_field_dictionary_status_complete(
+    async_client: AsyncClient,
+    test_investigation: Investigation,
+    auth_headers: dict,
+    db_session
+):
+    """Test field dictionary status when all fields have descriptions."""
+    from sqlalchemy import text
+    
+    # Insert field dictionary entries with all descriptions populated
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO field_dictionary 
+            (investigation_id, event_type, field_name, description, sample_values)
+            VALUES 
+            (:inv_id, 'evtx_security_4624', 'TargetUserName', 'Account targeted by logon', ARRAY['admin']),
+            (:inv_id, 'evtx_security_4624', 'LogonType', 'Type of logon event', ARRAY['2', '3'])
+        """
+        ),
+        {"inv_id": str(test_investigation.investigation_id)}
+    )
+    await db_session.commit()
+    
+    response = await async_client.get(
+        f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status",
+        headers=auth_headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_fields"] == 2
+    assert data["pending_fields"] == 0
+    assert data["completed_fields"] == 2
+    assert data["event_types"] == 1
+    assert data["is_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_field_dictionary_status_not_found(
+    async_client: AsyncClient,
+    auth_headers: dict
+):
+    """Test field dictionary status for non-existent investigation."""
+    fake_uuid = uuid4()
+    response = await async_client.get(
+        f"/api/v1/investigations/{fake_uuid}/field-dictionary/status",
+        headers=auth_headers
+    )
+    
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_get_field_dictionary_status_unauthorized(
+    async_client: AsyncClient,
+    test_investigation: Investigation
+):
+    """Test that field dictionary status requires authentication."""
+    response = await async_client.get(
+        f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status"
+    )
+    
+    assert response.status_code == 401

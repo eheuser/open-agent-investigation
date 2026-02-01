@@ -18,12 +18,17 @@ class LLMConfigCreate(BaseModel):
     min_p: Optional[float] = Field(None, ge=0.0, le=1.0, description="Min-p sampling (0.0-1.0, optional, provider-specific)")
     timeout: int = Field(default=300, gt=0, le=3600, description="Request timeout in seconds (max 3600)")
     is_active: bool = Field(default=True, description="Whether this config is active")
+    allow_concurrent_llm_calls: bool = Field(default=False, description="Enable parallel LLM requests (for high-capacity public APIs)")
     
     # Embedding provider configuration (optional - required for RAG)
     embedding_provider: Optional[str] = Field(None, description="Embedding provider: openai, cohere, ollama")
     embedding_api_url: Optional[str] = Field(None, description="Embedding API URL (required)")
     embedding_api_key: Optional[str] = Field(None, description="Embedding API key (will be encrypted)")
-    embedding_model_name: Optional[str] = Field(None, description="Embedding model identifier")
+    embedding_model_name: Optional[str] = Field(None, description="Embedding model identifier (for initial embeddings)")
+    embedding_max_context_length: Optional[int] = Field(8192, ge=1, le=1000000, description="Max tokens for embedding model (default: 8192)")
+    reranker_model_name: Optional[str] = Field(None, description="Reranker model identifier (for RAG reranking, more expensive/capable)")
+    reranker_max_context_length: Optional[int] = Field(8192, ge=1, le=1000000, description="Max tokens for reranker model (default: 8192)")
+    allow_concurrent_embedding_calls: bool = Field(default=False, description="Enable parallel embedding/reranking requests (for high-capacity public APIs)")
 
 
 class LLMConfigUpdate(BaseModel):
@@ -40,12 +45,17 @@ class LLMConfigUpdate(BaseModel):
     min_p: Optional[float] = Field(None, ge=0.0, le=1.0)
     timeout: Optional[int] = Field(None, gt=0, le=3600)
     is_active: Optional[bool] = None
+    allow_concurrent_llm_calls: Optional[bool] = None
     
     # Embedding provider configuration
     embedding_provider: Optional[str] = None
     embedding_api_url: Optional[str] = None
     embedding_api_key: Optional[str] = None
     embedding_model_name: Optional[str] = None
+    embedding_max_context_length: Optional[int] = Field(None, ge=1, le=1000000)
+    reranker_model_name: Optional[str] = None
+    reranker_max_context_length: Optional[int] = Field(None, ge=1, le=1000000)
+    allow_concurrent_embedding_calls: Optional[bool] = None
 
 
 class LLMConfigRead(BaseModel):
@@ -64,12 +74,17 @@ class LLMConfigRead(BaseModel):
     min_p: Optional[float] = None
     timeout: int
     is_active: bool
+    allow_concurrent_llm_calls: bool = False
     
     # Embedding provider configuration (optional - required for RAG)
     embedding_provider: Optional[str] = None
     embedding_api_url: Optional[str] = None
     embedding_api_key: Optional[str] = None  # Masked in responses
     embedding_model_name: Optional[str] = None
+    embedding_max_context_length: Optional[int] = None
+    reranker_model_name: Optional[str] = None
+    reranker_max_context_length: Optional[int] = None
+    allow_concurrent_embedding_calls: bool = False
     
     created_at: datetime
     updated_at: datetime
@@ -94,12 +109,17 @@ class LLMConfigReadMasked(BaseModel):
     min_p: Optional[float] = None
     timeout: int
     is_active: bool
+    allow_concurrent_llm_calls: bool = False
     
     # Embedding provider configuration (optional - required for RAG)
     embedding_provider: Optional[str] = None
     embedding_api_url: Optional[str] = None
     embedding_api_key_masked: str = "••••••••"  # Always masked
     embedding_model_name: Optional[str] = None
+    embedding_max_context_length: Optional[int] = None
+    reranker_model_name: Optional[str] = None
+    reranker_max_context_length: Optional[int] = None
+    allow_concurrent_embedding_calls: bool = False
     
     created_at: datetime
     updated_at: datetime

@@ -650,6 +650,10 @@ class EmbeddingService:
         api_url: str,
         api_key: Optional[str] = None,
         model_name: str = "text-embedding-ada-002",
+        embedding_max_context_length: int = 8192,
+        reranker_model_name: Optional[str] = None,
+        reranker_max_context_length: int = 8192,
+        allow_concurrent_calls: bool = False,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_backoff_base: int = DEFAULT_RETRY_BACKOFF_BASE,
         timeout: int = 120,
@@ -673,11 +677,91 @@ class EmbeddingService:
         self.api_url = api_url
         self.api_key = api_key
         self.model_name = model_name
+        self.embedding_max_context_length = embedding_max_context_length
+        self.reranker_model_name = reranker_model_name or model_name  # Fallback to embedding model
+        self.reranker_max_context_length = reranker_max_context_length
+        self.allow_concurrent_calls = allow_concurrent_calls
         self.max_retries = max_retries
         self.retry_backoff_base = retry_backoff_base
         self.timeout = timeout
 
         logger.debug(f"EmbeddingService initialized: {provider} at {api_url}")
+        logger.debug(f"Embedding model: {self.model_name} (max {self.embedding_max_context_length} tokens)")
+        logger.debug(f"Reranker model: {self.reranker_model_name} (max {self.reranker_max_context_length} tokens)")
+        logger.debug(f"Concurrent calls: {'enabled' if self.allow_concurrent_calls else 'disabled'}")
+
+    def _estimate_tokens(self, text: str) -> int:
+        """
+        Estimate the number of tokens in a text string.
+        Uses the same approximation as LLMService (1 token ≈ 4 characters).
+        
+        Args:
+            text (str): The text to estimate tokens for.
+            
+        Returns:
+            int: Estimated token count.
+        """
+        return len(text) // CHARS_PER_TOKEN
+
+    async def _embed_batch(
+        self,
+        texts: List[str],
+        headers: Dict[str, str],
+    ) -> List[List[float]]:
+        """
+        Internal method to embed a single batch of texts.
+        
+        Args:
+            texts: List of texts to embed.
+            headers: HTTP headers for the request.
+            
+        Returns:
+            List of embedding vectors.
+        """
+        # Build payload based on provider
+        if self.provider == "cohere":
+            payload = {
+                "model": self.model_name,
+                "texts": texts,
+                "input_type": "search_document",
+            }
+        else:
+            # OpenAI-compatible format (OpenAI, Ollama, LM Studio)
+            payload = {
+                "model": self.model_name,
+                "input": texts,
+            }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                self.api_url,
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=self.timeout),
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise RuntimeError(
+                        f"Embedding API error {response.status}: {error_text}"
+                    )
+
+                result = await response.json()
+
+        # Parse response based on provider
+        if self.provider == "cohere":
+            embeddings = result["embeddings"]
+        else:
+            # OpenAI-compatible format
+            if "data" in result:
+                embeddings = [item["embedding"] for item in result["data"]]
+            elif "embeddings" in result:
+                embeddings = result["embeddings"]
+            elif "embedding" in result:
+                embeddings = [result["embedding"]]
+            else:
+                raise ValueError(f"Unexpected response format: {result.keys()}")
+
+        return embeddings
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
         """
@@ -701,6 +785,17 @@ class EmbeddingService:
         if not texts:
             return []
 
+        # Check token limits and log warnings
+        for i, text in enumerate(texts):
+            estimated_tokens = self._estimate_tokens(text)
+            if estimated_tokens > self.embedding_max_context_length:
+                logger.warning(
+                    f"Text {i+1}/{len(texts)} exceeds embedding model token limit: "
+                    f"{estimated_tokens:,} tokens > {self.embedding_max_context_length:,} limit. "
+                    f"Text will be truncated by the API or may fail. "
+                    f"Preview: {text[:100]}..."
+                )
+
         # Build headers
         headers: Dict[str, str] = {"Content-Type": "application/json"}
 
@@ -708,52 +803,61 @@ class EmbeddingService:
             if self.provider in ["openai", "cohere"]:
                 headers["Authorization"] = f"Bearer {self.api_key}"
 
-        # Build payload based on provider
-        if self.provider == "cohere":
-            payload = {
-                "model": self.model_name,
-                "texts": texts,
-                "input_type": "search_document",
-            }
-        else:
-            # OpenAI-compatible format (OpenAI, Ollama, LM Studio)
-            payload = {
-                "model": self.model_name,
-                "input": texts,
-            }
+        # If concurrent calls enabled, batch and parallelize
+        if self.allow_concurrent_calls and len(texts) > 50:
+            logger.info(f"Concurrent embedding enabled: batching {len(texts):,} texts")
+            
+            # Split into batches of 50
+            batch_size = 50
+            batches = [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
+            
+            # Process batches in parallel
+            tasks = []
+            for batch in batches:
+                tasks.append(self._embed_batch_with_retry(batch, headers))
+            
+            # Wait for all batches
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Combine results and handle errors
+            all_embeddings: List[List[float]] = []
+            for i, result in enumerate(batch_results):
+                if isinstance(result, BaseException):
+                    logger.error(f"Batch {i+1}/{len(batches)} failed: {result}")
+                    raise result
+                # Type narrowing: result is List[List[float]] here
+                all_embeddings.extend(result)
+            
+            logger.debug(
+                f"Concurrent embedding successful: {len(texts):,} texts in {len(batches):,} parallel batches, "
+                f"{len(all_embeddings):,} embeddings generated"
+            )
+            
+            return all_embeddings
+        
+        # Sequential processing (default)
+        return await self._embed_batch_with_retry(texts, headers)
 
+    async def _embed_batch_with_retry(
+        self,
+        texts: List[str],
+        headers: Dict[str, str],
+    ) -> List[List[float]]:
+        """
+        Embed a batch of texts with retry logic.
+        
+        Args:
+            texts: List of texts to embed.
+            headers: HTTP headers for the request.
+            
+        Returns:
+            List of embedding vectors.
+        """
         # Retry loop
         last_error = None
         for attempt in range(self.max_retries):
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.api_url,
-                        json=payload,
-                        headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=self.timeout),
-                    ) as response:
-                        if response.status != 200:
-                            error_text = await response.text()
-                            raise RuntimeError(
-                                f"Embedding API error {response.status}: {error_text}"
-                            )
-
-                        result = await response.json()
-
-                # Parse response based on provider
-                if self.provider == "cohere":
-                    embeddings = result["embeddings"]
-                else:
-                    # OpenAI-compatible format
-                    if "data" in result:
-                        embeddings = [item["embedding"] for item in result["data"]]
-                    elif "embeddings" in result:
-                        embeddings = result["embeddings"]
-                    elif "embedding" in result:
-                        embeddings = [result["embedding"]]
-                    else:
-                        raise ValueError(f"Unexpected response format: {result.keys()}")
+                embeddings = await self._embed_batch(texts, headers)
 
                 logger.debug(
                     f"Embedding successful: {len(texts):,} texts, "
@@ -776,6 +880,181 @@ class EmbeddingService:
 
         # All retries failed
         raise RuntimeError(f"Embedding failed after {self.max_retries} attempts: {last_error}")
+
+    async def rerank(
+        self,
+        query: str,
+        documents: List[str],
+        top_k: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Rerank documents using the configured reranker model.
+
+        Args:
+            query (str): The search query to compare against documents.
+            documents (List[str]): List of document texts to rerank.
+            top_k (Optional[int]): Maximum number of results to return. If None, returns all.
+
+        Returns:
+            List[Dict[str, Any]]: List of reranked results with keys:
+                - 'index': Original index in documents list
+                - 'score': Relevance score
+                - 'text': Document text
+
+        Raises:
+            RuntimeError: If all retry attempts fail or if the API returns a non-200 status.
+        """
+        if not documents:
+            return []
+
+        # Check token limits for query and documents
+        query_tokens = self._estimate_tokens(query)
+        if query_tokens > self.reranker_max_context_length:
+            logger.warning(
+                f"Query exceeds reranker model token limit: "
+                f"{query_tokens:,} tokens > {self.reranker_max_context_length:,} limit. "
+                f"Query: {query[:100]}..."
+            )
+
+        for i, doc in enumerate(documents):
+            estimated_tokens = self._estimate_tokens(doc)
+            if estimated_tokens > self.reranker_max_context_length:
+                logger.warning(
+                    f"Document {i+1}/{len(documents)} exceeds reranker model token limit: "
+                    f"{estimated_tokens:,} tokens > {self.reranker_max_context_length:,} limit. "
+                    f"Document will be truncated by the API or may fail. "
+                    f"Preview: {doc[:100]}..."
+                )
+
+        # Build headers
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+
+        if self.api_key:
+            if self.provider in ["openai", "cohere"]:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+
+        # If concurrent calls enabled and many documents, batch and parallelize
+        if self.allow_concurrent_calls and len(documents) > 100:
+            logger.info(f"Concurrent reranking enabled: batching {len(documents):,} documents")
+            
+            # Split into batches of 100
+            batch_size = 100
+            batches = [documents[i:i + batch_size] for i in range(0, len(documents), batch_size)]
+            
+            # Process batches in parallel
+            tasks = []
+            for batch_idx, batch in enumerate(batches):
+                tasks.append(self._rerank_batch_with_retry(query, batch, headers, top_k, batch_idx))
+            
+            # Wait for all batches
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Combine results and handle errors
+            all_reranked: List[Dict[str, Any]] = []
+            for i, result in enumerate(batch_results):
+                if isinstance(result, BaseException):
+                    logger.error(f"Rerank batch {i+1}/{len(batches)} failed: {result}")
+                    raise result
+                # Type narrowing: result is List[Dict[str, Any]] here
+                all_reranked.extend(result)
+            
+            # Re-sort combined results by score and apply top_k
+            all_reranked.sort(key=lambda x: x.get("score", x.get("relevance_score", 0.0)), reverse=True)
+            if top_k:
+                all_reranked = all_reranked[:top_k]
+            
+            logger.debug(
+                f"Concurrent reranking successful: {len(documents):,} documents in {len(batches):,} parallel batches, "
+                f"{len(all_reranked):,} results returned"
+            )
+            
+            return all_reranked
+        
+        # Sequential processing (default)
+        return await self._rerank_batch_with_retry(query, documents, headers, top_k, 0)
+
+    async def _rerank_batch_with_retry(
+        self,
+        query: str,
+        documents: List[str],
+        headers: Dict[str, str],
+        top_k: Optional[int],
+        batch_idx: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Rerank a batch of documents with retry logic.
+        
+        Args:
+            query: The search query.
+            documents: List of document texts.
+            headers: HTTP headers.
+            top_k: Maximum results to return.
+            batch_idx: Batch index for logging.
+            
+        Returns:
+            List of reranked results.
+        """
+        # Use reranker model instead of embedding model
+        payload = {
+            "model": self.reranker_model_name,
+            "query": query,
+            "documents": documents,
+        }
+
+        if top_k is not None:
+            payload["top_n"] = top_k
+
+        # Retry loop
+        last_error = None
+        for attempt in range(self.max_retries):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    # Use rerank endpoint (OpenAI-compatible format)
+                    rerank_url = self.api_url.replace("/embeddings", "/rerank")
+                    
+                    async with session.post(
+                        rerank_url,
+                        json=payload,
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    ) as response:
+                        if response.status != 200:
+                            error_text = await response.text()
+                            raise RuntimeError(
+                                f"Reranking API error {response.status}: {error_text}"
+                            )
+
+                        result = await response.json()
+
+                # Parse response (OpenAI-compatible format)
+                if "results" in result:
+                    reranked = result["results"]
+                elif "data" in result:
+                    reranked = result["data"]
+                else:
+                    raise ValueError(f"Unexpected rerank response format: {result.keys()}")
+
+                logger.debug(
+                    f"Reranking successful (batch {batch_idx}): {len(documents):,} documents, "
+                    f"{len(reranked):,} results returned"
+                )
+
+                return reranked
+
+            except Exception as e:
+                last_error = e
+                logger.error(
+                    f"Reranking call failed (batch {batch_idx}, attempt {attempt + 1}/{self.max_retries}): {e}",
+                    exc_info=True,
+                )
+
+                if attempt < self.max_retries - 1:
+                    wait_time = self.retry_backoff_base ** (attempt + 1)
+                    logger.info(f"Retrying reranking in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+
+        # All retries failed
+        raise RuntimeError(f"Reranking batch {batch_idx} failed after {self.max_retries} attempts: {last_error}")
 
     def get_embedding_dimension(self) -> int:
         """

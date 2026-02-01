@@ -413,6 +413,15 @@ CREATE TABLE llm_provider_config (
 - `max_context_length` - Token limit (e.g., 8192, 32768)
 - `temperature` - Sampling temperature (0.0-2.0)
 - `is_active` - Whether this config is currently active (only one per user)
+- `allow_concurrent_llm_calls` - Enable parallel LLM requests (default: false)
+- `embedding_provider` - Embedding provider for RAG (e.g., "openai", "cohere", "ollama")
+- `embedding_api_url` - Embedding API endpoint
+- `embedding_api_key` - Embedding API key (encrypted)
+- `embedding_model_name` - Model for initial embedding generation (e.g., "text-embedding-3-small")
+- `embedding_max_context_length` - Max tokens for embedding model (default: 8192)
+- `reranker_model_name` - Model for reranking top candidates (e.g., "text-embedding-3-large")
+- `reranker_max_context_length` - Max tokens for reranker model (default: 8192)
+- `allow_concurrent_embedding_calls` - Enable parallel embedding/reranking requests (default: false)
 
 **Indexes**:
 - `idx_llm_config_user` - Filter by user

@@ -189,10 +189,10 @@ const TimelineViewer: React.FC<TimelineViewerProps> = ({ investigationId }) => {
           }
         );
         
-        console.log('Timeline fields API response:', response.data);
+        //console.log('Timeline fields API response:', response.data);
         if (response.data && response.data.fields) {
           setCommonFields(response.data.fields);
-          console.log(`Loaded ${response.data.fields.length} fields from ${response.data.entries_sampled} timeline entries`);
+          //console.log(`Loaded ${response.data.fields.length} fields from ${response.data.entries_sampled} timeline entries`);
         } else {
           console.warn('No fields returned from API');
           setCommonFields([]);
@@ -735,7 +735,7 @@ const TimelineViewer: React.FC<TimelineViewerProps> = ({ investigationId }) => {
                         title={`Event Data (Event ID: ${entry.event_id})`}
                         onAddToTimeline={(key, value) => {
                           // Could implement adding specific fields to timeline
-                          console.log('Add to timeline:', key, value);
+                          //console.log('Add to timeline:', key, value);
                         }}
                       />
                     </div>

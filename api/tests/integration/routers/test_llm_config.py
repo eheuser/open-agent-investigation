@@ -118,6 +118,86 @@ class TestCreateLLMConfig:
 
         assert response.status_code == 422
 
+    async def test_create_llm_config_with_concurrent_and_reranker(self, async_client: AsyncClient, auth_headers):
+        """
+        Test creating an LLM configuration with all new fields (concurrent calls, reranker, token limits).
+        """
+        payload = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "api_key": "sk-test123",
+            "model_name": "gpt-4",
+            "max_context_length": 128000,
+            "temperature": 0.7,
+            "is_active": True,
+            "allow_concurrent_llm_calls": True,
+            "embedding_provider": "openai",
+            "embedding_api_url": "https://api.openai.com/v1/embeddings",
+            "embedding_api_key": "sk-embed123",
+            "embedding_model_name": "text-embedding-3-small",
+            "embedding_max_context_length": 8192,
+            "reranker_model_name": "text-embedding-3-large",
+            "reranker_max_context_length": 8192,
+            "allow_concurrent_embedding_calls": True,
+        }
+
+        response = await async_client.post(
+            "/api/v1/llm-config/", headers=auth_headers, json=payload
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        
+        # Verify all new fields are returned
+        assert data["allow_concurrent_llm_calls"] is True
+        assert data["embedding_max_context_length"] == 8192
+        assert data["reranker_model_name"] == "text-embedding-3-large"
+        assert data["reranker_max_context_length"] == 8192
+        assert data["allow_concurrent_embedding_calls"] is True
+
+    async def test_create_and_retrieve_preserves_all_fields(self, async_client: AsyncClient, auth_headers):
+        """
+        Test that creating a config and then retrieving it returns all the same fields.
+        This catches issues where fields are saved but not returned in responses.
+        """
+        payload = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "api_key": "sk-test123",
+            "model_name": "gpt-4",
+            "max_context_length": 128000,
+            "temperature": 0.7,
+            "allow_concurrent_llm_calls": True,
+            "embedding_provider": "openai",
+            "embedding_api_url": "https://api.openai.com/v1/embeddings",
+            "embedding_model_name": "text-embedding-3-small",
+            "embedding_max_context_length": 8192,
+            "reranker_model_name": "text-embedding-3-large",
+            "reranker_max_context_length": 16384,
+            "allow_concurrent_embedding_calls": True,
+        }
+
+        # Create
+        create_response = await async_client.post(
+            "/api/v1/llm-config/", headers=auth_headers, json=payload
+        )
+        assert create_response.status_code == 201
+        config_id = create_response.json()["config_id"]
+
+        # Retrieve
+        get_response = await async_client.get(
+            f"/api/v1/llm-config/{config_id}", headers=auth_headers
+        )
+        assert get_response.status_code == 200
+        data = get_response.json()
+
+        # Verify all fields match
+        assert data["allow_concurrent_llm_calls"] is True
+        assert data["embedding_max_context_length"] == 8192
+        assert data["reranker_model_name"] == "text-embedding-3-large"
+        assert data["reranker_max_context_length"] == 16384
+        assert data["allow_concurrent_embedding_calls"] is True
+
 
 @pytest.mark.integration
 class TestListLLMConfigs:
@@ -335,6 +415,42 @@ class TestUpdateLLMConfig:
         data = response.json()
         assert data["temperature"] == 0.9
         assert data["model_name"] == "llama3.2:latest"
+
+    async def test_update_config_new_fields(self, async_client: AsyncClient, auth_headers):
+        """
+        Test updating the new concurrent and reranker fields.
+        """
+        # Create a config
+        payload = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "api_key": "sk-test",
+            "model_name": "gpt-4",
+            "max_context_length": 8192,
+            "temperature": 0.7,
+        }
+        create_response = await async_client.post(
+            "/api/v1/llm-config/", headers=auth_headers, json=payload
+        )
+        config_id = create_response.json()["config_id"]
+
+        # Update with new fields
+        update_payload = {
+            "allow_concurrent_llm_calls": True,
+            "reranker_model_name": "text-embedding-3-large",
+            "reranker_max_context_length": 16384,
+            "allow_concurrent_embedding_calls": True,
+        }
+        response = await async_client.patch(
+            f"/api/v1/llm-config/{config_id}", headers=auth_headers, json=update_payload
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["allow_concurrent_llm_calls"] is True
+        assert data["reranker_model_name"] == "text-embedding-3-large"
+        assert data["reranker_max_context_length"] == 16384
+        assert data["allow_concurrent_embedding_calls"] is True
 
     async def test_update_config_not_found(self, async_client: AsyncClient, auth_headers):
         """

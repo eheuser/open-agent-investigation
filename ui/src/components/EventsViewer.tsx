@@ -738,7 +738,7 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
                           title=""
                           onAddToTimeline={(key, value) => {
                             // Could implement adding specific fields to timeline
-                            console.log('Add to timeline:', key, value);
+                            //console.log('Add to timeline:', key, value);
                           }}
                         />
                       </div>

@@ -640,6 +640,10 @@ class TestHandleRAGQuery:
         mock_config.embedding_api_url = "http://api.example.com"
         mock_config.embedding_api_key = "key123"
         mock_config.embedding_model_name = "text-embedding-ada-002"
+        mock_config.embedding_max_context_length = 8192
+        mock_config.reranker_model_name = None  # No reranker
+        mock_config.reranker_max_context_length = 8192
+        mock_config.allow_concurrent_embedding_calls = False
         mock_config.provider = "openai"
         mock_config.api_endpoint = "http://api.example.com"
         mock_config.api_key = "key123"
@@ -970,3 +974,303 @@ class TestHandleRAGQuery:
         assert len(chunks) == 1
         assert chunks[0]["type"] == "error"
         assert "No response from LLM" in chunks[0]["content"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestRAGHandlerReranking:
+    """Test reranking functionality in RAG handler."""
+
+    async def test_reranking_triggered_when_configured(self):
+        """
+        Test that reranking is triggered when reranker_model_name is different from embedding_model_name.
+        """
+        db = AsyncMock()
+        inv_id = uuid4()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = "openai"
+        mock_config.embedding_api_url = "http://api.example.com"
+        mock_config.embedding_api_key = "key123"
+        mock_config.embedding_model_name = "text-embedding-3-small"
+        mock_config.embedding_max_context_length = 8192
+        mock_config.reranker_model_name = "text-embedding-3-large"  # Different model
+        mock_config.reranker_max_context_length = 8192
+        mock_config.allow_concurrent_embedding_calls = False
+        mock_config.provider = "openai"
+        mock_config.api_endpoint = "http://api.example.com"
+        mock_config.api_key = "key123"
+        mock_config.model_name = "gpt-4"
+        mock_config.max_context_length = 8192
+        mock_config.temperature = 0.7
+        mock_config.top_p = None
+        mock_config.top_k = None
+        mock_config.min_p = None
+        mock_config.timeout = 300
+
+        mock_investigation = MagicMock()
+        mock_investigation.title = "Test"
+
+        # Create many chunks to test reranking
+        mock_chunks = [
+            EmbeddingChunk(id=i, owner_type="chat", owner_id=i, text=f"Text {i}", score=0.9 - i * 0.01)
+            for i in range(100)
+        ]
+
+        with patch(
+            "app.services.handlers.rag_handler.get_active_llm_config", return_value=mock_config
+        ):
+            with patch("app.services.handlers.rag_handler._expand_query_with_llm", return_value=[]):
+                with patch("app.services.handlers.rag_handler.Embedder") as MockEmbedder:
+                    with patch("app.services.handlers.rag_handler.Retriever") as MockRetriever:
+                        with patch(
+                            "app.services.handlers.rag_handler.get_investigation",
+                            return_value=mock_investigation,
+                        ):
+                            with patch(
+                                "app.services.handlers.rag_handler.RAGContextManager.prepare_context",
+                                return_value=("system", "query"),
+                            ):
+                                with patch(
+                                    "app.services.handlers.rag_handler.LLMService"
+                                ) as MockLLMService:
+                                    mock_embedder = AsyncMock()
+                                    mock_embedder.embed.return_value = [np.array([0.1, 0.2])]
+                                    # Mock rerank method
+                                    mock_embedder.rerank = AsyncMock(return_value=[
+                                        {"index": 5, "score": 0.95},
+                                        {"index": 2, "score": 0.92},
+                                    ])
+                                    MockEmbedder.return_value = mock_embedder
+
+                                    mock_retriever = AsyncMock()
+                                    mock_retriever.retrieve.return_value = mock_chunks
+                                    MockRetriever.return_value = mock_retriever
+
+                                    mock_llm_service = AsyncMock()
+                                    mock_llm_service.extract_text_response.return_value = "Answer"
+                                    MockLLMService.return_value = mock_llm_service
+
+                                    chunks = []
+                                    async for chunk in handle_rag_query(db, inv_id, "test query", 1):
+                                        chunks.append(chunk)
+
+        # Verify rerank was called
+        mock_embedder.rerank.assert_called_once()
+
+    async def test_reranking_skipped_when_same_model(self):
+        """
+        Test that reranking is skipped when reranker_model_name is same as embedding_model_name.
+        """
+        db = AsyncMock()
+        inv_id = uuid4()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = "openai"
+        mock_config.embedding_api_url = "http://api.example.com"
+        mock_config.embedding_api_key = "key123"
+        mock_config.embedding_model_name = "text-embedding-3-small"
+        mock_config.embedding_max_context_length = 8192
+        mock_config.reranker_model_name = "text-embedding-3-small"  # Same model
+        mock_config.reranker_max_context_length = 8192
+        mock_config.allow_concurrent_embedding_calls = False
+        mock_config.provider = "openai"
+        mock_config.api_endpoint = "http://api.example.com"
+        mock_config.api_key = "key123"
+        mock_config.model_name = "gpt-4"
+        mock_config.max_context_length = 8192
+        mock_config.temperature = 0.7
+        mock_config.top_p = None
+        mock_config.top_k = None
+        mock_config.min_p = None
+        mock_config.timeout = 300
+
+        mock_investigation = MagicMock()
+        mock_investigation.title = "Test"
+
+        mock_chunks = [
+            EmbeddingChunk(id=1, owner_type="chat", owner_id=1, text="Text 1", score=0.9),
+        ]
+
+        with patch(
+            "app.services.handlers.rag_handler.get_active_llm_config", return_value=mock_config
+        ):
+            with patch("app.services.handlers.rag_handler._expand_query_with_llm", return_value=[]):
+                with patch("app.services.handlers.rag_handler.Embedder") as MockEmbedder:
+                    with patch("app.services.handlers.rag_handler.Retriever") as MockRetriever:
+                        with patch(
+                            "app.services.handlers.rag_handler.get_investigation",
+                            return_value=mock_investigation,
+                        ):
+                            with patch(
+                                "app.services.handlers.rag_handler.RAGContextManager.prepare_context",
+                                return_value=("system", "query"),
+                            ):
+                                with patch(
+                                    "app.services.handlers.rag_handler.LLMService"
+                                ) as MockLLMService:
+                                    mock_embedder = AsyncMock()
+                                    mock_embedder.embed.return_value = [np.array([0.1, 0.2])]
+                                    mock_embedder.rerank = AsyncMock()
+                                    MockEmbedder.return_value = mock_embedder
+
+                                    mock_retriever = AsyncMock()
+                                    mock_retriever.retrieve.return_value = mock_chunks
+                                    MockRetriever.return_value = mock_retriever
+
+                                    mock_llm_service = AsyncMock()
+                                    mock_llm_service.extract_text_response.return_value = "Answer"
+                                    MockLLMService.return_value = mock_llm_service
+
+                                    chunks = []
+                                    async for chunk in handle_rag_query(db, inv_id, "test query", 1):
+                                        chunks.append(chunk)
+
+        # Verify rerank was NOT called
+        mock_embedder.rerank.assert_not_called()
+
+    async def test_reranking_skipped_when_not_configured(self):
+        """
+        Test that reranking is skipped when reranker_model_name is None.
+        """
+        db = AsyncMock()
+        inv_id = uuid4()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = "openai"
+        mock_config.embedding_api_url = "http://api.example.com"
+        mock_config.embedding_api_key = "key123"
+        mock_config.embedding_model_name = "text-embedding-3-small"
+        mock_config.embedding_max_context_length = 8192
+        mock_config.reranker_model_name = None  # Not configured
+        mock_config.reranker_max_context_length = 8192
+        mock_config.allow_concurrent_embedding_calls = False
+        mock_config.provider = "openai"
+        mock_config.api_endpoint = "http://api.example.com"
+        mock_config.api_key = "key123"
+        mock_config.model_name = "gpt-4"
+        mock_config.max_context_length = 8192
+        mock_config.temperature = 0.7
+        mock_config.top_p = None
+        mock_config.top_k = None
+        mock_config.min_p = None
+        mock_config.timeout = 300
+
+        mock_investigation = MagicMock()
+        mock_investigation.title = "Test"
+
+        mock_chunks = [
+            EmbeddingChunk(id=1, owner_type="chat", owner_id=1, text="Text 1", score=0.9),
+        ]
+
+        with patch(
+            "app.services.handlers.rag_handler.get_active_llm_config", return_value=mock_config
+        ):
+            with patch("app.services.handlers.rag_handler._expand_query_with_llm", return_value=[]):
+                with patch("app.services.handlers.rag_handler.Embedder") as MockEmbedder:
+                    with patch("app.services.handlers.rag_handler.Retriever") as MockRetriever:
+                        with patch(
+                            "app.services.handlers.rag_handler.get_investigation",
+                            return_value=mock_investigation,
+                        ):
+                            with patch(
+                                "app.services.handlers.rag_handler.RAGContextManager.prepare_context",
+                                return_value=("system", "query"),
+                            ):
+                                with patch(
+                                    "app.services.handlers.rag_handler.LLMService"
+                                ) as MockLLMService:
+                                    mock_embedder = AsyncMock()
+                                    mock_embedder.embed.return_value = [np.array([0.1, 0.2])]
+                                    mock_embedder.rerank = AsyncMock()
+                                    MockEmbedder.return_value = mock_embedder
+
+                                    mock_retriever = AsyncMock()
+                                    mock_retriever.retrieve.return_value = mock_chunks
+                                    MockRetriever.return_value = mock_retriever
+
+                                    mock_llm_service = AsyncMock()
+                                    mock_llm_service.extract_text_response.return_value = "Answer"
+                                    MockLLMService.return_value = mock_llm_service
+
+                                    chunks = []
+                                    async for chunk in handle_rag_query(db, inv_id, "test query", 1):
+                                        chunks.append(chunk)
+
+        # Verify rerank was NOT called
+        mock_embedder.rerank.assert_not_called()
+
+    async def test_reranking_fallback_on_error(self):
+        """
+        Test that RAG handler falls back to vector similarity when reranking fails.
+        """
+        db = AsyncMock()
+        inv_id = uuid4()
+
+        mock_config = MagicMock()
+        mock_config.embedding_provider = "openai"
+        mock_config.embedding_api_url = "http://api.example.com"
+        mock_config.embedding_api_key = "key123"
+        mock_config.embedding_model_name = "text-embedding-3-small"
+        mock_config.embedding_max_context_length = 8192
+        mock_config.reranker_model_name = "text-embedding-3-large"  # Different model
+        mock_config.reranker_max_context_length = 8192
+        mock_config.allow_concurrent_embedding_calls = False
+        mock_config.provider = "openai"
+        mock_config.api_endpoint = "http://api.example.com"
+        mock_config.api_key = "key123"
+        mock_config.model_name = "gpt-4"
+        mock_config.max_context_length = 8192
+        mock_config.temperature = 0.7
+        mock_config.top_p = None
+        mock_config.top_k = None
+        mock_config.min_p = None
+        mock_config.timeout = 300
+
+        mock_investigation = MagicMock()
+        mock_investigation.title = "Test"
+
+        mock_chunks = [
+            EmbeddingChunk(id=i, owner_type="chat", owner_id=i, text=f"Text {i}", score=0.9 - i * 0.01)
+            for i in range(100)
+        ]
+
+        with patch(
+            "app.services.handlers.rag_handler.get_active_llm_config", return_value=mock_config
+        ):
+            with patch("app.services.handlers.rag_handler._expand_query_with_llm", return_value=[]):
+                with patch("app.services.handlers.rag_handler.Embedder") as MockEmbedder:
+                    with patch("app.services.handlers.rag_handler.Retriever") as MockRetriever:
+                        with patch(
+                            "app.services.handlers.rag_handler.get_investigation",
+                            return_value=mock_investigation,
+                        ):
+                            with patch(
+                                "app.services.handlers.rag_handler.RAGContextManager.prepare_context",
+                                return_value=("system", "query"),
+                            ):
+                                with patch(
+                                    "app.services.handlers.rag_handler.LLMService"
+                                ) as MockLLMService:
+                                    mock_embedder = AsyncMock()
+                                    mock_embedder.embed.return_value = [np.array([0.1, 0.2])]
+                                    # Mock rerank to raise exception
+                                    mock_embedder.rerank = AsyncMock(side_effect=Exception("Rerank failed"))
+                                    MockEmbedder.return_value = mock_embedder
+
+                                    mock_retriever = AsyncMock()
+                                    mock_retriever.retrieve.return_value = mock_chunks
+                                    MockRetriever.return_value = mock_retriever
+
+                                    mock_llm_service = AsyncMock()
+                                    mock_llm_service.extract_text_response.return_value = "Answer"
+                                    MockLLMService.return_value = mock_llm_service
+
+                                    chunks = []
+                                    async for chunk in handle_rag_query(db, inv_id, "test query", 1):
+                                        chunks.append(chunk)
+
+        # Should still succeed with vector similarity fallback
+        assert len(chunks) == 1
+        assert chunks[0]["type"] == "answer_chunk"
+        assert chunks[0]["content"] == "Answer"

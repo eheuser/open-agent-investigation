@@ -488,3 +488,221 @@ class TestDeleteInvestigation:
         )
         artifacts = result.scalars().all()
         assert len(artifacts) == 0
+
+
+@pytest.mark.integration
+class TestFieldDictionaryStatus:
+    """Test field dictionary status endpoint."""
+
+    async def test_field_dictionary_status_empty(
+        self, async_client: AsyncClient, auth_headers, test_investigation
+    ):
+        """
+        Test getting field dictionary status when no fields have been discovered.
+
+        Verifies that the endpoint returns zero counts for all metrics and
+        `is_complete` is False when no field_dictionary entries exist.
+        """
+        response = await async_client.get(
+            f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["total_fields"] == 0
+        assert data["pending_fields"] == 0
+        assert data["completed_fields"] == 0
+        assert data["event_types"] == 0
+        assert data["is_complete"] is False
+
+    async def test_field_dictionary_status_with_pending_fields(
+        self, async_client: AsyncClient, auth_headers, test_investigation, db_session
+    ):
+        """
+        Test field dictionary status when some fields are pending LLM descriptions.
+
+        Creates field_dictionary entries where some have NULL descriptions (pending)
+        and verifies the counts are accurate.
+        """
+        from sqlalchemy import text
+
+        # Insert field dictionary entries with mixed completion status
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO field_dictionary 
+                (investigation_id, event_type, field_name, description, sample_values)
+                VALUES 
+                (:inv_id, 'evtx_security_4624', 'TargetUserName', 'Account targeted by logon', ARRAY['admin', 'user']),
+                (:inv_id, 'evtx_security_4624', 'LogonType', 'Type of logon event', ARRAY['2', '3', '10']),
+                (:inv_id, 'evtx_security_4624', 'IpAddress', NULL, ARRAY['192.168.1.1']),
+                (:inv_id, 'evtx_security_4625', 'FailureReason', NULL, ARRAY['Bad password']),
+                (:inv_id, 'mft_entry', 'FileName', 'Name of file', ARRAY['test.txt'])
+            """
+            ),
+            {"inv_id": str(test_investigation.investigation_id)},
+        )
+        await db_session.commit()
+
+        response = await async_client.get(
+            f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["total_fields"] == 5
+        assert data["pending_fields"] == 2  # IpAddress and FailureReason
+        assert data["completed_fields"] == 3
+        assert data["event_types"] == 3  # evtx_security_4624, evtx_security_4625, mft_entry
+        assert data["is_complete"] is False
+
+    async def test_field_dictionary_status_complete(
+        self, async_client: AsyncClient, auth_headers, test_investigation, db_session
+    ):
+        """
+        Test field dictionary status when all fields have LLM descriptions.
+
+        Verifies that `is_complete` is True when no fields have NULL descriptions.
+        """
+        from sqlalchemy import text
+
+        # Insert field dictionary entries all with descriptions
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO field_dictionary 
+                (investigation_id, event_type, field_name, description, sample_values)
+                VALUES 
+                (:inv_id, 'evtx_security_4624', 'TargetUserName', 'Account targeted by logon', ARRAY['admin']),
+                (:inv_id, 'evtx_security_4624', 'LogonType', 'Type of logon event', ARRAY['2', '3']),
+                (:inv_id, 'mft_entry', 'FileName', 'Name of file', ARRAY['test.txt'])
+            """
+            ),
+            {"inv_id": str(test_investigation.investigation_id)},
+        )
+        await db_session.commit()
+
+        response = await async_client.get(
+            f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["total_fields"] == 3
+        assert data["pending_fields"] == 0
+        assert data["completed_fields"] == 3
+        assert data["event_types"] == 2
+        assert data["is_complete"] is True
+
+    async def test_field_dictionary_status_not_found(
+        self, async_client: AsyncClient, auth_headers
+    ):
+        """
+        Test field dictionary status for non-existent investigation.
+
+        Verifies that the endpoint returns 404 when the investigation doesn't exist.
+        """
+        fake_id = uuid.uuid4()
+        response = await async_client.get(
+            f"/api/v1/investigations/{fake_id}/field-dictionary/status",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
+
+    async def test_field_dictionary_status_unauthenticated(
+        self, async_client: AsyncClient, test_investigation
+    ):
+        """
+        Test that field dictionary status requires authentication.
+
+        Verifies that unauthenticated requests are rejected with 401.
+        """
+        response = await async_client.get(
+            f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status"
+        )
+
+        assert response.status_code == 401
+
+    async def test_field_dictionary_status_access_control(
+        self, async_client: AsyncClient, db_session, test_user, admin_user
+    ):
+        """
+        Test that users cannot access field dictionary status for investigations they don't own.
+
+        Creates an investigation owned by admin, then attempts to access its field
+        dictionary status as a regular user, expecting 403 Forbidden.
+        """
+        from app.auth import create_access_token
+        from app.crud.investigation import create_investigation
+
+        # Create investigation owned by admin
+        admin_inv = await create_investigation(
+            db_session, title="Admin Investigation", owner_user_id=admin_user.user_id
+        )
+        await db_session.commit()
+
+        # Try to access as regular user
+        user_token = create_access_token(
+            user_id=test_user.user_id, username=test_user.username, role=test_user.role
+        )
+
+        response = await async_client.get(
+            f"/api/v1/investigations/{admin_inv.investigation_id}/field-dictionary/status",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+
+        # Should be forbidden for non-owner regular user
+        assert response.status_code == 403
+
+    async def test_field_dictionary_status_multiple_event_types(
+        self, async_client: AsyncClient, auth_headers, test_investigation, db_session
+    ):
+        """
+        Test field dictionary status correctly counts distinct event types.
+
+        Verifies that the event_types count reflects the number of unique event_type
+        values, not the total field count.
+        """
+        from sqlalchemy import text
+
+        # Insert fields across multiple event types
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO field_dictionary 
+                (investigation_id, event_type, field_name, description, sample_values)
+                VALUES 
+                (:inv_id, 'evtx_security_4624', 'Field1', 'Description 1', ARRAY['val1']),
+                (:inv_id, 'evtx_security_4624', 'Field2', 'Description 2', ARRAY['val2']),
+                (:inv_id, 'evtx_security_4624', 'Field3', 'Description 3', ARRAY['val3']),
+                (:inv_id, 'evtx_security_4625', 'Field1', 'Description 1', ARRAY['val1']),
+                (:inv_id, 'mft_entry', 'Field1', 'Description 1', ARRAY['val1']),
+                (:inv_id, 'mft_entry', 'Field2', 'Description 2', ARRAY['val2'])
+            """
+            ),
+            {"inv_id": str(test_investigation.investigation_id)},
+        )
+        await db_session.commit()
+
+        response = await async_client.get(
+            f"/api/v1/investigations/{test_investigation.investigation_id}/field-dictionary/status",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["total_fields"] == 6
+        assert data["event_types"] == 3  # evtx_security_4624, evtx_security_4625, mft_entry
+        assert data["completed_fields"] == 6
+        assert data["pending_fields"] == 0
+        assert data["is_complete"] is True

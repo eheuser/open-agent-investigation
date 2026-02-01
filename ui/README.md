@@ -159,6 +159,11 @@ npm run dev
 - Search/filter investigations
 - View investigation metadata (created date, owner)
 
+**First-time Login Behavior**:
+- If no LLM configuration exists, users are automatically redirected to Settings
+- A welcome banner explains the need to configure an LLM provider
+- Once configured, users can access the dashboard and create investigations
+
 **Screenshot Flow**:
 ```
 Dashboard → Click "Create Investigation"
@@ -376,6 +381,11 @@ playbook: |
 - Max context length
 - API key management (encrypted)
 - Active config selection
+
+**First-time Setup**:
+- Users without an LLM configuration are automatically redirected here after login
+- A welcome banner provides guidance on configuring the LLM provider
+- Configuration is required before the system can process natural language queries
 
 ---
 

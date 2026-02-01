@@ -45,10 +45,15 @@ def _to_masked_response(config: LLMProviderConfig) -> LLMConfigReadMasked:
         min_p=float(getattr(config, "min_p")) if getattr(config, "min_p") is not None else None,
         timeout=getattr(config, "timeout"),
         is_active=getattr(config, "is_active"),
+        allow_concurrent_llm_calls=getattr(config, "allow_concurrent_llm_calls", False),
         # Embedding configuration
         embedding_provider=getattr(config, "embedding_provider", None),
         embedding_api_url=getattr(config, "embedding_api_url", None),
         embedding_model_name=getattr(config, "embedding_model_name", None),
+        embedding_max_context_length=getattr(config, "embedding_max_context_length", None),
+        reranker_model_name=getattr(config, "reranker_model_name", None),
+        reranker_max_context_length=getattr(config, "reranker_max_context_length", None),
+        allow_concurrent_embedding_calls=getattr(config, "allow_concurrent_embedding_calls", False),
         created_at=getattr(config, "created_at"),
         updated_at=getattr(config, "updated_at"),
     )
@@ -105,11 +110,16 @@ async def create_config(
         min_p=payload.min_p,
         timeout=payload.timeout,
         is_active=payload.is_active,
+        allow_concurrent_llm_calls=payload.allow_concurrent_llm_calls,
         # Embedding configuration
         embedding_provider=payload.embedding_provider,
         embedding_api_url=payload.embedding_api_url,
         embedding_api_key=payload.embedding_api_key,
         embedding_model_name=payload.embedding_model_name,
+        embedding_max_context_length=payload.embedding_max_context_length,
+        reranker_model_name=payload.reranker_model_name,
+        reranker_max_context_length=payload.reranker_max_context_length,
+        allow_concurrent_embedding_calls=payload.allow_concurrent_embedding_calls,
     )
 
     return _to_masked_response(config)

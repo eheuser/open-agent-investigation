@@ -5,7 +5,7 @@ Tests Pydantic validation for LLM configuration data.
 
 import pytest
 from pydantic import ValidationError
-from app.schemas.llm_config import LLMConfigCreate, LLMConfigRead
+from app.schemas.llm_config import LLMConfigCreate, LLMConfigRead, LLMConfigUpdate, LLMConfigReadMasked
 
 
 @pytest.mark.unit
@@ -73,15 +73,21 @@ class TestLLMConfigCreate:
             "max_context_length": 8000,
             "temperature": 0.7,
             "embedding_provider": "openai",
-            "embedding_api_url": "https://api.openai.com/v1",
+            "embedding_api_url": "https://api.openai.com/v1/embeddings",
             "embedding_api_key": "sk-embed123",
             "embedding_model_name": "text-embedding-3-small",
+            "embedding_max_context_length": 8192,
+            "reranker_model_name": "text-embedding-3-large",
+            "reranker_max_context_length": 8192,
         }
 
         config = LLMConfigCreate(**data)
 
         assert config.embedding_provider == "openai"
         assert config.embedding_model_name == "text-embedding-3-small"
+        assert config.embedding_max_context_length == 8192
+        assert config.reranker_model_name == "text-embedding-3-large"
+        assert config.reranker_max_context_length == 8192
 
     def test_create_config_missing_required_field(self):
         """
@@ -138,6 +144,8 @@ class TestLLMConfigRead:
             "temperature": 0.7,
             "timeout": 300,
             "is_active": True,
+            "allow_concurrent_llm_calls": False,
+            "allow_concurrent_embedding_calls": False,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
@@ -147,6 +155,8 @@ class TestLLMConfigRead:
         assert config.config_id == 1
         assert config.provider_name == "openai"
         assert config.is_active is True
+        assert config.allow_concurrent_llm_calls is False
+        assert config.allow_concurrent_embedding_calls is False
 
     def test_read_config_with_embeddings(self):
         """
@@ -165,8 +175,14 @@ class TestLLMConfigRead:
             "temperature": 0.7,
             "timeout": 300,
             "embedding_provider": "openai",
+            "embedding_api_url": "https://api.openai.com/v1/embeddings",
             "embedding_model_name": "text-embedding-3-small",
+            "embedding_max_context_length": 8192,
+            "reranker_model_name": "text-embedding-3-large",
+            "reranker_max_context_length": 8192,
             "is_active": True,
+            "allow_concurrent_llm_calls": False,
+            "allow_concurrent_embedding_calls": True,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
@@ -174,3 +190,230 @@ class TestLLMConfigRead:
         config = LLMConfigRead(**data)
 
         assert config.embedding_provider == "openai"
+        assert config.embedding_model_name == "text-embedding-3-small"
+        assert config.embedding_max_context_length == 8192
+        assert config.reranker_model_name == "text-embedding-3-large"
+        assert config.reranker_max_context_length == 8192
+        assert config.allow_concurrent_embedding_calls is True
+
+    def test_read_config_backward_compatibility(self):
+        """
+        Test that LLMConfigRead handles missing new fields with defaults for backward compatibility.
+        """
+        from datetime import datetime
+
+        # Old config without new concurrent fields
+        data = {
+            "config_id": 1,
+            "user_id": 1,
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1",
+            "api_key": "sk-***",
+            "model_name": "gpt-4",
+            "max_context_length": 8000,
+            "temperature": 0.7,
+            "timeout": 300,
+            "is_active": True,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+            # Missing: allow_concurrent_llm_calls, allow_concurrent_embedding_calls
+        }
+
+        config = LLMConfigRead(**data)
+
+        # Should use defaults
+        assert config.allow_concurrent_llm_calls is False
+        assert config.allow_concurrent_embedding_calls is False
+
+    def test_create_config_with_reranker_only(self):
+        """
+        Test creating config with reranker but no embedding model (should work).
+        """
+        data = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "model_name": "gpt-4",
+            "reranker_model_name": "text-embedding-3-large",
+            "reranker_max_context_length": 8192,
+        }
+
+        config = LLMConfigCreate(**data)
+
+        assert config.reranker_model_name == "text-embedding-3-large"
+        assert config.embedding_model_name is None
+
+    def test_create_config_with_concurrent_calls(self):
+        """
+        Test creating an LLM configuration with concurrent call flags enabled.
+        """
+        data = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "api_key": "sk-test123",
+            "model_name": "gpt-4",
+            "max_context_length": 128000,
+            "temperature": 0.7,
+            "allow_concurrent_llm_calls": True,
+            "allow_concurrent_embedding_calls": True,
+        }
+
+        config = LLMConfigCreate(**data)
+
+        assert config.allow_concurrent_llm_calls is True
+        assert config.allow_concurrent_embedding_calls is True
+
+    def test_create_config_defaults(self):
+        """
+        Test that LLMConfigCreate applies correct default values for optional fields.
+        """
+        data = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "model_name": "gpt-4",
+        }
+
+        config = LLMConfigCreate(**data)
+
+        assert config.temperature == 0.7
+        assert config.max_context_length == 8192
+        assert config.timeout == 300
+        assert config.is_active is True
+        assert config.allow_concurrent_llm_calls is False
+        assert config.allow_concurrent_embedding_calls is False
+        assert config.embedding_max_context_length == 8192
+        assert config.reranker_max_context_length == 8192
+
+    def test_create_config_token_limits(self):
+        """
+        Test that embedding and reranker token limits are validated properly.
+        """
+        # Test with valid token limits
+        data = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "model_name": "gpt-4",
+            "embedding_max_context_length": 512,
+            "reranker_max_context_length": 16384,
+        }
+
+        config = LLMConfigCreate(**data)
+
+        assert config.embedding_max_context_length == 512
+        assert config.reranker_max_context_length == 16384
+
+        # Test with invalid token limit (should raise ValidationError)
+        invalid_data = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "model_name": "gpt-4",
+            "embedding_max_context_length": 0,  # Invalid: must be >= 1
+        }
+
+        with pytest.raises(ValidationError):
+            LLMConfigCreate(**invalid_data)
+
+    def test_create_config_same_embedding_and_reranker(self):
+        """
+        Test creating config where reranker and embedding use same model (valid but reranking will be skipped).
+        """
+        data = {
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "model_name": "gpt-4",
+            "embedding_model_name": "text-embedding-3-small",
+            "reranker_model_name": "text-embedding-3-small",  # Same as embedding
+        }
+
+        config = LLMConfigCreate(**data)
+
+        assert config.embedding_model_name == "text-embedding-3-small"
+        assert config.reranker_model_name == "text-embedding-3-small"
+
+
+@pytest.mark.unit
+class TestLLMConfigUpdate:
+    """Test LLMConfigUpdate schema."""
+
+    def test_update_concurrent_flags(self):
+        """
+        Test updating concurrent call flags.
+        """
+        data = {
+            "allow_concurrent_llm_calls": True,
+            "allow_concurrent_embedding_calls": True,
+        }
+
+        config = LLMConfigUpdate(**data)
+
+        assert config.allow_concurrent_llm_calls is True
+        assert config.allow_concurrent_embedding_calls is True
+
+    def test_update_reranker_config(self):
+        """
+        Test updating reranker configuration.
+        """
+        data = {
+            "reranker_model_name": "text-embedding-3-large",
+            "reranker_max_context_length": 16384,
+        }
+
+        config = LLMConfigUpdate(**data)
+
+        assert config.reranker_model_name == "text-embedding-3-large"
+        assert config.reranker_max_context_length == 16384
+
+    def test_update_partial_fields(self):
+        """
+        Test that LLMConfigUpdate allows partial updates (all fields optional).
+        """
+        data = {
+            "temperature": 0.9,
+        }
+
+        config = LLMConfigUpdate(**data)
+
+        assert config.temperature == 0.9
+        assert config.model_name is None  # Not updated
+
+
+@pytest.mark.unit
+class TestLLMConfigReadMasked:
+    """Test LLMConfigReadMasked schema."""
+
+    def test_masked_response_with_all_fields(self):
+        """
+        Test that LLMConfigReadMasked properly masks API keys and includes all new fields.
+        """
+        from datetime import datetime
+
+        data = {
+            "config_id": 1,
+            "user_id": 1,
+            "provider_name": "openai",
+            "api_endpoint": "https://api.openai.com/v1/chat/completions",
+            "api_key_masked": "••••••••",
+            "model_name": "gpt-4",
+            "max_context_length": 128000,
+            "temperature": 0.7,
+            "timeout": 300,
+            "is_active": True,
+            "allow_concurrent_llm_calls": True,
+            "embedding_provider": "openai",
+            "embedding_api_url": "https://api.openai.com/v1/embeddings",
+            "embedding_api_key_masked": "••••••••",
+            "embedding_model_name": "text-embedding-3-small",
+            "embedding_max_context_length": 8192,
+            "reranker_model_name": "text-embedding-3-large",
+            "reranker_max_context_length": 8192,
+            "allow_concurrent_embedding_calls": True,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+        }
+
+        config = LLMConfigReadMasked(**data)
+
+        assert config.api_key_masked == "••••••••"
+        assert config.embedding_api_key_masked == "••••••••"
+        assert config.allow_concurrent_llm_calls is True
+        assert config.allow_concurrent_embedding_calls is True
+        assert config.reranker_model_name == "text-embedding-3-large"
