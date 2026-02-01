@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import AutorunsViewer from './AutorunsViewer';
+import ExecutionEvidenceViewer from './ExecutionEvidenceViewer';
+import BrowsedURLsViewer from './BrowsedURLsViewer';
 import {
   RocketLaunchIcon,
+  PlayCircleIcon,
+  GlobeAltIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 
@@ -9,7 +13,7 @@ interface Props {
   investigationId: string;
 }
 
-type AnalysisModule = 'autoruns' | null;
+type AnalysisModule = 'autoruns' | 'execution_evidence' | 'browsed_urls' | null;
 
 const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
   const [selectedModule, setSelectedModule] = useState<AnalysisModule>('autoruns');
@@ -23,14 +27,20 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
       icon: RocketLaunchIcon,
       color: 'blue',
     },
-    // Future modules can be added here:
-    // {
-    //   id: 'timeline_analysis',
-    //   name: 'Timeline Analysis',
-    //   description: 'Temporal analysis of events',
-    //   icon: ClockIcon,
-    //   color: 'green',
-    // },
+    {
+      id: 'execution_evidence' as const,
+      name: 'Execution Evidence',
+      description: 'Windows execution artifacts (ShimCache, AmCache, Prefetch, SRUM, etc.)',
+      icon: PlayCircleIcon,
+      color: 'purple',
+    },
+    {
+      id: 'browsed_urls' as const,
+      name: 'Browsed URLs',
+      description: 'Browser history from Chrome, Firefox, and Edge',
+      icon: GlobeAltIcon,
+      color: 'indigo',
+    },
   ];
 
   return (
@@ -103,6 +113,12 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
       <div className="flex-1 overflow-hidden">
         {selectedModule === 'autoruns' && (
           <AutorunsViewer investigationId={investigationId} />
+        )}
+        {selectedModule === 'execution_evidence' && (
+          <ExecutionEvidenceViewer investigationId={investigationId} />
+        )}
+        {selectedModule === 'browsed_urls' && (
+          <BrowsedURLsViewer investigationId={investigationId} />
         )}
         {!selectedModule && (
           <div className="flex items-center justify-center h-full">

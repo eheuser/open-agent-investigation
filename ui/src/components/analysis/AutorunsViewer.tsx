@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import TypedDictionaryViewer from '../TypedDictionaryViewer';
 import {
   MagnifyingGlassIcon,
@@ -13,6 +14,7 @@ import {
   ArrowPathIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 
 interface Props {
@@ -74,6 +76,10 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
   // Grouped view
   const [groupBy, setGroupBy] = useState<'category' | 'location' | 'none'>('category');
 
+  // Clear cache modal
+  const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+
   // Load available categories on mount
   useEffect(() => {
     loadCategories();
@@ -83,6 +89,26 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
   useEffect(() => {
     loadAutoruns();
   }, [investigationId, selectedCategories]);
+
+  // Subscribe to WebSocket for real-time updates
+  const { subscribe } = useWebSocketContext();
+  
+  useEffect(() => {
+    const handleMessage = (message: any) => {
+      // Refresh when events are inserted or parsing completes
+      if (
+        message.type === 'events_inserted' ||
+        message.type === 'parsing_complete' ||
+        message.type === 'job_status_update'
+      ) {
+        // Refresh autoruns data
+        loadAutoruns();
+      }
+    };
+
+    const unsubscribe = subscribe(handleMessage);
+    return unsubscribe;
+  }, [subscribe, investigationId, selectedCategories]);
 
   // Apply filters when entries or filter settings change
   useEffect(() => {
@@ -219,8 +245,58 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
   
   const paginatedGroupedEntries = getPaginatedGroupedEntries();
 
+  const clearCache = async () => {
+    setClearingCache(true);
+    try {
+      await api.delete(`/api/v1/analysis/cache/${investigationId}`);
+      setShowClearCacheConfirm(false);
+      // Reload data to get fresh results
+      await loadAutoruns();
+    } catch (err: any) {
+      console.error('Failed to clear cache:', err);
+      setError(err.response?.data?.detail || 'Failed to clear cache');
+    } finally {
+      setClearingCache(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
+    <>
+      {/* Clear Cache Confirmation Modal */}
+      {showClearCacheConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div
+            className="absolute inset-0"
+            onClick={() => !clearingCache && setShowClearCacheConfirm(false)}
+          />
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Clear Analysis Cache?
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              This will clear all cached autoruns results and force a fresh analysis on the next request. Use this if you've uploaded new artifacts and want to see updated results immediately.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowClearCacheConfirm(false)}
+                disabled={clearingCache}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={clearCache}
+                disabled={clearingCache}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {clearingCache ? 'Clearing...' : 'Clear Cache'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* Header */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-3">
@@ -232,14 +308,25 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
               Windows autostart persistence mechanisms
             </p>
           </div>
-          <button
-            onClick={loadAutoruns}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            <ArrowPathIcon className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Analyzing...' : 'Refresh'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowClearCacheConfirm(true)}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+              title="Clear cached results and force fresh analysis"
+            >
+              <TrashIcon className="w-4 h-4" />
+              Clear Cache
+            </button>
+            <button
+              onClick={loadAutoruns}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <ArrowPathIcon className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Analyzing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* Search and Filters */}
@@ -563,6 +650,7 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
         )}
       </div>
     </div>
+    </>
   );
 };
 

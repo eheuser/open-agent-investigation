@@ -50,8 +50,6 @@
 
 Provide computed analysis views to get the agents and user started on an investigation.
 
-- Evidence of Execution list
-- Browsed URLs list
 - Service list
 - Logon list
 - Registry Viewer/Explorer
