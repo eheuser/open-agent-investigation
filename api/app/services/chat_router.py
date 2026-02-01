@@ -103,7 +103,7 @@ User asks GENERAL QUESTIONS about investigation metadata (no database queries ne
 ### 4. **execute_agent_policy**
 User requests SEARCHING/ANALYZING RAW EVENT DATA or COMPLEX FORENSIC ANALYSIS
 
-**Uses AI agent with 11+ forensic query tools**:
+**Uses agent with 11+ forensic query tools**:
 - search_events_by_type - Find events by type (e.g., failed logons, process creation)
 - search_events_by_timerange - Find events in time window
 - search_events_by_jsonb_field - Search event_data JSON fields

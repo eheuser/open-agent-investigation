@@ -27,6 +27,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ investigationId, onClose, ini
           <FileDropzone
             investigationId={investigationId}
             initialFiles={initialFiles}
+            maxFiles={50}
+            concurrentUploads={5}
             onUploadComplete={() => {
               setTimeout(() => onClose(), 1500);
             }}

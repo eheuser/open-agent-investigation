@@ -20,7 +20,6 @@ router = APIRouter()
 @router.post("/", response_model=ArtifactUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_artifact(
     investigation_id: str = Form(...),
-    classification: int = Form(...),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -29,14 +28,15 @@ async def upload_artifact(
     Upload an artifact file to a specific investigation.
 
     The function validates the provided investigation identifier, checks user permissions,
-    ensures the classification value is valid, reads the uploaded file content, stores the
-    artifact both in the database and on the filesystem, creates a parsing job for the
-    new artifact, locks the investigation while parsing is pending, and notifies connected
-    WebSocket clients that parsing has started.
+    reads the uploaded file content, stores the artifact both in the database and on the 
+    filesystem, creates a parsing job for the new artifact, locks the investigation while 
+    parsing is pending, and notifies connected WebSocket clients that parsing has started.
+    
+    The artifact type is automatically identified by the parser system using magic bytes
+    and file patterns - no manual classification is required.
 
     Args:
         investigation_id (str): UUID string of the parent investigation.
-        classification (int): Integer representing the artifact classification (0-4).
         file (UploadFile): The uploaded file object.
         db (AsyncSession): Asynchronous database session, injected via dependency.
         user (User): Currently authenticated user, injected via dependency.
@@ -48,8 +48,7 @@ async def upload_artifact(
     Raises:
         HTTPException: If the investigation ID format is invalid (400),
             the investigation does not exist (404),
-            the user lacks access rights (403),
-            the classification value is out of range (400), or
+            the user lacks access rights (403), or
             the uploaded file is empty (400).
     """
     # Parse UUID
@@ -68,15 +67,6 @@ async def upload_artifact(
     if not user.is_admin() and inv.owner_user_id != user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    # Validate classification
-    try:
-        classification_enum = ArtifactClassification(classification)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid classification value. Must be 0-4.",
-        )
-
     # Read file content
     content = await file.read()
 
@@ -85,12 +75,12 @@ async def upload_artifact(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file not allowed"
         )
 
-    # Create artifact
+    # Create artifact with UNKNOWN classification (will be auto-detected by parser)
     artifact = await crud.create_artifact(
         db,
         investigation_id=inv_uuid,
         filename=file.filename or "unnamed",
-        classification=classification_enum,
+        classification=ArtifactClassification.UNKNOWN,
         file_bytes=content,
     )
 

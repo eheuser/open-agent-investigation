@@ -415,3 +415,17 @@ class TestLLMServiceCallLLM:
             mock_response_obj = MagicMock()
             mock_response_obj.status = 200
             mock_response_obj.json = AsyncMock(return_value=mock_response)
+            
+            mock_post.__aenter__.return_value = mock_response_obj
+            mock_session.post.return_value = mock_post
+            MockSession.return_value.__aenter__.return_value = mock_session
+            MockSession.return_value.__aexit__.return_value = AsyncMock()
+
+            messages = [{"role": "user", "content": "Hello"}]
+            result = await service.call_llm(messages)
+
+            assert result == mock_response
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

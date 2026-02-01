@@ -1,29 +1,37 @@
 # API Component
 
-FastAPI backend providing REST endpoints, WebSocket support, and intelligent query routing for the micro-forensics workbench.
-
-For comprehensive documentation, see [docs/index.md](../docs/index.md).
+FastAPI backend providing REST endpoints, WebSocket support, and intelligent query routing.
 
 ## Quick Links
 
 - [Architecture Overview](../docs/architecture.md)
+- [User Guide](../docs/user-guide.md)
+- [Getting Started](../docs/getting-started.md)
 
 ## Overview
 
-The API service handles:
-- **RESTful API** endpoints for investigations, artifacts, events, and timeline data
-- **WebSocket** connections for real-time agent reasoning and progress updates
-- **Intelligent Query Routing** - LLM-based classification to 4 specialized handlers with manual mode override
-- **RAG-Powered Search** - Hybrid BM25 + vector similarity search with LLM-driven query expansion and re-ranking
-- **Advanced Tools** - SQL execution, JQ transformation, diagram generation (GraphViz/Mermaid)
-- **Dynamic Turn Budget** - Agents can request additional investigation turns (up to 30 total)
-- **Report Generation** - Automated PDF/Markdown reports with database persistence
-- **Field Dictionary** - LLM-generated JSONB field descriptions for efficient querying
-- **Context Summarization** - LLM-powered chat history compaction for long investigations
-- **Authentication** using JWT tokens with role-based access control
-- **Job queue** management for parsing and agent tasks
-- **Chat persistence** for conversation history in OpenAI message format
-- **Timeline management** for evidence chronology with event deduplication
+The API service provides:
+
+**Core Capabilities:**
+- RESTful endpoints for investigations, artifacts, events, and timelines
+- WebSocket connections for real-time agent progress
+- Intelligent query routing to specialized handlers
+- JWT authentication with role-based access control
+- Job queue management for parsing and agent execution
+
+**AI Features:**
+- LLM-based intent classification (automatic or manual mode selection)
+- RAG-powered semantic search with hybrid BM25 + vector similarity
+- Autonomous agent investigations with 16+ forensic tools
+- Dynamic turn budgets (agents can request more investigation time)
+- Investigation playbook system based on MITRE ATT&CK
+
+**Advanced Analysis:**
+- SQL execution for custom queries
+- JQ transformations for JSON data manipulation
+- Diagram generation (GraphViz/Mermaid)
+- Automated report generation (PDF and Markdown)
+- Chat history summarization for long investigations
 
 ### Technology Stack
 
@@ -110,7 +118,7 @@ Job queue (async)      Synchronous                   Synchronous
 
 **Timeline Tools**:
 1. `query_timeline_entries` - Search/filter timeline entries
-2. `add_timeline_entry` - Create new timeline entry
+2. `add_timeline_entry` - Create timeline entry
 3. `update_timeline_entry` - Update existing entry
 4. `delete_timeline_entry` - Delete entry by ID
 5. `get_timeline_stats` - Get timeline statistics
@@ -235,8 +243,8 @@ api/
 │   │   │   ├── policy_handler.py       # Agent execution
 │   │   │   ├── timeline_handler.py     # Timeline operations
 │   │   │   ├── general_chat_handler.py # Context-based Q&A
-│   │   │   └── rag_handler.py          # RAG search (NEW)
-│   │   └── rag/                 # RAG components (NEW)
+│   │   │   └── rag_handler.py          # RAG search
+│   │   └── rag/                 # RAG components
 │   │       ├── embedding.py     # Embedding generation
 │   │       ├── retriever.py     # Vector similarity search
 │   │       ├── event_processor.py # Auto-embedding during parsing
@@ -299,8 +307,10 @@ export JWT_SECRET="your-secret-key-here"
 # Run database migrations (if needed)
 psql -U postgres -d open_agent_inv -f db/schema.sql
 
-# Start the API server
+# Start the API server (development mode - accessible at http://localhost:8000)
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Note: In Docker Compose mode, API is only accessible via nginx proxy at https://localhost/api/
 ```
 
 ---
@@ -347,7 +357,7 @@ WORKER_TIMEOUT=30
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/v1/auth/login` | Login and receive JWT token |
-| POST | `/api/v1/auth/register` | Create new user account |
+| POST | `/api/v1/auth/register` | Create user account |
 | GET | `/api/v1/auth/me` | Get current user info |
 
 ### Investigations
@@ -355,7 +365,7 @@ WORKER_TIMEOUT=30
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/investigations` | List all investigations |
-| POST | `/api/v1/investigations` | Create new investigation |
+| POST | `/api/v1/investigations` | Create investigation |
 | GET | `/api/v1/investigations/{id}` | Get investigation details |
 | DELETE | `/api/v1/investigations/{id}` | Delete investigation |
 
@@ -400,7 +410,7 @@ WORKER_TIMEOUT=30
 | GET | `/api/v1/playbooks/list` | Get all playbooks (base + user) |
 | GET | `/api/v1/playbooks/user` | Get user playbooks only |
 | GET | `/api/v1/playbooks/base` | Get base YAML playbooks |
-| POST | `/api/v1/playbooks/create` | Create new user playbook |
+| POST | `/api/v1/playbooks/create` | Create user playbook |
 | PUT | `/api/v1/playbooks/{id}` | Update user playbook |
 | DELETE | `/api/v1/playbooks/{id}` | Delete user playbook |
 | POST | `/api/v1/playbooks/clone/{name}` | Clone base playbook to user playbooks |
@@ -461,14 +471,24 @@ playbook: |
 
 **List all playbooks**:
 ```bash
+# Development mode
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/v1/playbooks/list
+
+# Docker Compose mode
+curl -k -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/playbooks/list
 ```
 
 **Clone a base playbook**:
 ```bash
+# Development mode
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/v1/playbooks/clone/lateral_movement
+
+# Docker Compose mode
+curl -k -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/playbooks/clone/lateral_movement
 ```
 
 **Create custom playbook**:
@@ -480,16 +500,33 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
     "description": "Custom investigation workflow",
     "playbook": "## My Custom Playbook\n\n### Steps\n1. Check logs\n2. Analyze events",
     "is_enabled": true
-  }' \
-  http://localhost:8000/api/v1/playbooks/create
+      }' \
+    http://localhost:8000/api/v1/playbooks/create  # Development mode
+
+# Docker Compose mode
+curl -k -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+      "name": "Custom Ransomware Detection",
+      "description": "Detect ransomware indicators",
+      "content": "# Ransomware Playbook\n...",
+      "is_enabled": true
+    }' \
+    https://localhost/api/v1/playbooks/create
 ```
 
 **Enable playbook for investigation**:
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"playbook_id": 1, "is_enabled": true}' \
-  http://localhost:8000/api/v1/playbooks/investigation/{investigation_id}/enable
+      -d '{"playbook_id": 1, "is_enabled": true}' \
+    http://localhost:8000/api/v1/playbooks/investigation/{investigation_id}/enable  # Development mode
+
+# Docker Compose mode
+curl -k -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"playbook_id": 1, "is_enabled": true}' \
+    https://localhost/api/v1/playbooks/investigation/{investigation_id}/enable
 ```
 
 ### Database Schema
@@ -556,9 +593,9 @@ When an agent job is created, the system:
 
 ## Query Handlers
 
-### Adding a New Handler
+### Adding Handlers
 
-The routing system is **extensible**. To add a new handler:
+The routing system is extensible. To add a handler:
 
 1. **Create handler** in `app/services/handlers/your_handler.py`:
    ```python
@@ -623,8 +660,14 @@ The routing system is **extensible**. To add a new handler:
 Connect to WebSocket for streaming responses:
 
 ```javascript
+// Development mode (direct API access)
 const ws = new WebSocket(
   `ws://localhost:8000/api/v1/chat/ws/${investigationId}?token=${jwtToken}`
+);
+
+// Docker Compose mode (via nginx proxy)
+const ws = new WebSocket(
+  `wss://localhost/api/v1/chat/ws/${investigationId}?token=${jwtToken}`
 );
 
 ws.onmessage = (event) => {
@@ -662,7 +705,7 @@ ws.onmessage = (event) => {
 | `agent_thinking` | Agent reasoning step | Agent |
 | `agent_tool_call` | Agent invoking a tool | Agent |
 | `investigation_state_changed` | UI lock/unlock signal | All |
-| `message_created` | New message added to chat | All |
+| `message_created` | Message added to chat | All |
 | `message_updated` | Message content/metadata updated | All |
 
 ---
@@ -693,15 +736,26 @@ flake8 app/
 
 FastAPI auto-generates interactive API docs:
 
+**Development Mode** (direct API access):
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 - **OpenAPI JSON**: http://localhost:8000/openapi.json
 
+**Docker Compose Mode** (via nginx proxy):
+- **Swagger UI**: https://localhost/api/docs
+- **ReDoc**: https://localhost/api/redoc
+- **OpenAPI JSON**: https://localhost/api/openapi.json
+
 ### Testing Routing
 
 ```bash
-# Test intent classification
+# Test intent classification (development mode)
 curl -X POST http://localhost:8000/api/v1/chat/ask \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+
+# Test intent classification (Docker Compose mode)
+curl -k -X POST https://localhost/api/v1/chat/ask \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"investigation_id": "...", "question": "Show me timeline entries"}'

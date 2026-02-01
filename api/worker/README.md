@@ -1,8 +1,8 @@
 # Open Agent Investigation - Worker
 
-The **Worker** is an asynchronous job processor that handles artifact parsing and AI agent execution. It polls the database for pending jobs, claims them atomically, and processes them in the background with real-time streaming to the UI.
+The **Worker** is an asynchronous job processor that handles artifact parsing and agent execution. It polls the database for pending jobs, claims them atomically, and processes them in the background with real-time streaming to the UI.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
@@ -22,7 +22,7 @@ The Worker service is responsible for:
 1. **Multiprocessing Pool**: Runs min(CPU_count, 4) worker processes for parallel job execution
 2. **Job Polling**: Each worker continuously polls `jobs_parsing` and `jobs_agents` tables
 3. **Atomic Job Claiming**: Uses PostgreSQL `SELECT FOR UPDATE SKIP LOCKED` for concurrency
-4. **Artifact Parsing**: Extracts events from EVTX, Registry, MFT, Prefetch, and LNK files
+4. **Artifact Parsing**: Extracts events from 8 parser types: EVTX, Registry, MFT, Prefetch, LNK, Jump Lists, Browser History, and Windows Artifacts
 5. **Agent Execution**: Runs AssistantAgent with bounded turn execution
 6. **Progress Streaming**: Sends real-time agent reasoning and findings via WebSocket
 7. **Turn-Based Execution**: Limits tools per turn (5 max), configurable max turns
@@ -32,22 +32,22 @@ The Worker service is responsible for:
 
 ### Key Features
 
-✅ **Multiprocessing Pool** - Runs min(CPU_count, 4) worker processes for parallel execution  
-✅ **Process Isolation** - Each worker has its own database connection and event loop  
-✅ **Graceful Stop** - Stop signal via control queue, force-kill after 30 seconds  
-✅ **Process Monitoring** - Automatically restarts crashed workers  
-✅ **Concurrent Processing** - Multiple workers can claim jobs simultaneously  
-✅ **Idempotent Operations** - Jobs can be safely retried  
-✅ **Real-time Streaming** - WebSocket notifications with agent reasoning  
-✅ **LLM Integration** - Supports OpenAI, Ollama, and custom endpoints  
-✅ **Bounded Turn Execution** - 3 tools per turn, configurable max turns (3/6/9)  
-✅ **Turn Progress Tracking** - UI shows "Turn X/Y" instead of confusing tool counts  
-✅ **Agent-Controlled Timeline** - Optional auto_register parameter for bulk registration  
-✅ **Event-First Timeline** - Auto-fetches complete event data (no transcription errors)  
-✅ **Tool Descriptions** - Every tool execution shows user-friendly description in UI  
-✅ **Investigation Context** - Agents load timeline, chat history, and available data  
-✅ **Seamless Continuation** - Resume incomplete investigations in same chat bubble  
-✅ **Extensible** - Easy to add new parsers and tools  
+**Multiprocessing Pool** - Runs min(CPU_count, 4) worker processes for parallel execution  
+**Process Isolation** - Each worker has its own database connection and event loop  
+**Graceful Stop** - Stop signal via control queue, force-kill after 30 seconds  
+**Process Monitoring** - Automatically restarts crashed workers  
+**Concurrent Processing** - Multiple workers can claim jobs simultaneously  
+**Idempotent Operations** - Jobs can be safely retried  
+**Real-time Streaming** - WebSocket notifications with agent reasoning  
+**LLM Integration** - Supports OpenAI, Ollama, and custom endpoints  
+**Bounded Turn Execution** - 3 tools per turn, configurable max turns (3/6/9)  
+**Turn Progress Tracking** - UI shows "Turn X/Y" instead of confusing tool counts  
+**Agent-Controlled Timeline** - Optional auto_register parameter for bulk registration  
+**Event-First Timeline** - Auto-fetches complete event data (no transcription errors)  
+**Tool Descriptions** - Every tool execution shows user-friendly description in UI  
+**Investigation Context** - Agents load timeline, chat history, and available data  
+**Seamless Continuation** - Resume incomplete investigations in same chat bubble  
+**Extensible** - Easy to add parsers and tools  
 
 ---
 
@@ -130,12 +130,16 @@ worker/
 │       └── *.yaml               # Attack techniques (7 playbooks)
 ├── parsers/                     # Artifact parsers
 │   ├── __init__.py
-│   ├── dispatcher.py            # Parser routing
+│   ├── base_parser.py           # Base parser class
+│   ├── dispatcher.py            # Parser routing (auto-identification)
 │   ├── evtx_parser.py           # Windows Event Logs
 │   ├── registry_parser.py       # Registry hives
 │   ├── mft_parser.py            # Master File Table
 │   ├── prefetch_parser.py       # Prefetch files
 │   ├── lnk_parser.py            # LNK shortcuts
+│   ├── jumplist_parser.py       # Jump Lists (automatic/custom destinations)
+│   ├── browser_history_parser.py # Browser history (Chrome, Firefox, Edge)
+│   ├── windows_artifacts_parser.py # Multiple artifacts (tasks, SRUM, etc.)
 │   └── utils.py                 # Shared utilities
 ├── tools/                       # Agent tools
 │   ├── __init__.py
@@ -262,10 +266,22 @@ await process_agent_job(db, job)
 
 ### Parser Dispatcher
 
-The dispatcher routes artifacts to the correct parser based on file classification:
+The dispatcher automatically identifies and routes artifacts to the correct parser using each parser's `identify()` method:
 
 ```python
 # worker/parsers/dispatcher.py
+PARSERS = [
+    ArchiveParser,           # Archives (*.zip, *.7z, *.rar) - MUST BE FIRST
+    EvtxParser,              # Windows Event Logs (.evtx)
+    RegistryParser,          # Registry hives (SYSTEM, SOFTWARE, SAM, NTUSER.DAT)
+    PrefetchParser,          # Prefetch files (*.pf)
+    LnkParser,               # LNK shortcuts (*.lnk)
+    MftParser,               # Master File Table ($MFT, *.mft)
+    JumplistParser,          # Jump Lists (*.automaticDestinations-ms, *.customDestinations-ms)
+    BrowserHistoryParser,    # Browser history (History, places.sqlite, WebCacheV*.dat)
+    WindowsArtifactsParser,  # Multiple artifacts (tasks, SRUM, Windows Search, etc.)
+]
+
 async def parse_artifact(
     db: AsyncSession,
     investigation_id: UUID,
@@ -273,18 +289,35 @@ async def parse_artifact(
 ) -> int:
     """
     Parse artifact and insert events.
+    Auto-identifies parser using identify() methods.
     Returns: Number of events inserted
     """
-    artifact = await get_artifact(db, artifact_id)
-    
-    if artifact.classification == ArtifactClassification.LOG_FILE:
-        # EVTX parser
-        return await parse_evtx(db, investigation_id, artifact)
-    elif artifact.classification == ArtifactClassification.SYSTEM_HIVE:
-        # Registry parser
-        return await parse_registry(db, investigation_id, artifact)
-    # ... etc
+    # Try each parser's identify() method
+    for parser_class in PARSERS:
+        if parser_class.identify(artifact.filename, file_path):
+            selected_parser = parser_class()
+            return await selected_parser.parse(db, investigation_id, artifact_id, file_path)
 ```
+
+**Supported Parsers** (9 total):
+1. **ArchiveParser** - Archives (`*.zip`, `*.7z`, `*.rar`) - Recursive extraction for forensic bundles
+2. **EvtxParser** - Windows Event Logs (`.evtx`)
+3. **RegistryParser** - Registry hives (`SYSTEM`, `SOFTWARE`, `SAM`, `SECURITY`, `NTUSER.DAT`)
+4. **PrefetchParser** - Prefetch files (`*.pf`)
+5. **LnkParser** - LNK shortcuts (`*.lnk`)
+6. **MftParser** - Master File Table (`$MFT`, `*.mft`)
+7. **JumplistParser** - Jump Lists (`*.automaticDestinations-ms`, `*.customDestinations-ms`)
+8. **BrowserHistoryParser** - Browser history (`History`, `places.sqlite`, `WebCacheV*.dat`)
+9. **WindowsArtifactsParser** - Multiple artifacts (`.pca`, `.job`, `.xml`, `.db`, `.dat`, `.edb`)
+
+**Archive Extraction Features:**
+- **Automatic processing**: Upload entire forensic collections as single ZIP
+- **Recursive extraction**: Handles nested archives up to 5 levels deep
+- **Safety limits**: 10 GB max size, 50,000 file limit
+- **Auto-submission**: Each extracted file becomes an artifact with queued parsing job
+- **Preserves structure**: Directory paths encoded in filenames (e.g., `Windows__System32__Security.evtx`)
+
+See [Parser Documentation](parsers/README.md) for detailed specifications.
 
 ### EVTX Parser
 
@@ -395,6 +428,102 @@ Parses Windows shortcut files (`*.lnk`).
   "string_data.working_dir": "C:\\Users\\jsmith\\Documents"
 }
 ```
+
+### Jump List Parser
+
+Parses Windows Jump Lists (recently accessed files per application).
+
+**Library**: `olefile` (Python)
+
+**Supported Formats**:
+- **Automatic Destinations** (`.automaticDestinations-ms`) - OLE compound files containing LNK streams
+- **Custom Destinations** (`.customDestinations-ms`) - Direct LNK file entries
+
+**Output Event Type**: `jumplist_entry`
+
+**Payload Structure**:
+```json
+{
+  "jumplist_type": "automatic_destinations",
+  "app_id": "1b4dd67f29cb1962",
+  "entry_number": 1,
+  "offset": 1024,
+  "file_path": "1b4dd67f29cb1962.automaticDestinations-ms"
+}
+```
+
+**Forensic Value**:
+- Track recently accessed files per application
+- Identify file access patterns
+- Detect evidence of file interaction
+
+### Browser History Parser
+
+Parses browser history from multiple browsers.
+
+**Library**: `sqlite3` (built-in), `pyesedb` (for Legacy Edge)
+
+**Supported Browsers**:
+- **Chrome/Chromium-based Edge** - `History` (SQLite database)
+- **Firefox** - `places.sqlite` (SQLite database)
+- **Legacy Edge** - `WebCacheV*.dat` (ESE database)
+
+**Output Event Type**: `browser_history`
+
+**Payload Structure**:
+```json
+{
+  "browser": "chrome_chromium",
+  "url": "https://example.com/page",
+  "title": "Example Page",
+  "visit_count": 5,
+  "typed_count": 1,
+  "transition_type": "link",
+  "source_file": "History"
+}
+```
+
+**Forensic Value**:
+- Reconstruct web browsing timeline
+- Identify accessed URLs and search terms
+- Detect suspicious website visits
+- Correlate with other artifacts
+
+### Windows Artifacts Parser
+
+Parses multiple Windows forensic artifacts.
+
+**Library**: `xml.etree.ElementTree` (built-in), `sqlite3` (built-in), `pyesedb`
+
+**Supported Artifacts**:
+1. **CryptNetUrlCache** - Certificate revocation list cache (`cryptnet_cache`)
+2. **Program Compatibility Assistant** - `.pca` files (`pca_execution`)
+3. **Scheduled Tasks** - `.job`, `.xml` files (`scheduled_task`)
+4. **SRUM Database** - `srudb.dat` (`srum_data`)
+5. **Windows Search** - `Windows.edb` (`windows_search`)
+6. **Bitmap Cache** - `thumbcache_*.db`, `iconcache_*.db` (`bitmap_cache`)
+7. **Notifications** - `wpndatabase.db` (`notification`)
+
+**Payload Structure** (varies by artifact type):
+```json
+{
+  "artifact_type": "scheduled_task_xml",
+  "task_name": "UpdateCheck",
+  "author": "SYSTEM",
+  "description": "Checks for updates",
+  "actions": ["C:\\Windows\\System32\\cmd.exe /c update.bat"],
+  "file_path": "C:\\Windows\\System32\\Tasks\\UpdateCheck"
+}
+```
+
+**Forensic Value**:
+- Detect persistence mechanisms (scheduled tasks)
+- Track application resource usage (SRUM)
+- Identify indexed files (Windows Search)
+- Analyze system notifications
+- PKI activity tracking (CryptNetUrlCache)
+
+See [Parser Documentation](parsers/README.md) for complete specifications of all artifacts.
 
 ---
 
@@ -613,21 +742,7 @@ export API_PORT="8000"
 python -m worker.main
 ```
 
-### Testing Agents Locally
-
-```bash
-# Test AssistantAgent with full database context
-python -m worker.agents.assistant_agent \
-  --investigation-id "550e8400-e29b-41d4-a716-446655440000" \
-  --question "Find failed logon attempts" \
-  --effort standard \
-  --llm-endpoint "http://localhost:11434/v1/chat/completions" \
-  --llm-model "llama3"
-
-# Note: CLI harness is deprecated, use direct agent execution
-```
-
-### Adding a New Parser
+### Adding Parsers
 
 1. Create parser file in `worker/parsers/`:
    ```python
@@ -665,7 +780,7 @@ python -m worker.agents.assistant_agent \
            return await parse_my_artifact(db, investigation_id, artifact)
    ```
 
-### Adding a New Agent
+### Adding Agents
 
 1. Create agent class in `worker/agents/`:
    ```python

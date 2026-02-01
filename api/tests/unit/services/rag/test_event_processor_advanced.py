@@ -540,7 +540,8 @@ class TestBatchCreateEmbeddings:
             count = await _batch_create_embeddings(db, events, 1, llm_config)
 
             assert count == 2
-            assert db.commit.call_count == 2
+            # Commit is called once per batch, not per event
+            assert db.commit.call_count == 1
 
 
 @pytest.mark.asyncio

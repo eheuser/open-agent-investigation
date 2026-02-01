@@ -357,4 +357,4 @@ By contributing, you agree that your contributions will be licensed under the pr
 
 Don't hesitate to ask! Open an issue with the `question` label or start a discussion.
 
-Thank you for contributing to Open Agent Investigation! 🎉
+Thank you for contributing to Open Agent Investigation!

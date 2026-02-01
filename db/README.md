@@ -1,6 +1,6 @@
-# Open Agent Investigation - Database
+# Database Component
 
-The **Database** is a PostgreSQL 15 instance that stores all investigation data, including events, evidence timelines, artifacts, jobs, and audit logs.
+PostgreSQL 15 database storing all investigation data, events, timelines, artifacts, jobs, and audit logs.
 
 ## Table of Contents
 
@@ -27,13 +27,19 @@ The database uses:
 
 ### Design Principles
 
-1. **Unified Tables** - Events and timeline data use `investigation_id` for multi-tenancy
-2. **JSONB Payloads** - Flexible schema for diverse artifact types
-3. **Event-First Timeline** - Timeline entries reference events by ID (auto-fetch complete data)
-4. **Immutable Audit Logs** - All actions tracked, never deleted
-5. **Cascade Deletes** - Investigation deletion removes all related data
-6. **Optimistic Locking** - `SELECT FOR UPDATE SKIP LOCKED` for job queues
-7. **Deduplication** - Unique constraint on (investigation_id, event_id) for timeline entries
+**Multi-Tenancy**: All tables use `investigation_id` for data isolation between investigations
+
+**Flexible Schema**: JSONB payloads accommodate diverse artifact types without schema changes
+
+**Event-First Architecture**: Timeline entries reference events by ID to prevent data duplication
+
+**Audit Trail**: Immutable audit logs track all actions for forensic integrity
+
+**Cascade Deletes**: Deleting an investigation automatically removes all related data
+
+**Concurrency**: `SELECT FOR UPDATE SKIP LOCKED` enables multiple workers to claim jobs safely
+
+**Deduplication**: Unique constraints prevent duplicate timeline entries
 
 ---
 
@@ -598,7 +604,7 @@ CREATE TABLE schema_migrations (
 );
 ```
 
-**Current Versions**:
+**Schema Versions**:
 - **v1** - Initial schema (core tables, job queues, audit logs)
 - **v2** - Add chat_messages table
 - **v3** - Refactor to unified events/graph tables
@@ -609,7 +615,7 @@ CREATE TABLE schema_migrations (
 # Apply schema from scratch
 psql -U postgres -d open_agent_inv -f api/db/schema.sql
 
-# Check current version
+# Check schema version
 psql -U postgres -d open_agent_inv -c "SELECT * FROM schema_migrations ORDER BY version;"
 ```
 

@@ -26,3 +26,7 @@ isort==5.13.*
 types-PyYAML==6.0.*
 types-python-dateutil==2.9.*
 types-factory-boy==0.4.*
+
+# Archive testing (same versions as main requirements)
+py7zr==0.21.*
+# RAR extraction uses system 'unar' command (no Python library needed)

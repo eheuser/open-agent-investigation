@@ -3,10 +3,18 @@ version: "3.9"
 # Docker Compose configuration for running tests
 # Usage: docker-compose -f docker-compose.test.yml up --abort-on-container-exit
 
+networks:
+  oai-test-network:
+    name: open-agent-investigation-test
+    driver: bridge
+
 services:
   # Test database - separate from production
   test-db:
+    container_name: oai-test-db
     image: pgvector/pgvector:pg15
+    networks:
+      - oai-test-network
     environment:
       POSTGRES_PASSWORD: testpass
       POSTGRES_DB: open_agent_inv_test
@@ -23,9 +31,14 @@ services:
 
   # Test runner - runs pytest and exits
   test-runner:
+    container_name: oai-test-runner
     build:
       context: ./api
       dockerfile: Dockerfile.test
+      platforms:
+        - "linux/amd64"
+    networks:
+      - oai-test-network
     depends_on:
       test-db:
         condition: service_healthy
@@ -52,9 +65,14 @@ services:
 
   # Mock LLM service for testing
   mock-llm:
+    container_name: oai-test-mock-llm
     build:
       context: ./api/tests/mock_services
       dockerfile: Dockerfile.mock-llm
+      platforms:
+        - "linux/amd64"
+    networks:
+      - oai-test-network
     ports:
       - "8001:8000"
     healthcheck:

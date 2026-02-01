@@ -26,7 +26,7 @@ const EmptyState: React.FC = () => {
                 Upload Artifacts
               </h3>
               <p className="text-xs text-blue-800 dark:text-blue-200">
-                Drag and drop forensic artifacts (EVTX, Registry, MFT, Prefetch, LNK files) anywhere on this window to upload and parse them automatically.
+                Drag and drop forensic artifacts (EVTX, Registry, MFT, Prefetch, LNK files, Browser History files and more) anywhere on this window to upload and parse them automatically.
               </p>
             </div>
           </div>

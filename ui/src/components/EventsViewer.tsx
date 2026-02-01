@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
+import TypedDictionaryViewer from './TypedDictionaryViewer';
 import { 
   MagnifyingGlassIcon, 
   FunnelIcon,
@@ -136,7 +137,7 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
   }, [replicatedQuery, onQueryApplied]);
   
   // Expanded event details
-  const [expandedEventId, setExpandedEventId] = useState<number | null>(null);
+  const [expandedEventIds, setExpandedEventIds] = useState<Set<number>>(new Set());
   
   // Adding to timeline
   const [addingToTimeline, setAddingToTimeline] = useState<number | null>(null);
@@ -189,17 +190,8 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
       const newTotal = response.data.total || 0;
       setTotal(newTotal);
       
-      // Extract common JSONB fields from events
-      if (response.data.events.length > 0) {
-        const fieldSet = new Set<string>();
-        response.data.events.slice(0, 10).forEach(event => {
-          const payload = formatPayload(event.payload);
-          if (typeof payload === 'object' && payload !== null) {
-            Object.keys(payload).forEach(key => fieldSet.add(key));
-          }
-        });
-        setCommonFields(Array.from(fieldSet).sort());
-      }
+      // Note: commonFields are now fetched via the dedicated /fields endpoint
+      // This ensures we get all available fields, not just from the current page
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load events');
       console.error('Failed to fetch events:', err);
@@ -226,18 +218,16 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
           url
         );
         
-        if (response.data.fields.length > 0) {
+        if (response.data && response.data.fields) {
           setCommonFields(response.data.fields);
-          //if (eventTypeFilter) {
-          //  console.log(`Loaded ${response.data.count} unique fields for event type '${eventTypeFilter}'`);
-          //} else {
-          //  console.log(`Loaded ${response.data.count} unique fields from ${response.data.event_types_sampled} event types`);
-          //}
         } else {
+          console.warn('No fields returned from API');
           setCommonFields([]);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to fetch available fields:', err);
+        console.error('Error details:', err.response?.data);
+        setCommonFields([]);
       }
     };
     
@@ -355,11 +345,8 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
   // Build search terms for highlighting
   const getSearchTerms = (): string[] => {
     const terms: string[] = [];
+    // Only highlight the search input text, not JSONB queries or event type filters
     if (searchText) terms.push(searchText);
-    if (eventTypeFilter) terms.push(eventTypeFilter);
-    jsonbQueries.forEach(q => {
-      if (q.value) terms.push(q.value);
-    });
     return terms;
   };
   
@@ -680,13 +667,21 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
               {events.map((event) => (
                 <div
                   key={event.event_id}
-                  className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-                  onClick={() => setExpandedEventId(
-                    expandedEventId === event.event_id ? null : event.event_id
-                  )}
+                  className="p-3"
                 >
-                  {/* Event Header */}
-                  <div className="flex items-start justify-between gap-3 mb-1">
+                  {/* Event Header - Clickable */}
+                  <div 
+                    className="flex items-start justify-between gap-3 mb-1 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 -mx-3 -mt-3 px-3 pt-3 pb-1 rounded-t transition-colors"
+                    onClick={() => {
+                      const newExpanded = new Set(expandedEventIds);
+                      if (newExpanded.has(event.event_id)) {
+                        newExpanded.delete(event.event_id);
+                      } else {
+                        newExpanded.add(event.event_id);
+                      }
+                      setExpandedEventIds(newExpanded);
+                    }}
+                  >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span 
@@ -705,7 +700,7 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
                     </div>
                     <div className="flex items-center gap-2">
                       {/* Add to Timeline Button - Only show when event is expanded */}
-                      {expandedEventId === event.event_id && (
+                      {expandedEventIds.has(event.event_id) && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -736,19 +731,17 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
 
                   {/* Event Payload Preview */}
                   <div className="text-sm text-gray-700 dark:text-gray-300">
-                    {expandedEventId === event.event_id ? (
-                      searchTerms.length > 0 ? (
-                        <div 
-                          className="mt-2 p-2 bg-gray-100 dark:bg-gray-900 rounded text-xs overflow-x-auto font-mono whitespace-pre"
-                          dangerouslySetInnerHTML={{ 
-                            __html: highlightText(JSON.stringify(formatPayload(event.payload), null, 2), searchTerms) 
+                    {expandedEventIds.has(event.event_id) ? (
+                      <div className="mt-2">
+                        <TypedDictionaryViewer
+                          data={formatPayload(event.payload)}
+                          title=""
+                          onAddToTimeline={(key, value) => {
+                            // Could implement adding specific fields to timeline
+                            console.log('Add to timeline:', key, value);
                           }}
                         />
-                      ) : (
-                        <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-900 rounded text-xs overflow-x-auto">
-                          {JSON.stringify(formatPayload(event.payload), null, 2)}
-                        </pre>
-                      )
+                      </div>
                     ) : (
                       searchTerms.length > 0 ? (
                         <p 
@@ -896,7 +889,7 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
                 <div className="relative">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
-                      Field Path
+                      Field Path {commonFields.length > 0 && `(${commonFields.length} available)`}
                     </label>
                     {commonFields.length > 0 && (
                       <button

@@ -274,3 +274,21 @@ class TestGetToken:
         token = await get_token(None)
 
         assert token is None
+
+    async def test_get_token_empty_credentials(self):
+        """Test get_token with empty string credentials."""
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="")
+        token = await get_token(credentials)
+        assert token == ""
+
+    async def test_get_token_various_schemes(self):
+        """Test get_token works regardless of auth scheme."""
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        # Test with different schemes
+        for scheme in ["Bearer", "bearer", "Token", "JWT"]:
+            credentials = HTTPAuthorizationCredentials(scheme=scheme, credentials="my-token")
+            token = await get_token(credentials)
+            assert token == "my-token"

@@ -1,8 +1,16 @@
 version: "3.9"
 
+networks:
+  oai-network:
+    name: open-agent-investigation
+    driver: bridge
+
 services:
   db:
+    container_name: oai-db
     image: pgvector/pgvector:pg15
+    networks:
+      - oai-network
     environment:
       POSTGRES_PASSWORD: example
       POSTGRES_DB: open_agent_inv
@@ -19,7 +27,13 @@ services:
       - "5432:5432"
 
   api:
-    build: ./api
+    container_name: oai-api
+    build:
+      context: ./api
+      platforms:
+        - "linux/amd64"
+    networks:
+      - oai-network
     depends_on:
       db:
         condition: service_healthy
@@ -40,9 +54,14 @@ services:
       - ./data/investigations:/data/investigations
 
   worker:
+    container_name: oai-worker
     build:
       context: ./api
       dockerfile: worker/Dockerfile
+      platforms:
+        - "linux/amd64"
+    networks:
+      - oai-network
     depends_on:
       db:
         condition: service_healthy
@@ -56,12 +75,18 @@ services:
     volumes:
       - ./api/data/policies:/app/data/policies:ro
       - ./api/data/agents:/app/data/agents:ro
-      - ./data/investigations:/data/investigations:ro  # Read-only mount
+      - ./data/investigations:/data/investigations  # Read-write mount (needed for archive extraction)
       - /tmp:/tmp  # Writable temp space
     restart: unless-stopped
 
   ui:
-    build: ./ui
+    container_name: oai-ui
+    build:
+      context: ./ui
+      platforms:
+        - "linux/amd64"
+    networks:
+      - oai-network
     ports:
       - "443:443"
     depends_on:
@@ -69,3 +94,4 @@ services:
 
 volumes:
   pg_data:
+    name: oai-pg-data

@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional
+import json
 
 
 def flatten_dict(
@@ -66,4 +67,63 @@ def flatten_dict(
     return dict(items)
 
 
-__all__ = ["flatten_dict"]
+def sanitize_for_jsonb(obj: Any) -> Any:
+    """
+    Recursively sanitize an object for PostgreSQL JSONB storage.
+    
+    PostgreSQL JSONB does not support:
+    - Null bytes (\u0000) in strings
+    - Invalid Unicode sequences
+    - Certain control characters
+    
+    This function:
+    - Removes null bytes from strings
+    - Converts non-serializable types to strings
+    - Recursively processes dicts and lists
+    
+    Args:
+        obj: The object to sanitize (can be dict, list, str, or primitive)
+        
+    Returns:
+        A sanitized version of the object safe for JSONB storage
+    """
+    if isinstance(obj, dict):
+        return {k: sanitize_for_jsonb(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_jsonb(item) for item in obj]
+    elif isinstance(obj, str):
+        # Remove null bytes and other problematic characters
+        # Replace \u0000 with empty string
+        cleaned = obj.replace('\x00', '')
+        # Also handle other control characters that might cause issues
+        cleaned = ''.join(char for char in cleaned if ord(char) >= 32 or char in '\n\r\t')
+        return cleaned
+    elif isinstance(obj, bytes):
+        # Convert bytes to hex string for safe storage
+        return obj.hex()
+    elif obj is None or isinstance(obj, (bool, int, float)):
+        # Primitives are safe
+        return obj
+    else:
+        # Convert unknown types to string
+        return str(obj)
+
+
+def safe_json_dumps(obj: Any) -> str:
+    """
+    Safely serialize an object to JSON string for JSONB storage.
+    
+    This function combines sanitization with JSON serialization to ensure
+    the resulting string can be stored in PostgreSQL JSONB columns.
+    
+    Args:
+        obj: The object to serialize
+        
+    Returns:
+        A JSON string safe for JSONB storage
+    """
+    sanitized = sanitize_for_jsonb(obj)
+    return json.dumps(sanitized, ensure_ascii=False)
+
+
+__all__ = ["flatten_dict", "sanitize_for_jsonb", "safe_json_dumps"]

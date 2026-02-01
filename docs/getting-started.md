@@ -77,8 +77,6 @@ All services should show "Up" status.
 
 Access the application:
 - UI: https://localhost (accept self-signed certificate warning)
-- API: http://localhost:8000/docs (Swagger documentation)
-- Health check: http://localhost:8000/health
 
 #### Step 5: Login
 
@@ -128,7 +126,7 @@ export JWT_SECRET="your-secret-key-here"
 # Initialize database
 psql -U postgres -d open_agent_inv -f db/schema.sql
 
-# Start API server
+# Start API server (accessible at http://localhost:8000 in development)
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -209,8 +207,13 @@ Embedding Model: text-embedding-ada-002
 #### Create Additional Users
 
 ```bash
-# Via API
+# Via API (development mode)
 curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+
+# Via nginx proxy (Docker Compose mode)
+curl -k -X POST https://localhost/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "analyst1",
@@ -250,7 +253,13 @@ print('Database connection successful')
 ### Test LLM Connection
 
 ```bash
+# Development mode
 curl -X POST http://localhost:8000/api/v1/chat/ask \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+
+# Docker Compose mode (via nginx proxy)
+curl -k -X POST https://localhost/api/v1/chat/ask \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

@@ -62,7 +62,7 @@ const Dashboard: React.FC = () => {
           </h1>
           
           <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-2xl mx-auto">
-            A chat-driven investigation platform for security analysts. Upload evidence, ask questions, and let AI agents help you uncover the truth.
+            A chat-driven investigation platform for security analysts. Upload evidence, ask questions, and let agents help you uncover the truth.
           </p>
 
           <button

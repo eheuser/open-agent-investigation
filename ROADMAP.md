@@ -13,7 +13,6 @@
 **Enhance Investigation Choices**
 
 - Offer suggestions on where to take the investigation next
-- Create Mutable Investigation Templates the user can execute to "get started"
 
 **Add Parallel Connections Option**
 
@@ -22,37 +21,27 @@
 
 **Reports**
 
-- Add report profiles
+- Add report profiles/playbooks
 - Clean up prompts and output
 
 ---
 
 # Forensics
 
-**Expanded Windows Artifact Support**
+**Expanded Artifact Support**
 
-- Scheduled Tasks
-- SRUM DB
-- CryptNetURL Cache
-- Automatic Destination Jump List
-- Browser History (Edge, Chrome, Opera, Firefox)
-- PCA Launch Items
-- Windows PE's
+- PE's, ELF< Mach-O>
 - Flat Files (apache logs, one entry per line)
 - Binary Files
 - PCAP and PCAPNG files
+- PLASO output
+- Velociraptor target
+- Extract artifacts automatically from .E01, .dd, etc
 
 **Expand OS Support**
 
 - Linux
 - Mac
-
-**Threat Intel Agent**
-
-- WHOIS query
-- Resolve Domains -> IP
-- Web Search
-- API integrations w/user supplied API key (VT, PassiveTotal/RiskIQ)
 
 ---
 
@@ -64,3 +53,46 @@
 - Allow cancelling of jobs from Jobs Queue modal
 - Add Report profile placeholder previews
 - Add new users from admin account
+- For onboarding, make sure the settings screen is the first the user sees when no llm is configured
+- Add instructions to the llm config screen
+
+**Analysis Views**
+
+Provide computed analysis views to get the agents and user started on an investigation.
+
+- Autorun list
+- Evidence of Execution list
+- Browsed URLs list
+- Service list
+- Logon list
+- Registry Viewer/Explorer
+- MFT Viewer/Explorer
+
+# Agents
+
+**File Analysis**
+
+- PE, ELF and Mach-O disassembly and analysis
+- Document/PDF analysis
+- Binary (any other file) analysis
+- Threat Intelligence gathering
+
+**Executable Agent**
+
+- Disassembler (headless Ghidra? Radare? Capstone?)
+
+**Binary Agent**
+
+- Hashes
+- Entropy
+- Strings
+- Magic/Header analysis
+- Embedded file extraction and analysis
+- Custom XOR and other tools
+
+**Threat Intel Agent**
+
+- WHOIS query
+- Resolve Domains -> IP
+- Web Search
+- API integrations w/user supplied API key (VT, PassiveTotal/RiskIQ)

@@ -126,10 +126,10 @@ class FilterEngine:
             ],
         },
         "prefetch": {
-            "include_all": True,
+            "include_all": False,
         },
         "lnk": {
-            "include_all": True,
+            "include_all": False,
         },
     }
 
@@ -227,31 +227,31 @@ class FilterEngine:
                     timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
             except Exception:
                 pass
-
+        
+        # Check if event matches configured channel + event_id
+        is_interesting_event = False
         channels = evtx_config.get("channels", [])
         for channel_config in channels:
             if channel and channel_config["name"].lower() in channel.lower():
                 if event_id and event_id in channel_config.get("event_ids", []):
-                    logger.debug(f"Matched event: channel={channel}, event_id={event_id}")
-                    return (True, timestamp)
+                    is_interesting_event = True
+                    break
 
+        # If event doesn't match channel+event_id, it's not interesting
+        if not is_interesting_event:
+            return (False, timestamp)
+
+        # Carve out for null IP events
+        if event_dict.get("event_data.IpAddress", "") == "-" or event_dict.get("event_data.IpAddress", "") == "127.0.0.1":
+            return (False, timestamp)
+        
+        # TODO This is slow
         if evtx_config.get("lol_bins", False):
-            image = (event_dict.get("event_data.Image") or event_dict.get("Image") or "").lower()
-            parent_image = (
-                event_dict.get("event_data.ParentImage") or event_dict.get("ParentImage") or ""
-            ).lower()
-            command_line = (
-                event_dict.get("event_data.CommandLine") or event_dict.get("CommandLine") or ""
-            ).lower()
-
-            for lolbin in self.LOLBINS:
-                lolbin_lower = lolbin.lower()
-                if (
-                    lolbin_lower in image
-                    or lolbin_lower in parent_image
-                    or lolbin_lower in command_line
-                ):
-                    return (True, timestamp)
+            for v in event_dict.values():
+                if isinstance(v, str):
+                    for lolbin in self.LOLBINS:
+                        if lolbin in v.casefold():
+                            return (True, timestamp)
 
         interesting_ports = evtx_config.get("interesting_ports", [])
         if interesting_ports:
@@ -271,6 +271,7 @@ class FilterEngine:
             if dest_port in interesting_ports or source_port in interesting_ports:
                 return (True, timestamp)
 
+        # event id and channel isn't enough
         return (False, timestamp)
 
     def is_interesting_registry(self, key_path: str) -> bool:

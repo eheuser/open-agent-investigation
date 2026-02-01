@@ -43,7 +43,9 @@ class TestEVTXFiltering:
 
     def test_sysmon_process_creation(self):
         """
-        Test that the FilterEngine correctly identifies a Sysmon process creation event (Event ID 1) as interesting and returns a non-null timestamp. The test constructs a minimal EVTX event dictionary with the appropriate channel and EventID, invokes `engine.is_interesting_evtx` and asserts that the returned boolean flag is `True` and that a timestamp value is provided.
+        Test that the FilterEngine correctly identifies a Sysmon process creation event (Event ID 1) as interesting
+        when it contains a LOLBin. With the new stricter logic, channel+event_id match alone is not sufficient;
+        the event must also contain a LOLBin or interesting port.
         """
         engine = FilterEngine()
 
@@ -51,6 +53,7 @@ class TestEVTXFiltering:
             "system.Channel": "Microsoft-Windows-Sysmon/Operational",
             "system.EventID": 1,
             "timestamp": "2024-01-01T12:00:00Z",
+            "event_data.Image": "C:\\Windows\\System32\\powershell.exe",  # LOLBin required
         }
 
         is_interesting, timestamp = engine.is_interesting_evtx(event)
@@ -60,10 +63,12 @@ class TestEVTXFiltering:
 
     def test_security_logon_success(self):
         """
-        Test that the FilterEngine correctly identifies a successful logon event (Event ID 4624) in the Security channel as interesting. The method creates an engine instance, constructs a minimal event dictionary with required fields, invokes `is_interesting_evtx` and asserts that the returned flag indicates interest. This verifies basic handling of security logon success events.
+        Test that Security logon events (4624) are NOT interesting by default unless they contain LOLBins or interesting ports.
+        The new stricter logic requires additional criteria beyond just channel+event_id match.
         """
         engine = FilterEngine()
 
+        # Event with only channel+event_id (no LOLBins or ports) - should NOT be interesting
         event = {
             "system.Channel": "Security",
             "system.EventID": 4624,
@@ -72,14 +77,16 @@ class TestEVTXFiltering:
 
         is_interesting, timestamp = engine.is_interesting_evtx(event)
 
-        assert is_interesting is True
+        assert is_interesting is False  # Changed: stricter filtering
 
     def test_security_logon_failure(self):
         """
-        Test that the FilterEngine correctly identifies a Security logon failure event (Event ID 4625) as interesting and returns the appropriate timestamp. This verifies handling of security channel events with specific EventID values.
+        Test that Security logon failure events (4625) are NOT interesting by default unless they contain LOLBins or interesting ports.
+        The new stricter logic requires additional criteria beyond just channel+event_id match.
         """
         engine = FilterEngine()
 
+        # Event with only channel+event_id (no LOLBins or ports) - should NOT be interesting
         event = {
             "system.Channel": "Security",
             "system.EventID": 4625,
@@ -88,14 +95,17 @@ class TestEVTXFiltering:
 
         is_interesting, timestamp = engine.is_interesting_evtx(event)
 
-        assert is_interesting is True
+        assert is_interesting is False  # Changed: stricter filtering
 
     def test_powershell_scriptblock_logging(self):
         """
-        Test that the FilterEngine correctly identifies a PowerShell script block logging event (Event ID 4104) as interesting and returns a valid timestamp. The test creates an engine instance, constructs an EVTX event dictionary with the appropriate channel and ID, invokes `is_interesting_evtx`, and asserts that the returned flag is `True`.
+        Test that PowerShell script block logging events (4104) are NOT interesting by default unless they contain LOLBins.
+        The new stricter logic requires additional criteria beyond just channel+event_id match.
+        Since this IS a PowerShell event, adding 'powershell.exe' in the script block would make it interesting.
         """
         engine = FilterEngine()
 
+        # Event with only channel+event_id (no LOLBins) - should NOT be interesting
         event = {
             "system.Channel": "Microsoft-Windows-PowerShell/Operational",
             "system.EventID": 4104,
@@ -104,17 +114,18 @@ class TestEVTXFiltering:
 
         is_interesting, timestamp = engine.is_interesting_evtx(event)
 
-        assert is_interesting is True
+        assert is_interesting is False  # Changed: stricter filtering
 
     def test_lolbin_powershell_in_image(self):
         """
-        Test that the FilterEngine correctly identifies a LOLBin occurrence when the Image field contains a known PowerShell executable path, ensuring the event is marked as interesting.
+        Test that the FilterEngine correctly identifies a LOLBin occurrence when the Image field contains a known PowerShell executable path.
+        Note: Event must FIRST match a configured channel+event_id before LOLBin detection applies.
         """
         engine = FilterEngine()
 
         event = {
-            "system.Channel": "Some-Channel",
-            "system.EventID": 9999,
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 1,  # Process creation
             "event_data.Image": "C:\\Windows\\System32\\powershell.exe",
             "timestamp": "2024-01-01T12:00:00Z",
         }
@@ -126,22 +137,13 @@ class TestEVTXFiltering:
     def test_lolbin_in_command_line(self):
         """
         Test that the FilterEngine correctly identifies an event as interesting when the CommandLine field contains a known LOLBin executable.
-
-        Parameters
-        ----------
-        self : object
-            The test case instance (typically a subclass of unittest.TestCase).
-
-        Returns
-        -------
-        None
-            This test method uses assertions to validate behavior and does not return a value.
+        Note: Event must FIRST match a configured channel+event_id before LOLBin detection applies.
         """
         engine = FilterEngine()
 
         event = {
-            "system.Channel": "Some-Channel",
-            "system.EventID": 9999,
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 1,  # Process creation
             "event_data.CommandLine": "cmd.exe /c whoami",
             "timestamp": "2024-01-01T12:00:00Z",
         }
@@ -152,13 +154,14 @@ class TestEVTXFiltering:
 
     def test_lolbin_certutil(self):
         """
-        Test that the FilterEngine correctly identifies a certutil.exe execution event as an interesting LOLBin occurrence. The test constructs a minimal EVTX event dictionary with the image path pointing to certutil.exe, invokes the engine's detection method, and asserts that the event is marked as interesting.
+        Test that the FilterEngine correctly identifies a certutil.exe execution event as an interesting LOLBin occurrence.
+        Note: Event must FIRST match a configured channel+event_id before LOLBin detection applies.
         """
         engine = FilterEngine()
 
         event = {
-            "system.Channel": "Some-Channel",
-            "system.EventID": 1,
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 1,  # Process creation
             "event_data.Image": "C:\\Windows\\System32\\certutil.exe",
         }
 
@@ -168,13 +171,14 @@ class TestEVTXFiltering:
 
     def test_interesting_port_rdp(self):
         """
-        Test that the FilterEngine correctly identifies an event with destination port 3389 as interesting, verifying RDP port detection logic.
+        Test that the FilterEngine correctly identifies an event with destination port 3389 as interesting.
+        Note: Event must FIRST match a configured channel+event_id before port detection applies.
         """
         engine = FilterEngine()
 
         event = {
-            "system.Channel": "Some-Channel",
-            "system.EventID": 3,
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 3,  # Network connection
             "event_data.DestinationPort": "3389",
         }
 
@@ -184,13 +188,14 @@ class TestEVTXFiltering:
 
     def test_interesting_port_ssh(self):
         """
-        Test that the FilterEngine correctly identifies an event as interesting when it contains a source port matching a known SSH port (22). The test constructs a minimal EVTX event dictionary with a `system.Channel`, `system.EventID`, and `event_data.SourcePort` set to 22, invokes `engine.is_interesting_evtx(event)`, and asserts that the returned `is_interesting` flag is True. This verifies the engine's port-based detection logic for SSH traffic.
+        Test that the FilterEngine correctly identifies an event as interesting when it contains a source port matching a known SSH port (22).
+        Note: Event must FIRST match a configured channel+event_id before port detection applies.
         """
         engine = FilterEngine()
 
         event = {
-            "system.Channel": "Some-Channel",
-            "system.EventID": 3,
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 3,  # Network connection
             "event_data.SourcePort": 22,
         }
 
@@ -284,14 +289,14 @@ class TestEVTXFiltering:
     def test_case_insensitive_channel_matching(self):
         """
         Test that the FilterEngine correctly treats channel names without regard to case.
-
-        This test creates an instance of :class:`FilterEngine`, constructs a mock EVTX event whose `system.Channel` value is in uppercase (`"MICROSOFT-WINDOWS-SYSMON/OPERATIONAL"`), and verifies that :meth:`FilterEngine.is_interesting_evtx` returns `True` for the `is_interesting` flag. The purpose is to ensure channel matching logic is case-insensitive, allowing events from Sysmon's operational channel to be recognized regardless of the capitalization used in the event data.
+        With stricter filtering, event must also contain LOLBin or interesting port.
         """
         engine = FilterEngine()
 
         event = {
             "system.Channel": "MICROSOFT-WINDOWS-SYSMON/OPERATIONAL",
-            "system.EventID": 1,
+            "system.EventID": 1,  # Process creation - configured event ID
+            "event_data.Image": "C:\\Windows\\System32\\cmd.exe",  # LOLBin required
         }
 
         is_interesting, _ = engine.is_interesting_evtx(event)
@@ -300,16 +305,16 @@ class TestEVTXFiltering:
 
     def test_alternative_field_names(self):
         """
-        Test alternative field name formats.
-
-        This test verifies that the :class:`FilterEngine` correctly handles events where fields are provided without the typical `EventData_` prefix (e.g., `Channel` and `EventID`). It constructs a minimal security logon event, invokes :meth:`FilterEngine.is_interesting_evtx`, and asserts that the engine classifies the event as interesting.
+        Test alternative field name formats with stricter filtering.
+        Event must contain LOLBin or interesting port in addition to channel+event_id match.
         """
         engine = FilterEngine()
 
-        # Using non-prefixed field names
+        # Using non-prefixed field names with LOLBin
         event = {
             "Channel": "Security",
-            "EventID": 4624,
+            "EventID": 4688,  # Process creation - configured event ID
+            "CommandLine": "powershell.exe -enc <base64>",  # LOLBin required
         }
 
         is_interesting, _ = engine.is_interesting_evtx(event)
@@ -323,19 +328,15 @@ class TestPrefetchFiltering:
 
     def test_include_all_default(self):
         """
-        Test that the default configuration of :class:`FilterEngine` marks every prefetch file as interesting.
-
-        The test creates a new `FilterEngine` instance with no custom settings and verifies that
-        `engine.is_interesting_prefetch` returns `True` for various executable names,
-        including typical Windows binaries (e.g., `notepad.exe` and `cmd.exe`) and an arbitrary
-        filename (`anything.exe`). This confirms the engine's default behavior of including all
-        prefetch entries.
+        Test that the default configuration of :class:`FilterEngine` does NOT mark every prefetch file as interesting.
+        The default has been changed to include_all=False for reduced noise.
         """
         engine = FilterEngine()
 
-        assert engine.is_interesting_prefetch("notepad.exe") is True
-        assert engine.is_interesting_prefetch("cmd.exe") is True
-        assert engine.is_interesting_prefetch("anything.exe") is True
+        # Default is now False for prefetch
+        assert engine.is_interesting_prefetch("notepad.exe") is False
+        assert engine.is_interesting_prefetch("cmd.exe") is False
+        assert engine.is_interesting_prefetch("anything.exe") is False
 
     def test_custom_config_include_all_false(self):
         """
@@ -355,12 +356,14 @@ class TestLNKFiltering:
 
     def test_include_all_default(self):
         """
-        Test that the :class:`FilterEngine` includes every LNK file by default.\n\nThe test instantiates a fresh `FilterEngine` with its default configuration and verifies that `is_interesting_lnk` returns `True` for both a typical user-level path (e.g., `C:\\Users\\user\\file.txt`) and a system executable path (e.g., `C:\\Windows\\System32\\cmd.exe`).
+        Test that the :class:`FilterEngine` does NOT include every LNK file by default.
+        The default has been changed to include_all=False for reduced noise.
         """
         engine = FilterEngine()
 
-        assert engine.is_interesting_lnk("C:\\Users\\user\\file.txt") is True
-        assert engine.is_interesting_lnk("C:\\Windows\\System32\\cmd.exe") is True
+        # Default is now False for LNK
+        assert engine.is_interesting_lnk("C:\\Users\\user\\file.txt") is False
+        assert engine.is_interesting_lnk("C:\\Windows\\System32\\cmd.exe") is False
 
     def test_custom_config_include_all_false(self):
         """
@@ -402,15 +405,18 @@ class TestLOLBins:
     def test_lolbin_detection_case_insensitive(self):
         """
         Test that the LOLBin detection logic treats executable names case-insensitively.
-
-        The test creates two EVTX events whose `event_data.Image` fields contain the same PowerShell binary path with different capitalisation (`POWERSHELL.EXE` vs `powershell.exe`). It then invokes :pymeth:`FilterEngine.is_interesting_evtx` for each event and asserts that both calls return `True` for the *is_interesting* flag, confirming that the detection does not depend on case.
+        Note: Event must FIRST match a configured channel+event_id before LOLBin detection applies.
         """
         engine = FilterEngine()
 
         event1 = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 1,  # Process creation
             "event_data.Image": "C:\\Windows\\System32\\POWERSHELL.EXE",
         }
         event2 = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 1,  # Process creation
             "event_data.Image": "C:\\Windows\\System32\\powershell.exe",
         }
 
@@ -422,14 +428,227 @@ class TestLOLBins:
 
 
 @pytest.mark.unit
+class TestStricterFiltering:
+    """Test the new stricter filtering logic that requires channel+event_id AND (LOLBins OR ports)."""
+
+    def test_channel_eventid_match_without_lolbin_or_port_not_interesting(self):
+        """
+        Test that events matching channel+event_id but lacking LOLBins or interesting ports are NOT interesting.
+        This is the core of the stricter filtering logic.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": 4624,  # Configured event ID
+            "event_data.LogonType": "3",  # No LOLBins or ports
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is False
+
+    def test_channel_eventid_match_with_lolbin_is_interesting(self):
+        """
+        Test that events matching channel+event_id AND containing a LOLBin ARE interesting.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": 4688,  # Process creation
+            "event_data.CommandLine": "powershell.exe -enc ABC123",  # LOLBin present
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is True
+
+    def test_channel_eventid_match_with_interesting_port_is_interesting(self):
+        """
+        Test that events matching channel+event_id AND containing an interesting port ARE interesting.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 3,  # Network connection
+            "event_data.DestinationPort": "3389",  # RDP port
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is True
+
+    def test_no_channel_eventid_match_with_lolbin_not_interesting(self):
+        """
+        Test that events NOT matching channel+event_id are NOT interesting, even with LOLBins.
+        LOLBin detection only applies AFTER channel+event_id match.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Application",  # Not a configured channel
+            "system.EventID": 9999,  # Not a configured event ID
+            "event_data.Image": "powershell.exe",  # LOLBin present but irrelevant
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is False
+
+    def test_localhost_ip_filtered_out(self):
+        """
+        Test that events with localhost IP (127.0.0.1) are filtered out even if they match other criteria.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": 4624,
+            "event_data.IpAddress": "127.0.0.1",  # Localhost - should be filtered
+            "event_data.CommandLine": "powershell.exe",  # Has LOLBin
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is False
+
+    def test_null_ip_filtered_out(self):
+        """
+        Test that events with null/dash IP address are filtered out.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": 4624,
+            "event_data.IpAddress": "-",  # Null IP - should be filtered
+            "event_data.CommandLine": "cmd.exe",  # Has LOLBin
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is False
+
+    def test_valid_ip_with_lolbin_is_interesting(self):
+        """
+        Test that events with valid (non-localhost) IP and LOLBin ARE interesting.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": 4624,
+            "event_data.IpAddress": "192.168.1.100",  # Valid IP
+            "event_data.CommandLine": "powershell.exe -enc ABC",  # LOLBin
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is True
+
+
+@pytest.mark.unit  
+class TestEdgeCasesAndDefaults:
+    """Test edge cases and default behaviors."""
+
+    def test_mft_always_returns_false(self):
+        """Test that MFT filtering always returns False (not implemented)."""
+        engine = FilterEngine()
+
+        # Try various paths and extensions
+        test_cases = [
+            ("C:\\Users\\test\\malware.exe", ".exe"),
+            ("C:\\Windows\\System32\\cmd.exe", ".exe"),
+            ("C:\\Temp\\suspicious.dll", ".dll"),
+            ("", ""),
+        ]
+
+        for path, ext in test_cases:
+            result = engine.is_interesting_mft(path, ext)
+            assert result is False
+
+    def test_registry_always_returns_false(self):
+        """Test that registry filtering always returns False (not implemented)."""
+        engine = FilterEngine()
+
+        # Try various registry paths
+        test_cases = [
+            "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            "HKCU\\Software\\Classes",
+            "HKLM\\System\\CurrentControlSet\\Services",
+            "",
+        ]
+
+        for key_path in test_cases:
+            result = engine.is_interesting_registry(key_path)
+            assert result is False
+
+    def test_evtx_empty_channel_string(self):
+        """Test EVTX filtering with empty channel string."""
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "",  # Empty channel
+            "system.EventID": 4624,
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        # Empty channel cannot match any configured channel
+        assert is_interesting is False
+
+    def test_evtx_none_event_id(self):
+        """Test EVTX filtering with None event ID."""
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": None,  # None event ID
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        # None event ID cannot match any configured event ID
+        assert is_interesting is False
+
+    def test_evtx_missing_event_id_field(self):
+        """Test EVTX filtering when event ID field is completely missing."""
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            # No event ID field at all
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        # Missing event ID cannot match
+        assert is_interesting is False
+
+    def test_lnk_default_include_all(self):
+        """Test LNK filtering default behavior when config is missing."""
+        custom_config = {
+            "evtx": {"channels": []},
+            # No lnk key
+        }
+        engine = FilterEngine(config=custom_config)
+
+        # Should default to True when config is missing
+        result = engine.is_interesting_lnk("C:\\test.exe")
+
+        assert result is True
+
+
+@pytest.mark.unit
 class TestCustomConfiguration:
     """Test custom filter configuration."""
 
     def test_custom_evtx_channels(self):
         """
-        Test that the FilterEngine correctly processes events from a user-defined EVTX channel.
-
-        Creates a minimal configuration specifying a custom channel named `Custom-Channel` with allowed event IDs 100 and 200, then verifies that an event matching both the channel name and one of the permitted IDs is marked as interesting by :meth:`FilterEngine.is_interesting_evtx`. The test asserts that `is_interesting` returns `True` for this scenario.
+        Test that custom channels with LOLBins disabled and no interesting ports require additional criteria.
+        Since LOLBins are disabled and no ports are configured, event should NOT be interesting.
         """
         custom_config = {
             "evtx": {
@@ -445,6 +664,7 @@ class TestCustomConfiguration:
         }
         engine = FilterEngine(config=custom_config)
 
+        # Event matches channel+event_id but has no LOLBins or ports
         event = {
             "system.Channel": "Custom-Channel",
             "system.EventID": 100,
@@ -452,7 +672,8 @@ class TestCustomConfiguration:
 
         is_interesting, _ = engine.is_interesting_evtx(event)
 
-        assert is_interesting is True
+        # With stricter logic: channel+event_id match is not enough
+        assert is_interesting is False
 
     def test_disable_lolbin_detection(self):
         """
@@ -481,11 +702,14 @@ class TestCustomConfiguration:
 
     def test_custom_interesting_ports(self):
         """
-        Test that the FilterEngine correctly identifies events as interesting when they contain destination ports specified in a custom `interesting_ports` configuration. The test creates a minimal configuration overriding the default port list with `[8080, 9090]`, instantiates a `FilterEngine` using this configuration, and supplies an event dictionary where `event_data.DestinationPort` matches one of the custom ports. It then asserts that `engine.is_interesting_evtx` returns `True` for the `is_interesting` flag, confirming that custom port settings are respected.
+        Test that the FilterEngine correctly identifies events as interesting when they contain destination ports specified in a custom `interesting_ports` configuration.
+        Note: Event must FIRST match a configured channel+event_id before port detection applies.
         """
         custom_config = {
             "evtx": {
-                "channels": [],
+                "channels": [
+                    {"name": "Microsoft-Windows-Sysmon/Operational", "event_ids": [3]}
+                ],
                 "lol_bins": False,
                 "interesting_ports": [8080, 9090],
             }
@@ -493,7 +717,283 @@ class TestCustomConfiguration:
         engine = FilterEngine(config=custom_config)
 
         event = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 3,  # Network connection
             "event_data.DestinationPort": 8080,
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is True
+
+    def test_port_conversion_from_string(self):
+        """
+        Test that port numbers provided as strings are correctly converted to integers.
+        Covers lines 267-269 (port string conversion).
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 3,
+            "event_data.DestinationPort": "3389",  # String instead of int
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is True
+
+    def test_port_conversion_error_handling(self):
+        """
+        Test that invalid port values (non-numeric strings) are handled gracefully.
+        Covers lines 267-269 (ValueError/TypeError exception handling).
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 3,
+            "event_data.DestinationPort": "invalid",  # Invalid port
+            "event_data.SourcePort": None,  # None value
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        # Should not crash, should return False
+        assert is_interesting is False
+
+    def test_timestamp_parsing_error(self):
+        """
+        Test that invalid timestamp strings are handled gracefully.
+        Covers line 178 (timestamp parsing exception).
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": 4624,
+            "timestamp": "not-a-valid-timestamp",  # Invalid format
+        }
+
+        is_interesting, timestamp = engine.is_interesting_evtx(event)
+
+        # Should not crash, timestamp should be None
+        assert timestamp is None
+
+    def test_prefetch_include_all_true(self):
+        """
+        Test that prefetch files are included when include_all is explicitly True.
+        Covers line 287.
+        """
+        custom_config = {
+            "prefetch": {"include_all": True}
+        }
+        engine = FilterEngine(config=custom_config)
+
+        assert engine.is_interesting_prefetch("notepad.exe") is True
+        assert engine.is_interesting_prefetch("malware.exe") is True
+
+    def test_lnk_include_all_true(self):
+        """
+        Test that LNK files are included when include_all is explicitly True.
+        Covers line 302.
+        """
+        custom_config = {
+            "lnk": {"include_all": True}
+        }
+        engine = FilterEngine(config=custom_config)
+
+        assert engine.is_interesting_lnk("C:\\Users\\user\\file.txt") is True
+        assert engine.is_interesting_lnk("C:\\malicious.exe") is True
+
+    def test_evtx_no_channels_configured(self):
+        """
+        Test behavior when no channels are configured in evtx config.
+        Covers edge case where channels list is empty.
+        """
+        custom_config = {
+            "evtx": {
+                "channels": [],  # Empty channels list
+                "lol_bins": False,
+                "interesting_ports": [],
+            }
+        }
+        engine = FilterEngine(config=custom_config)
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": 4624,
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        # No channels configured, should not be interesting
+        assert is_interesting is False
+
+    def test_evtx_missing_channel_field(self):
+        """
+        Test behavior when event has no channel field.
+        Covers line 228-229 (empty channel string).
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.EventID": 4624,  # No channel field
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        # No channel, cannot match any configured channel
+        assert is_interesting is False
+
+    def test_integer_port_values(self):
+        """
+        Test that integer port values work correctly without conversion.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 3,
+            "event_data.SourcePort": 22,  # Already an integer
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is True
+
+    def test_port_none_value(self):
+        """
+        Test that None port values are handled gracefully.
+        Covers line 267 (TypeError exception for None values).
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 3,
+            "event_data.DestinationPort": None,  # None value
+            "event_data.SourcePort": None,  # None value
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        # Should not crash, should return False
+        assert is_interesting is False
+
+    def test_timestamp_malformed_iso_format(self):
+        """
+        Test various malformed timestamp formats.
+        Covers line 178 (exception handling in timestamp parsing).
+        """
+        engine = FilterEngine()
+
+        # Test various malformed timestamps
+        malformed_timestamps = [
+            "2024-13-01T10:00:00Z",  # Invalid month
+            "not-a-date",  # Completely invalid
+            "2024-01-32T10:00:00Z",  # Invalid day
+            "2024-01-01T25:00:00Z",  # Invalid hour
+            "",  # Empty string
+        ]
+
+        for bad_timestamp in malformed_timestamps:
+            event = {
+                "system.Channel": "Security",
+                "system.EventID": 4624,
+                "timestamp": bad_timestamp,
+            }
+
+            is_interesting, timestamp = engine.is_interesting_evtx(event)
+
+            # Should handle gracefully, timestamp should be None
+            assert timestamp is None
+
+    def test_prefetch_default_behavior(self):
+        """
+        Test prefetch default behavior when config key is missing.
+        Covers line 287 (default True behavior).
+        """
+        # Create config without prefetch section
+        custom_config = {
+            "evtx": {"channels": []},
+            # No prefetch key at all
+        }
+        engine = FilterEngine(config=custom_config)
+
+        # Should default to True when key is missing
+        result = engine.is_interesting_prefetch("test.exe")
+
+        # With missing config, get() returns default value
+        # prefetch_config.get("include_all", True) returns True
+        assert result is True
+
+    def test_lolbin_in_parent_image(self):
+        """
+        Test LOLBin detection in ParentImage field.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 1,
+            "event_data.ParentImage": "C:\\Windows\\System32\\powershell.exe",
+            "event_data.Image": "C:\\Windows\\System32\\notepad.exe",
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is True
+
+    def test_lolbin_case_variations(self):
+        """
+        Test LOLBin detection with various case variations.
+        """
+        engine = FilterEngine()
+
+        variations = [
+            "POWERSHELL.EXE",
+            "PowerShell.exe",
+            "powershell.EXE",
+            "PoWeRsHeLl.ExE",
+        ]
+
+        for variant in variations:
+            event = {
+                "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+                "system.EventID": 1,
+                "event_data.Image": f"C:\\Windows\\System32\\{variant}",
+            }
+
+            is_interesting, _ = engine.is_interesting_evtx(event)
+            assert is_interesting is True, f"Failed for variant: {variant}"
+
+    def test_multiple_lolbins_in_commandline(self):
+        """
+        Test detection when multiple LOLBins appear in command line.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Security",
+            "system.EventID": 4688,
+            "event_data.CommandLine": "cmd.exe /c powershell.exe -enc ABC",
+        }
+
+        is_interesting, _ = engine.is_interesting_evtx(event)
+
+        assert is_interesting is True
+
+    def test_lolbin_partial_match(self):
+        """
+        Test that LOLBin detection works with partial matches in paths.
+        """
+        engine = FilterEngine()
+
+        event = {
+            "system.Channel": "Microsoft-Windows-Sysmon/Operational",
+            "system.EventID": 1,
+            "event_data.CommandLine": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile",
         }
 
         is_interesting, _ = engine.is_interesting_evtx(event)
