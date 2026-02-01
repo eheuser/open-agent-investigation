@@ -125,22 +125,39 @@ class AutorunsAnalyzer:
                     continue
 
                 location_name = location["name"]
-                registry_paths = location.get("registry_paths", [])
-                value_names = location.get("value_names")
-                value_filters = location.get("value_filters", {})
-
-                # Query each registry path separately
-                for registry_path in registry_paths:
-                    path_entries = await self._query_single_path(
+                
+                # Check if this location queries event_type instead of registry
+                event_type = location.get("event_type")
+                if event_type:
+                    # Query events by type
+                    event_entries = await self._query_event_type(
                         db=db,
                         investigation_id=investigation_id,
                         category=category_name,
                         location=location_name,
-                        registry_path=registry_path,
-                        value_names=value_names,
-                        value_filters=value_filters,
+                        event_type=event_type,
                     )
-                    entries.extend(path_entries)
+                    entries.extend(event_entries)
+                else:
+                    # Query registry paths
+                    registry_paths = location.get("registry_paths", [])
+                    value_names = location.get("value_names")
+                    value_filters = location.get("value_filters", {})
+                    match_subkeys = location.get("match_subkeys", True)
+
+                    # Query each registry path separately
+                    for registry_path in registry_paths:
+                        path_entries = await self._query_single_path(
+                            db=db,
+                            investigation_id=investigation_id,
+                            category=category_name,
+                            location=location_name,
+                            registry_path=registry_path,
+                            value_names=value_names,
+                            value_filters=value_filters,
+                            match_subkeys=match_subkeys,
+                        )
+                        entries.extend(path_entries)
 
         logger.info(f"Total autoruns entries found: {len(entries)}")
         
@@ -159,6 +176,7 @@ class AutorunsAnalyzer:
         registry_path: str,
         value_names: Optional[List[str]] = None,
         value_filters: Optional[Dict[str, List[str]]] = None,
+        match_subkeys: bool = True,
     ) -> List[AutorunEntry]:
         """Query a single registry path."""
         entries: List[AutorunEntry] = []
@@ -168,22 +186,37 @@ class AutorunsAnalyzer:
         
         # Build query that matches path endings and excludes temp/backup locations
         # Use LIKE instead of ILIKE to avoid backslash escaping issues
-        query = """
-            SELECT event_id, event_ts, payload
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND event_type = 'registry_value'
-              AND (
-                  -- Match paths ending with our target path (case-insensitive via LOWER)
-                  LOWER(payload->>'key_path') LIKE LOWER(:path_exact)
-                  -- Match paths where our target is a parent key
-                  OR LOWER(payload->>'key_path') LIKE LOWER(:path_subkeys)
-              )
-              -- Exclude side-by-side (SXS) assemblies and other temp locations
-              AND LOWER(payload->>'key_path') NOT LIKE '%winsxs%'
-              AND LOWER(payload->>'key_path') NOT LIKE '%sxs%'
-              AND LOWER(payload->>'key_path') NOT LIKE '%backup%'
-        """
+        if match_subkeys:
+            # Match both exact key and subkeys
+            query = """
+                SELECT event_id, event_ts, payload
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND event_type = 'registry_value'
+                  AND (
+                      -- Match paths ending with our target path (case-insensitive via LOWER)
+                      LOWER(payload->>'key_path') LIKE LOWER(:path_exact)
+                      -- Match paths where our target is a parent key
+                      OR LOWER(payload->>'key_path') LIKE LOWER(:path_subkeys)
+                  )
+                  -- Exclude side-by-side (SXS) assemblies and other temp locations
+                  AND LOWER(payload->>'key_path') NOT LIKE '%winsxs%'
+                  AND LOWER(payload->>'key_path') NOT LIKE '%sxs%'
+                  AND LOWER(payload->>'key_path') NOT LIKE '%backup%'
+            """
+        else:
+            # Match only the exact key, not subkeys
+            query = """
+                SELECT event_id, event_ts, payload
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND event_type = 'registry_value'
+                  AND LOWER(payload->>'key_path') LIKE LOWER(:path_exact)
+                  -- Exclude side-by-side (SXS) assemblies and other temp locations
+                  AND LOWER(payload->>'key_path') NOT LIKE '%winsxs%'
+                  AND LOWER(payload->>'key_path') NOT LIKE '%sxs%'
+                  AND LOWER(payload->>'key_path') NOT LIKE '%backup%'
+            """
         
         # Add value name filter if specified
         if value_names:
@@ -208,12 +241,17 @@ class AutorunsAnalyzer:
             "investigation_id": str(investigation_id),
             # Match paths with our target components
             "path_exact": pattern_exact,
-            "path_subkeys": pattern_subkeys,
         }
+        
+        if match_subkeys:
+            params["path_subkeys"] = pattern_subkeys
         
         logger.info(f"Original path: {registry_path}")
         logger.info(f"Normalized path: {normalized_path}")
-        logger.info(f"Escaped patterns: exact={params['path_exact']}, subkeys={params['path_subkeys']}")
+        logger.info(f"Match subkeys: {match_subkeys}")
+        logger.info(f"Pattern exact: {params['path_exact']}")
+        if match_subkeys:
+            logger.info(f"Pattern subkeys: {params.get('path_subkeys', 'N/A')}")
         
         if value_names:
             for i, vname in enumerate(value_names):
@@ -222,18 +260,24 @@ class AutorunsAnalyzer:
         # Execute
         try:
             logger.info(f"Querying normalized path: {normalized_path}")
-            logger.info(f"Pattern will match: {params['path_exact']} or {params['path_subkeys']}")
+            if match_subkeys:
+                logger.info(f"Pattern will match: {params['path_exact']} or {params.get('path_subkeys', 'N/A')}")
+            else:
+                logger.info(f"Pattern will match: {params['path_exact']} (exact only)")
             
-            # Test query first
-            test_query = f"SELECT COUNT(*) FROM events WHERE investigation_id = :investigation_id AND event_type = 'registry_value' AND LOWER(payload->>'key_path') LIKE LOWER(:path_exact)"
-            test_result = await db.execute(text(test_query), {"investigation_id": params["investigation_id"], "path_exact": params["path_exact"]})
-            test_count = test_result.scalar()
-            logger.info(f"Test query for exact path returned: {test_count} events")
+            # Test query first (optional - comment out for production)
+            # test_query = f"SELECT COUNT(*) FROM events WHERE investigation_id = :investigation_id AND event_type = 'registry_value' AND LOWER(payload->>'key_path') LIKE LOWER(:path_exact)"
+            # test_result = await db.execute(text(test_query), {"investigation_id": params["investigation_id"], "path_exact": params["path_exact"]})
+            # test_count = test_result.scalar()
+            # logger.info(f"Test query for exact path returned: {test_count} events")
             
             result = await db.execute(text(query), params)
             rows = result.fetchall()
             
-            logger.info(f"Path '{normalized_path}' returned {len(rows)} events (after all filters)")
+            if len(rows) > 0:
+                logger.info(f"Path '{normalized_path}' returned {len(rows)} events (after all filters)")
+            else:
+                logger.debug(f"Path '{normalized_path}' returned 0 events")
             
             # Process results
             for row in rows:
@@ -266,6 +310,108 @@ class AutorunsAnalyzer:
             logger.error(f"Failed to query path '{normalized_path}': {e}", exc_info=True)
         
         return entries
+    
+    async def _query_event_type(
+        self,
+        db: AsyncSession,
+        investigation_id: UUID,
+        category: str,
+        location: str,
+        event_type: str,
+    ) -> List[AutorunEntry]:
+        """Query events by event_type (for scheduled tasks, etc.)."""
+        entries: List[AutorunEntry] = []
+        
+        try:
+            query = """
+                SELECT event_id, event_ts, payload
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND event_type = :event_type
+                ORDER BY event_ts DESC
+                LIMIT 10000
+            """
+            
+            params = {
+                "investigation_id": str(investigation_id),
+                "event_type": event_type,
+            }
+            
+            result = await db.execute(text(query), params)
+            rows = result.fetchall()
+            
+            logger.info(f"Event type '{event_type}' returned {len(rows)} events")
+            
+            # Process results
+            for row in rows:
+                event_id, event_ts, payload = row[0], row[1], row[2]
+                
+                # Extract task information from payload
+                entry = self._create_entry_from_event(
+                    category=category,
+                    location=location,
+                    event_id=event_id,
+                    timestamp=event_ts.isoformat() if event_ts else None,
+                    payload=payload,
+                    event_type=event_type,
+                )
+                
+                if entry:
+                    entries.append(entry)
+        
+        except Exception as e:
+            logger.error(f"Failed to query event type '{event_type}': {e}", exc_info=True)
+        
+        return entries
+    
+    def _create_entry_from_event(
+        self,
+        category: str,
+        location: str,
+        event_id: int,
+        timestamp: Optional[str],
+        payload: Dict[str, Any],
+        event_type: str,
+    ) -> Optional[AutorunEntry]:
+        """Create AutorunEntry from a non-registry event (scheduled task, etc.)."""
+        try:
+            # For scheduled tasks
+            if event_type == "scheduled_task":
+                task_name = payload.get("task_name", "Unknown")
+                
+                # Extract executable path from actions
+                actions = payload.get("actions", [])
+                if isinstance(actions, list) and len(actions) > 0:
+                    image_path = actions[0]
+                elif isinstance(actions, str):
+                    image_path = actions
+                else:
+                    # Try to get from other fields
+                    image_path = payload.get("file_path", "")
+                
+                # Filter out non-executable entries
+                if not self._is_valid_autorun_path(image_path):
+                    return None
+                
+                return AutorunEntry(
+                    category=category,
+                    location=location,
+                    entry_name=task_name,
+                    image_path=image_path,
+                    enabled=True,  # Assume enabled if task exists
+                    timestamp=timestamp,
+                    event_id=event_id,
+                    registry_path=None,
+                    description=payload.get("description"),
+                    publisher=payload.get("author"),
+                    raw_data=payload,
+                )
+            
+            return None
+        
+        except Exception as e:
+            logger.warning(f"Failed to create AutorunEntry from event: {e}")
+            return None
 
     def _create_entry(
         self,

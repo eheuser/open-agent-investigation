@@ -14,30 +14,36 @@ categories:
         registry_paths:
           - "Microsoft\\Windows\\CurrentVersion\\Run"
           - "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+        # Only match direct values in Run key, not subkeys
+        match_subkeys: false
         enabled: true
         
       - name: "RunOnce"
         registry_paths:
           - "Microsoft\\Windows\\CurrentVersion\\RunOnce"
           - "Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce"
+        match_subkeys: false
         enabled: true
         
       - name: "Run (Policies)"
         registry_paths:
           - "Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\Run"
           - "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\Run"
+        match_subkeys: false
         enabled: true
         
       - name: "RunServices"
         registry_paths:
           - "Microsoft\\Windows\\CurrentVersion\\RunServices"
           - "Software\\Microsoft\\Windows\\CurrentVersion\\RunServices"
+        match_subkeys: false
         enabled: true
         
       - name: "RunServicesOnce"
         registry_paths:
           - "Microsoft\\Windows\\CurrentVersion\\RunServicesOnce"
           - "Software\\Microsoft\\Windows\\CurrentVersion\\RunServicesOnce"
+        match_subkeys: false
         enabled: true
 
   - name: "Services"
@@ -48,18 +54,31 @@ categories:
           - "ControlSet001\\Services"
           - "ControlSet002\\Services"
           - "CurrentControlSet\\Services"
+        # Only match ImagePath values in service keys
+        value_names:
+          - "ImagePath"
         value_filters:
           Start: ["0", "1", "2"]  # Boot, System, Auto
-          Type: ["1", "16", "32"]  # Kernel, Own Process, Share Process
+        match_subkeys: true
         enabled: true
 
   - name: "Scheduled Tasks"
     description: "Tasks scheduled to run at specific times or events"
     locations:
-      - name: "Task Scheduler"
+      - name: "Task Scheduler (Registry)"
         registry_paths:
           - "Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks"
           - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks"
+        # Only match Path values (executable path)
+        value_names:
+          - "Path"
+          - "Actions"
+        match_subkeys: true
+        enabled: true
+      
+      - name: "Task Scheduler (Artifacts)"
+        # Query scheduled_task events from parsed XML/job files
+        event_type: "scheduled_task"
         enabled: true
 
   - name: "Winlogon"
@@ -82,6 +101,9 @@ categories:
         registry_paths:
           - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\Notify"
           - "Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\Notify"
+        value_names:
+          - "DllName"
+        match_subkeys: true
         enabled: true
 
   - name: "Explorer"
@@ -91,18 +113,22 @@ categories:
         registry_paths:
           - "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved"
           - "Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved"
+        # Match all values (GUIDs -> extension names)
+        match_subkeys: false
         enabled: true
         
       - name: "Browser Helper Objects"
         registry_paths:
           - "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Browser Helper Objects"
           - "Microsoft\\Windows\\CurrentVersion\\Explorer\\Browser Helper Objects"
+        match_subkeys: true
         enabled: true
         
       - name: "Toolbar Extensions"
         registry_paths:
           - "Software\\Microsoft\\Internet Explorer\\Toolbar"
           - "Microsoft\\Internet Explorer\\Toolbar"
+        match_subkeys: true
         enabled: true
 
   - name: "Drivers"
@@ -113,9 +139,12 @@ categories:
           - "ControlSet001\\Services"
           - "ControlSet002\\Services"
           - "CurrentControlSet\\Services"
+        value_names:
+          - "ImagePath"
         value_filters:
           Start: ["0", "1"]  # Boot, System
           Type: ["1"]  # Kernel driver
+        match_subkeys: true
         enabled: true
 
   - name: "Codecs"
@@ -125,6 +154,7 @@ categories:
         registry_paths:
           - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Drivers32"
           - "Microsoft\\Windows NT\\CurrentVersion\\Drivers32"
+        match_subkeys: false
         enabled: true
 
   - name: "Image Hijacks"
@@ -187,6 +217,9 @@ categories:
           - "ControlSet001\\Control\\Print\\Monitors"
           - "ControlSet002\\Control\\Print\\Monitors"
           - "CurrentControlSet\\Control\\Print\\Monitors"
+        value_names:
+          - "Driver"
+        match_subkeys: true
         enabled: true
 
   - name: "Network Providers"
@@ -208,6 +241,7 @@ categories:
         registry_paths:
           - "Software\\Microsoft\\WBEM\\ESS"
           - "Microsoft\\WBEM\\ESS"
+        match_subkeys: true
         enabled: true
 
   - name: "Office"
@@ -216,4 +250,137 @@ categories:
       - name: "Office Add-ins"
         registry_paths:
           - "Software\\Microsoft\\Office"
+        match_subkeys: true
+        enabled: false  # Too broad - disable by default
+
+  - name: "Known DLLs"
+    description: "System-wide known DLL list (KnownDLLs)"
+    locations:
+      - name: "Known DLLs"
+        registry_paths:
+          - "ControlSet001\\Control\\Session Manager\\KnownDLLs"
+          - "ControlSet002\\Control\\Session Manager\\KnownDLLs"
+          - "CurrentControlSet\\Control\\Session Manager\\KnownDLLs"
+        match_subkeys: false
+        enabled: true
+
+  - name: "Winsock Providers"
+    description: "Winsock Layered Service Providers (LSP) and Namespace Providers"
+    locations:
+      - name: "Winsock LSP"
+        registry_paths:
+          - "ControlSet001\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries"
+          - "ControlSet002\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries"
+          - "CurrentControlSet\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries"
+        value_names:
+          - "PackedCatalogItem"
+        match_subkeys: true
+        enabled: true
+      
+      - name: "Winsock Namespace Providers"
+        registry_paths:
+          - "ControlSet001\\Services\\WinSock2\\Parameters\\NameSpace_Catalog5\\Catalog_Entries"
+          - "ControlSet002\\Services\\WinSock2\\Parameters\\NameSpace_Catalog5\\Catalog_Entries"
+          - "CurrentControlSet\\Services\\WinSock2\\Parameters\\NameSpace_Catalog5\\Catalog_Entries"
+        value_names:
+          - "LibraryPath"
+        match_subkeys: true
+        enabled: true
+
+  - name: "Internet Explorer"
+    description: "Internet Explorer extensions and add-ons"
+    locations:
+      - name: "IE Extensions"
+        registry_paths:
+          - "Software\\Microsoft\\Internet Explorer\\Extensions"
+          - "Microsoft\\Internet Explorer\\Extensions"
+        match_subkeys: true
+        enabled: true
+      
+      - name: "IE Explorer Bars"
+        registry_paths:
+          - "Software\\Microsoft\\Internet Explorer\\Explorer Bars"
+          - "Microsoft\\Internet Explorer\\Explorer Bars"
+        match_subkeys: true
+        enabled: true
+
+  - name: "Sidebar Gadgets"
+    description: "Windows Sidebar Gadgets (legacy)"
+    locations:
+      - name: "Sidebar Gadgets"
+        registry_paths:
+          - "Software\\Microsoft\\Windows\\CurrentVersion\\Sidebar\\Gadgets"
+          - "Microsoft\\Windows\\CurrentVersion\\Sidebar\\Gadgets"
+        match_subkeys: true
+        enabled: true
+
+  - name: "AppCert DLLs"
+    description: "DLLs loaded by AppCertDlls mechanism"
+    locations:
+      - name: "AppCert DLLs"
+        registry_paths:
+          - "ControlSet001\\Control\\Session Manager\\AppCertDlls"
+          - "ControlSet002\\Control\\Session Manager\\AppCertDlls"
+          - "CurrentControlSet\\Control\\Session Manager\\AppCertDlls"
+        match_subkeys: false
+        enabled: true
+
+  - name: "Font Drivers"
+    description: "Font driver DLLs"
+    locations:
+      - name: "Font Drivers"
+        registry_paths:
+          - "Software\\Microsoft\\Windows NT\\CurrentVersion\\Font Drivers"
+          - "Microsoft\\Windows NT\\CurrentVersion\\Font Drivers"
+        match_subkeys: false
+        enabled: true
+
+  - name: "Active Setup"
+    description: "Active Setup entries that run once per user"
+    locations:
+      - name: "Active Setup"
+        registry_paths:
+          - "Software\\Microsoft\\Active Setup\\Installed Components"
+          - "Microsoft\\Active Setup\\Installed Components"
+        value_names:
+          - "StubPath"
+        match_subkeys: true
+        enabled: true
+
+  - name: "User Init Mpr Logon Script"
+    description: "MPR (Multiple Provider Router) logon scripts"
+    locations:
+      - name: "MPR Notify"
+        registry_paths:
+          - "ControlSet001\\Control\\NetworkProvider"
+          - "ControlSet002\\Control\\NetworkProvider"
+          - "CurrentControlSet\\Control\\NetworkProvider"
+        value_names:
+          - "RestoreConnection"
+        match_subkeys: false
+        enabled: true
+
+  - name: "Session Manager"
+    description: "Session Manager execute and subsystem entries"
+    locations:
+      - name: "Session Manager Execute"
+        registry_paths:
+          - "ControlSet001\\Control\\Session Manager"
+          - "ControlSet002\\Control\\Session Manager"
+          - "CurrentControlSet\\Control\\Session Manager"
+        value_names:
+          - "Execute"
+          - "S0InitialCommand"
+          - "SetupExecute"
+        match_subkeys: false
+        enabled: true
+      
+      - name: "Subsystems"
+        registry_paths:
+          - "ControlSet001\\Control\\Session Manager\\SubSystems"
+          - "ControlSet002\\Control\\Session Manager\\SubSystems"
+          - "CurrentControlSet\\Control\\Session Manager\\SubSystems"
+        value_names:
+          - "Windows"
+        match_subkeys: false
         enabled: true

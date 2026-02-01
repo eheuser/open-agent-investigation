@@ -50,7 +50,6 @@
 
 Provide computed analysis views to get the agents and user started on an investigation.
 
-- Autorun list
 - Evidence of Execution list
 - Browsed URLs list
 - Service list
