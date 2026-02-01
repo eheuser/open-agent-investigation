@@ -21,9 +21,6 @@ Open Agent Investigation (OAI) provides an end‑to‑end workflow for Windows h
 * **Timeline construction** – Chronological aggregation of deduplicated events, with support for manual annotation and export to PDF/Markdown.
 * **Extensible architecture** – Workers run as asynchronous multiprocess tasks; new parsers or tools are added via a plugin interface.
 
-The system is deliberately modular: the front‑end (React) communicates with a FastAPI back‑end over HTTPS/WSS, which persists data in PostgreSQL 15 + PGVector. All LLM interactions occur through a configurable inference endpoint (OpenAI, Ollama, Azure OpenAI, etc.) and are limited to tool selection and response generation; no model is hosted within the repository.
-
-
 ## Visual Overview
 
 | Feature | Thumbnail (click to enlarge) |
@@ -35,6 +32,8 @@ The system is deliberately modular: the front‑end (React) communicates with a 
 | **Logging** | [![Logging](docs/img/logging-thumb.png)](docs/img/logging.png) |
 | **Playbooks** | [![Playbooks](docs/img/playbooks-thumb.png)](docs/img/playbooks.png) |
 | **Configure** | [![Playbooks](docs/img/configure-thumb.png)](docs/img/configure.png) |
+
+> **Note:** This project is under active development. See the [Roadmap](ROADMAP.md) for planned features.
 
 ---
 
@@ -51,7 +50,13 @@ The UI becomes available at `https://localhost`. Default credentials are:
 * **Username:** admin  
 * **Password:** admin123  
 
-> **Note:** This project is under active development. See the [Roadmap](ROADMAP.md) for planned features.
+There are three more steps before you can chat:
+
+* **Configure:** Add an LLM inference API endpoint and an (optional) embeddings endpoint.
+* **Create Investigation:** Click `Start New Investigation` or `New Investigation`, (optionally) name the investigation.
+* **Add Artifacts:** Drag and drop raw artifacts or zip archives with artifacts into the chat window to begin processing and (optional) RAG embedding.
+
+For detailed instructions, see [Getting Started](docs/getting-started.md).
 
 ---
 
