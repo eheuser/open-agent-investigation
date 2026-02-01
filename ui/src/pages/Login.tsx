@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import api from '../services/api';
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -17,6 +18,25 @@ const Login: React.FC = () => {
 
     try {
       await login(username, password);
+      
+      // Check if LLM configuration exists
+      try {
+        const response = await api.get('/api/v1/llm-config/active');
+        
+        // If no active config exists, redirect to settings
+        if (!response.data || !response.data.config_id) {
+          navigate('/settings');
+          return;
+        }
+      } catch (configErr: any) {
+        // If 404 or any error checking config, redirect to settings
+        if (configErr.response?.status === 404 || configErr.response?.status === 500) {
+          navigate('/settings');
+          return;
+        }
+      }
+      
+      // If config exists, go to dashboard
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');

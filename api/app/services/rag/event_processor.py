@@ -794,7 +794,7 @@ async def process_interesting_events(
             embedding_url = getattr(llm_config, "embedding_api_url", None)
             embedding_model = getattr(llm_config, "embedding_model_name", None)
             has_key = bool(getattr(llm_config, "embedding_api_key", None))
-            logger.info(
+            logger.debug(
                 f"Embedding config for user {user_id}: "
                 f"provider={embedding_provider}, url={embedding_url}, "
                 f"model={embedding_model}, has_api_key={has_key}"

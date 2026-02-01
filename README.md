@@ -50,11 +50,15 @@ The UI becomes available at `https://localhost`. Default credentials are:
 * **Username:** admin  
 * **Password:** admin123  
 
-There are three more steps before you can chat:
+**First-time Setup:**
 
-* **Configure:** Add an LLM inference API endpoint and an (optional) embeddings endpoint.
+On first login, you will be automatically redirected to the Settings page to configure your LLM provider. This is required before you can use the system.
+
+**After Configuration:**
+
 * **Create Investigation:** Click `Start New Investigation` or `New Investigation`, (optionally) name the investigation.
 * **Add Artifacts:** Drag and drop raw artifacts or zip archives with artifacts into the chat window to begin processing and (optional) RAG embedding.
+* **Start Querying:** Ask natural-language questions to begin your investigation.
 
 For detailed instructions, see [Getting Started](docs/getting-started.md).
 
@@ -111,8 +115,17 @@ docker compose up -d          # Start nginx, API, worker, PostgreSQL
 
 #### Post‑deployment configuration
 1. **Login** with the default credentials.
-2. **Configure LLM endpoint** under *Settings → LLM* (API key, model name, temperature, etc.).
+2. **Configure LLM endpoint** – You will be automatically redirected to Settings on first login. Configure your LLM provider (API key, model name, temperature, etc.). Without this configuration, the system cannot process queries.
 3. **Create an investigation**, upload artifacts, and begin querying.
+
+#### Replace existing installation with new (upgrades only supported with full releases)
+
+```shell
+docker compose down
+docker volume rm oai-pg-data # deletes Postgres database
+git pull
+docker compose up --build -d
+```
 
 ### Testing
 ```bash

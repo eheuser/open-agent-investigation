@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import numpy as np
 
 from ..llm_service import EmbeddingService as CentralizedEmbeddingService
@@ -27,6 +27,10 @@ class Embedder:
         api_url: str,
         api_key: Optional[str] = None,
         model_name: str = "text-embedding-ada-002",
+        embedding_max_context_length: int = 8192,
+        reranker_model_name: Optional[str] = None,
+        reranker_max_context_length: int = 8192,
+        allow_concurrent_calls: bool = False,
         timeout: int = 120,
     ):
         """
@@ -55,6 +59,10 @@ class Embedder:
             api_url=api_url,
             api_key=api_key,
             model_name=model_name,
+            embedding_max_context_length=embedding_max_context_length,
+            reranker_model_name=reranker_model_name,
+            reranker_max_context_length=reranker_max_context_length,
+            allow_concurrent_calls=allow_concurrent_calls,
             timeout=timeout,
         )
 
@@ -63,6 +71,7 @@ class Embedder:
         self.api_url = api_url
         self.api_key = api_key
         self.model_name = model_name
+        self.reranker_model_name = reranker_model_name
 
         logger.debug(f"Using centralized embedding service: {provider} at {api_url}")
 
@@ -95,6 +104,25 @@ class Embedder:
             int: The size of each embedding vector returned by the underlying service.
         """
         return self._service.get_embedding_dimension()
+
+    async def rerank(
+        self,
+        query: str,
+        documents: List[str],
+        top_k: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Rerank documents using the configured reranker model.
+
+        Args:
+            query (str): The search query to compare against documents.
+            documents (List[str]): List of document texts to rerank.
+            top_k (Optional[int]): Maximum number of results to return.
+
+        Returns:
+            List[Dict[str, Any]]: List of reranked results with index, score, and text.
+        """
+        return await self._service.rerank(query, documents, top_k)
 
 
 __all__ = ["Embedder"]

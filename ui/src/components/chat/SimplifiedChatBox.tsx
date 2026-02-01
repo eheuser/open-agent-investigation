@@ -10,6 +10,7 @@ import EmptyState from './EmptyState';
 import LoadingState from './LoadingState';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import UploadModal from './UploadModal';
+import ParsingStatusBanner from './ParsingStatusBanner';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface SimplifiedChatBoxProps {
@@ -448,13 +449,9 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
         </div>
       )}
 
-      {/* Parsing Lock Banner */}
+      {/* Parsing Status Banner */}
       {parsingLocked && (
-        <div className="px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-t border-yellow-200 dark:border-yellow-800">
-          <p className="text-sm text-yellow-800 dark:text-yellow-200 text-center">
-            ⏳ Artifacts are being parsed. You can't send new questions until parsing completes.
-          </p>
-        </div>
+        <ParsingStatusBanner investigationId={investigationId} />
       )}
 
       {/* Input Area */}

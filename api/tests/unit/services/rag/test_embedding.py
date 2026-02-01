@@ -38,6 +38,10 @@ class TestEmbedder:
             api_url="https://api.openai.com/v1",
             api_key="sk-test123",
             model_name="text-embedding-ada-002",
+            embedding_max_context_length=8192,
+            reranker_model_name=None,
+            reranker_max_context_length=8192,
+            allow_concurrent_calls=False,
             timeout=120,
         )
 
@@ -364,3 +368,45 @@ class TestEmbedder:
         assert hasattr(embedder, "model_name")
         assert embedder.provider == "openai"
         assert embedder.model_name == "text-embedding-3-small"
+
+    @patch("app.services.rag.embedding.CentralizedEmbeddingService")
+    async def test_rerank_delegation(self, mock_service_class):
+        """
+        Test that Embedder.rerank properly delegates to the centralized service.
+        """
+        mock_service = MagicMock()
+        mock_service.rerank = AsyncMock(return_value=[
+            {"index": 1, "score": 0.9},
+            {"index": 0, "score": 0.7},
+        ])
+        mock_service_class.return_value = mock_service
+
+        embedder = Embedder(
+            provider="openai",
+            api_url="https://api.openai.com/v1/embeddings",
+            api_key="sk-test",
+            reranker_model_name="text-embedding-3-large",
+        )
+
+        result = await embedder.rerank(
+            query="test query",
+            documents=["doc 1", "doc 2"],
+            top_k=2
+        )
+
+        assert len(result) == 2
+        assert result[0]["score"] == 0.9
+        mock_service.rerank.assert_called_once_with("test query", ["doc 1", "doc 2"], 2)
+
+    @patch("app.services.rag.embedding.CentralizedEmbeddingService")
+    def test_reranker_model_name_attribute(self, mock_service_class):
+        """
+        Test that Embedder stores reranker_model_name attribute.
+        """
+        embedder = Embedder(
+            provider="openai",
+            api_url="https://api.openai.com/v1/embeddings",
+            reranker_model_name="text-embedding-3-large",
+        )
+
+        assert embedder.reranker_model_name == "text-embedding-3-large"

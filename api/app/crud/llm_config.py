@@ -18,11 +18,16 @@ async def create_llm_config(
     min_p: Optional[float] = None,
     timeout: int = 300,
     is_active: bool = True,
+    allow_concurrent_llm_calls: bool = False,
     # Embedding configuration (optional)
     embedding_provider: Optional[str] = None,
     embedding_api_url: Optional[str] = None,
     embedding_api_key: Optional[str] = None,
     embedding_model_name: Optional[str] = None,
+    embedding_max_context_length: Optional[int] = 8192,
+    reranker_model_name: Optional[str] = None,
+    reranker_max_context_length: Optional[int] = 8192,
+    allow_concurrent_embedding_calls: bool = False,
 ) -> LLMProviderConfig:
     """
     Create and persist a new LLM provider configuration for a given user.
@@ -83,11 +88,16 @@ async def create_llm_config(
         min_p=min_p,
         timeout=timeout,
         is_active=is_active,
+        allow_concurrent_llm_calls=allow_concurrent_llm_calls,
         # Embedding configuration
         embedding_provider=embedding_provider,
         embedding_api_url=embedding_api_url,
         embedding_api_key=embedding_api_key,
         embedding_model_name=embedding_model_name,
+        embedding_max_context_length=embedding_max_context_length,
+        reranker_model_name=reranker_model_name,
+        reranker_max_context_length=reranker_max_context_length,
+        allow_concurrent_embedding_calls=allow_concurrent_embedding_calls,
     )
 
     db.add(config)

@@ -203,6 +203,24 @@ async def handle_rag_query(
             return
         embedding_model_name = str(embedding_model_name_val)
 
+        # Get embedding max context length
+        embedding_max_context_val = getattr(llm_config, "embedding_max_context_length", None)
+        embedding_max_context_length = int(embedding_max_context_val) if embedding_max_context_val else 8192
+
+        # Get reranker model (optional, falls back to embedding model)
+        reranker_model_name_val = getattr(llm_config, "reranker_model_name", None)
+        reranker_model_name = (
+            str(reranker_model_name_val) if reranker_model_name_val else embedding_model_name
+        )
+
+        # Get reranker max context length
+        reranker_max_context_val = getattr(llm_config, "reranker_max_context_length", None)
+        reranker_max_context_length = int(reranker_max_context_val) if reranker_max_context_val else 8192
+
+        # Get concurrent calls flag
+        allow_concurrent_val = getattr(llm_config, "allow_concurrent_embedding_calls", None)
+        allow_concurrent_embedding_calls = bool(allow_concurrent_val) if allow_concurrent_val is not None else False
+
         # Step 1: Use LLM to expand query with contextual search terms
         logger.info(f"Expanding query: {user_query[:100]}")
         expanded_terms = await _expand_query_with_llm(
@@ -211,12 +229,16 @@ async def handle_rag_query(
         )
         logger.info(f"Expanded query terms: {expanded_terms}")
 
-        # Step 2: Initialize embedder
+        # Step 2: Initialize embedder with reranker support
         embedder = Embedder(
             provider=embedding_provider,
             api_url=embedding_api_url,
             api_key=embedding_api_key,
             model_name=embedding_model_name,
+            embedding_max_context_length=embedding_max_context_length,
+            reranker_model_name=reranker_model_name,
+            reranker_max_context_length=reranker_max_context_length,
+            allow_concurrent_calls=allow_concurrent_embedding_calls,
         )
 
         # Step 3: Generate embeddings for original query + expanded terms
@@ -261,9 +283,47 @@ async def handle_rag_query(
             }
             return
 
-        # Step 5: Deduplicate and re-rank chunks by score
-        chunks = _deduplicate_and_rerank(all_chunks, top_k=50)
-        logger.info(f"After deduplication and re-ranking: {len(chunks):,} chunks")
+        # Step 5: Deduplicate chunks first
+        chunks = _deduplicate_and_rerank(all_chunks, top_k=200)  # Get more candidates for reranking
+        logger.info(f"After deduplication: {len(chunks):,} chunks")
+
+        # Step 6: Use reranker model for better relevance scoring (only if explicitly configured)
+        # Reranker only runs if reranker_model_name is set AND different from embedding_model_name
+        if reranker_model_name_val and reranker_model_name != embedding_model_name:
+            try:
+                logger.info(f"Reranking {len(chunks):,} chunks with model: {reranker_model_name}")
+                
+                # Prepare documents for reranking
+                documents = [chunk.text for chunk in chunks]
+                
+                # Call reranker
+                reranked_results = await embedder.rerank(
+                    query=user_query,
+                    documents=documents,
+                    top_k=50,  # Final top-k after reranking
+                )
+                
+                # Map reranked results back to chunks
+                reranked_chunks = []
+                for result in reranked_results:
+                    idx = result.get("index", result.get("document_index", 0))
+                    score = result.get("score", result.get("relevance_score", 0.0))
+                    
+                    # Update chunk with new reranker score
+                    chunk = chunks[idx]
+                    chunk.score = score
+                    reranked_chunks.append(chunk)
+                
+                chunks = reranked_chunks
+                logger.info(f"After reranking: {len(chunks):,} chunks (using {reranker_model_name})")
+            except Exception as rerank_error:
+                logger.warning(f"Reranking failed, falling back to vector similarity: {rerank_error}")
+                # Fall back to original deduplication/ranking
+                chunks = _deduplicate_and_rerank(all_chunks, top_k=50)
+        else:
+            # No reranker configured, use vector similarity only
+            chunks = chunks[:50]  # Take top 50 from deduplicated results
+            logger.info(f"No reranker configured, using vector similarity only: {len(chunks):,} chunks")
 
         # Build context from chunks
         context_parts = []

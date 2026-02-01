@@ -564,6 +564,31 @@ CREATE TABLE investigation_playbooks (
 | POST | `/api/v1/embeddings/generate/investigation/{id}` | Backfill embeddings for investigation |
 | GET | `/api/v1/embeddings/stats/{investigation_id}` | Get embedding statistics |
 
+**Embedding vs. Reranker Models:**
+
+The system supports separate models for embedding generation and reranking:
+
+- **Embedding Model** (`embedding_model_name`): Used for initial embedding generation during artifact parsing. Runs on **all events**, so choose a smaller/faster model for efficiency (e.g., `text-embedding-3-small`, 1536 dimensions).
+  - **Max Context Length** (`embedding_max_context_length`): Token limit for embedding model (default: 8192). Events exceeding this limit will trigger warnings in logs.
+  
+- **Reranker Model** (`reranker_model_name`): **Optional** - Used during RAG retrieval to rerank top ~200 candidates for better relevance scoring. Only processes **top candidates**, so choose a larger/more capable model for accuracy (e.g., `text-embedding-3-large`, 3072 dimensions).
+  - **Max Context Length** (`reranker_max_context_length`): Token limit for reranker model (default: 8192). Documents exceeding this limit will trigger warnings in logs.
+  - **Important**: Reranker only runs if `reranker_model_name` is explicitly configured AND different from `embedding_model_name`. Leave empty to skip reranking entirely.
+
+- **Same API Endpoint**: Both models use the same `embedding_api_url` but with different model names. The system automatically switches between `/embeddings` and `/rerank` endpoints.
+
+- **Token Estimation**: The system uses approximate token counting (1 token ≈ 4 characters). Warnings are logged when content exceeds configured limits, but the request is still sent to the API (which may truncate or fail).
+
+- **Concurrent Calls**: Enable `allow_concurrent_embedding_calls` to batch and parallelize requests:
+  - **Embedding**: Batches of 50 texts processed in parallel (for 50+ total texts)
+  - **Reranking**: Batches of 100 documents processed in parallel (for 100+ total documents)
+  - **Use Case**: High-capacity public APIs (OpenAI, Anthropic) can handle many concurrent requests
+  - **Disable For**: Local endpoints with limited GPU resources (Ollama, LM Studio)
+
+- **Fallback Behavior**: If `reranker_model_name` is not configured or is the same as `embedding_model_name`, reranking is skipped and the system uses vector similarity scores only.
+
+This two-tier approach balances speed (fast embeddings on all data) with accuracy (powerful reranking on top results).
+
 ### How Playbooks Work with Agents
 
 When an agent job is created, the system:

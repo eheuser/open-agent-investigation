@@ -5,19 +5,9 @@
 
 - Too many steps, slower on local LLM's
 
-**Re-Ranker and Config**
-
-- Add an optional re-ranker model.
-- Add max-context length for embedding and re-ranker model
-
 **Enhance Investigation Choices**
 
 - Offer suggestions on where to take the investigation next
-
-**Add Parallel Connections Option**
-
-- Add checkbox for each API endpoint
-- Allow parallel API connections to speed up processing for API endpoints that allow it (e.g. local API server vs public & paid)
 
 **Reports**
 
@@ -96,3 +86,13 @@ Provide computed analysis views to get the agents and user started on an investi
 - Resolve Domains -> IP
 - Web Search
 - API integrations w/user supplied API key (VT, PassiveTotal/RiskIQ)
+
+
+## Replace existing installation with new (upgrades only supported with full releases)
+
+```shell
+docker compose down
+docker volume rm oai-pg-data
+git pull
+docker compose up --build -d
+```

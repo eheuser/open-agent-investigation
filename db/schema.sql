@@ -103,6 +103,11 @@ ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_provider TEXT
 ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_api_url TEXT;
 ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_api_key TEXT;
 ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_model_name TEXT;
+ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_max_context_length INTEGER DEFAULT 8192;
+ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS reranker_model_name TEXT;
+ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS reranker_max_context_length INTEGER DEFAULT 8192;
+ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS allow_concurrent_llm_calls BOOLEAN DEFAULT false;
+ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS allow_concurrent_embedding_calls BOOLEAN DEFAULT false;
 
 -- Chat messages table (conversation history in OpenAI format)
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -153,6 +158,7 @@ CREATE TABLE IF NOT EXISTS tool_executions (
 );
 
 CREATE INDEX idx_tool_exec_message ON tool_executions(chat_message_id);
+CREATE INDEX idx_tool_exec_message_started ON tool_executions(chat_message_id, started_at ASC);  -- For ordering tool execution history
 CREATE INDEX idx_tool_exec_status ON tool_executions(status) WHERE status = 'executing';
 
 -- ============================================================================
@@ -167,6 +173,7 @@ EXCEPTION
 END $$;
 
 -- Parsing jobs queue (§4.5)
+-- Set fillfactor to 90 for frequently updated job status transitions
 CREATE TABLE IF NOT EXISTS jobs_parsing (
     job_id BIGSERIAL PRIMARY KEY,
     investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
@@ -176,14 +183,15 @@ CREATE TABLE IF NOT EXISTS jobs_parsing (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ,
-    error_message TEXT
-);
+        error_message TEXT
+) WITH (fillfactor = 90);
 
 CREATE INDEX idx_jobs_parsing_status ON jobs_parsing(status) WHERE status = 'pending';
 CREATE INDEX idx_jobs_parsing_investigation ON jobs_parsing(investigation_id);
 CREATE INDEX idx_jobs_parsing_created ON jobs_parsing(created_at DESC);
 
 -- Agent jobs queue (§4.6)
+-- Set fillfactor to 90 for frequently updated job status transitions
 CREATE TABLE IF NOT EXISTS jobs_agents (
     job_id BIGSERIAL PRIMARY KEY,
     investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
@@ -197,8 +205,8 @@ CREATE TABLE IF NOT EXISTS jobs_agents (
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ,
     error_message TEXT,
-    metadata JSONB DEFAULT '{}'
-);
+        metadata JSONB DEFAULT '{}'
+) WITH (fillfactor = 90);
 
 CREATE INDEX idx_jobs_agents_status ON jobs_agents(status) WHERE status = 'pending';
 CREATE INDEX idx_jobs_agents_investigation ON jobs_agents(investigation_id);
@@ -256,6 +264,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX idx_events_investigation ON events(investigation_id, event_ts DESC);
 CREATE INDEX idx_events_type ON events(investigation_id, event_type);
 CREATE INDEX idx_events_type_ts ON events(investigation_id, event_type, event_ts DESC);  -- For efficient field sampling
+CREATE INDEX idx_events_inv_type_ts ON events(investigation_id, event_type, event_ts DESC);  -- Composite for event_type queries with time ordering
 CREATE INDEX idx_events_artifact ON events(artifact_id);
 CREATE INDEX idx_events_payload ON events USING GIN(payload);
 
@@ -275,10 +284,10 @@ CREATE TABLE IF NOT EXISTS timeline_entries (
     data JSONB DEFAULT '{}'::jsonb,
     tags TEXT[] DEFAULT '{}'::TEXT[],
     created_by_user_id BIGINT REFERENCES users(user_id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    is_visible BOOLEAN NOT NULL DEFAULT true,
-    CONSTRAINT uq_timeline_investigation_event UNIQUE (investigation_id, event_id)
+    is_visible BOOLEAN NOT NULL DEFAULT true
+    -- NOTE: UNIQUE constraint removed - see partial unique index below to handle NULLs properly
 );
 
 CREATE INDEX idx_timeline_investigation ON timeline_entries(investigation_id, timestamp DESC);
@@ -289,6 +298,11 @@ CREATE INDEX idx_timeline_tags ON timeline_entries USING GIN(tags);
 CREATE INDEX idx_timeline_data ON timeline_entries USING GIN(data);
 CREATE INDEX idx_timeline_created ON timeline_entries(investigation_id, created_at DESC);
 CREATE INDEX idx_timeline_visible ON timeline_entries(investigation_id, is_visible) WHERE is_visible = true;
+
+-- Partial unique index to enforce uniqueness only when event_id IS NOT NULL (handles NULL properly)
+CREATE UNIQUE INDEX uq_timeline_investigation_event_not_null 
+  ON timeline_entries(investigation_id, event_id) 
+  WHERE event_id IS NOT NULL;
 
 -- Reports table (generated investigation reports)
 CREATE TABLE IF NOT EXISTS reports (
@@ -387,6 +401,10 @@ CREATE INDEX idx_field_dict_event_type ON field_dictionary(investigation_id, eve
 CREATE INDEX idx_field_dict_field_name ON field_dictionary(field_name);
 CREATE INDEX idx_field_dict_updated ON field_dictionary(updated_at DESC);
 CREATE INDEX idx_field_dict_pending ON field_dictionary(investigation_id) WHERE description IS NULL;
+-- Covering index for common field dictionary context loading queries
+CREATE INDEX idx_field_dict_inv_type_coverage 
+  ON field_dictionary(investigation_id, event_type) 
+  INCLUDE (field_name, description, cached_markdown);
 
 COMMENT ON TABLE field_dictionary IS 'Permanent storage of JSONB field descriptions per investigation. LLM-generated descriptions help agents understand available fields.';
 COMMENT ON COLUMN field_dictionary.investigation_id IS 'Investigation this field dictionary entry belongs to';
@@ -412,6 +430,10 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 CREATE INDEX idx_embeddings_owner ON embeddings(owner_type, owner_id);
+-- Covering index for RAG retrieval joins with investigation filtering
+CREATE INDEX idx_embeddings_owner_coverage 
+  ON embeddings(owner_type, owner_id) 
+  INCLUDE (vector, model_name, created_at);
 -- Note: IVFFLAT index will be created manually after first embeddings are inserted
 -- with the correct dimension for your model (e.g., 768, 1024, or 1536)
 -- Example: CREATE INDEX idx_embeddings_vector ON embeddings USING ivfflat (vector vector_cosine_ops) WITH (lists = 100);
@@ -549,6 +571,11 @@ ON CONFLICT (version) DO NOTHING;
 -- Record unique constraint as version 5
 INSERT INTO schema_migrations (version, description, checksum)
 VALUES (5, 'Add unique constraint on (investigation_id, event_id) for timeline_entries', '005_add_timeline_unique_constraint')
+ON CONFLICT (version) DO NOTHING;
+
+-- Record index optimizations as version 15
+INSERT INTO schema_migrations (version, description, checksum)
+VALUES (15, 'Index optimizations: composite indexes, covering indexes, partial unique constraint, fillfactor', '015_index_optimizations')
 ON CONFLICT (version) DO NOTHING;
 
 -- Record chat refactor as version 6
