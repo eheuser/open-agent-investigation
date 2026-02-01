@@ -1,8 +1,8 @@
 # Open Agent Investigation - Worker
 
-The **Worker** is an asynchronous job processor that handles artifact parsing and AI agent execution. It polls the database for pending jobs, claims them atomically, and processes them in the background with real-time streaming to the UI.
+The **Worker** is an asynchronous job processor that handles artifact parsing and agent execution. It polls the database for pending jobs, claims them atomically, and processes them in the background with real-time streaming to the UI.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
@@ -32,22 +32,22 @@ The Worker service is responsible for:
 
 ### Key Features
 
-✅ **Multiprocessing Pool** - Runs min(CPU_count, 4) worker processes for parallel execution  
-✅ **Process Isolation** - Each worker has its own database connection and event loop  
-✅ **Graceful Stop** - Stop signal via control queue, force-kill after 30 seconds  
-✅ **Process Monitoring** - Automatically restarts crashed workers  
-✅ **Concurrent Processing** - Multiple workers can claim jobs simultaneously  
-✅ **Idempotent Operations** - Jobs can be safely retried  
-✅ **Real-time Streaming** - WebSocket notifications with agent reasoning  
-✅ **LLM Integration** - Supports OpenAI, Ollama, and custom endpoints  
-✅ **Bounded Turn Execution** - 3 tools per turn, configurable max turns (3/6/9)  
-✅ **Turn Progress Tracking** - UI shows "Turn X/Y" instead of confusing tool counts  
-✅ **Agent-Controlled Timeline** - Optional auto_register parameter for bulk registration  
-✅ **Event-First Timeline** - Auto-fetches complete event data (no transcription errors)  
-✅ **Tool Descriptions** - Every tool execution shows user-friendly description in UI  
-✅ **Investigation Context** - Agents load timeline, chat history, and available data  
-✅ **Seamless Continuation** - Resume incomplete investigations in same chat bubble  
-✅ **Extensible** - Easy to add parsers and tools  
+**Multiprocessing Pool** - Runs min(CPU_count, 4) worker processes for parallel execution  
+**Process Isolation** - Each worker has its own database connection and event loop  
+**Graceful Stop** - Stop signal via control queue, force-kill after 30 seconds  
+**Process Monitoring** - Automatically restarts crashed workers  
+**Concurrent Processing** - Multiple workers can claim jobs simultaneously  
+**Idempotent Operations** - Jobs can be safely retried  
+**Real-time Streaming** - WebSocket notifications with agent reasoning  
+**LLM Integration** - Supports OpenAI, Ollama, and custom endpoints  
+**Bounded Turn Execution** - 3 tools per turn, configurable max turns (3/6/9)  
+**Turn Progress Tracking** - UI shows "Turn X/Y" instead of confusing tool counts  
+**Agent-Controlled Timeline** - Optional auto_register parameter for bulk registration  
+**Event-First Timeline** - Auto-fetches complete event data (no transcription errors)  
+**Tool Descriptions** - Every tool execution shows user-friendly description in UI  
+**Investigation Context** - Agents load timeline, chat history, and available data  
+**Seamless Continuation** - Resume incomplete investigations in same chat bubble  
+**Extensible** - Easy to add parsers and tools  
 
 ---
 
@@ -740,20 +740,6 @@ export API_PORT="8000"
 
 # Run worker
 python -m worker.main
-```
-
-### Testing Agents Locally
-
-```bash
-# Test AssistantAgent with full database context
-python -m worker.agents.assistant_agent \
-  --investigation-id "550e8400-e29b-41d4-a716-446655440000" \
-  --question "Find failed logon attempts" \
-  --effort standard \
-  --llm-endpoint "http://localhost:11434/v1/chat/completions" \
-  --llm-model "llama3"
-
-# Note: CLI harness is deprecated, use direct agent execution
 ```
 
 ### Adding Parsers

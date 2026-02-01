@@ -28,7 +28,10 @@ services:
 
   api:
     container_name: oai-api
-    build: ./api
+    build:
+      context: ./api
+      platforms:
+        - "linux/amd64"
     networks:
       - oai-network
     depends_on:
@@ -55,6 +58,8 @@ services:
     build:
       context: ./api
       dockerfile: worker/Dockerfile
+      platforms:
+        - "linux/amd64"
     networks:
       - oai-network
     depends_on:
@@ -76,7 +81,10 @@ services:
 
   ui:
     container_name: oai-ui
-    build: ./ui
+    build:
+      context: ./ui
+      platforms:
+        - "linux/amd64"
     networks:
       - oai-network
     ports:

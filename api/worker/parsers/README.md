@@ -112,16 +112,11 @@ MAX_EXTRACTED_FILES = 50000     # Prevent excessive file creation
 # - User sees all events in unified events table
 ```
 
-**Why This Matters:**
+**Features:**
 - Upload entire forensic collections as a single ZIP file
 - No need to extract archives manually before upload
 - Preserves directory structure for context
 - Handles complex evidence packages (e.g., nested archive bundles)
-
-**Limitations:**
-- No password-protected archive support
-- No split archive support (.z01, .z02, etc.)
-- Temporary directory must have sufficient space
 
 **Error Handling:**
 - Corrupted archives: Logged as error, parsing job marked as failed
