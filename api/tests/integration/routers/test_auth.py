@@ -1,8 +1,3 @@
-"""
-Integration tests for authentication endpoints.
-Tests login, registration, and token verification.
-"""
-
 import pytest
 from httpx import AsyncClient
 

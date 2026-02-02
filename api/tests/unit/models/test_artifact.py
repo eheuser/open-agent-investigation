@@ -1,7 +1,3 @@
-"""
-Unit tests for Artifact model.
-"""
-
 import pytest
 import uuid
 from datetime import datetime

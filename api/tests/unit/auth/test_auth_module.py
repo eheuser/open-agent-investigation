@@ -1,8 +1,3 @@
-"""
-Unit tests for auth module.
-Tests JWT token creation and verification.
-"""
-
 import pytest
 from datetime import datetime, timedelta
 from app.auth import create_access_token, verify_jwt_token

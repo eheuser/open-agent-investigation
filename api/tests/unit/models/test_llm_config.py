@@ -1,8 +1,3 @@
-"""
-Unit tests for LLMProviderConfig model.
-Tests LLM configuration model and relationships.
-"""
-
 import pytest
 from datetime import datetime
 from app.models.llm_config import LLMProviderConfig

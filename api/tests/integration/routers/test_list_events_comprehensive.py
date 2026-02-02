@@ -1,8 +1,3 @@
-"""
-Comprehensive integration tests for list_events endpoint.
-Tests all code paths in the complex list_events function.
-"""
-
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import text

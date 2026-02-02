@@ -1,8 +1,3 @@
-"""
-Integration tests for LLM configuration endpoints.
-Tests CRUD operations for LLM provider configurations.
-"""
-
 import pytest
 from httpx import AsyncClient
 

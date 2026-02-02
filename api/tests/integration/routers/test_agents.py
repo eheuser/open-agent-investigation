@@ -1,8 +1,3 @@
-"""
-Integration tests for agents router.
-Tests agent execution and policy management.
-"""
-
 import pytest
 from httpx import AsyncClient
 

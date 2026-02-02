@@ -1,8 +1,3 @@
-"""Unit tests for analysis module tools.
-
-These tests focus on the tool wrapper logic, not the full analyzer integration.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from uuid import uuid4

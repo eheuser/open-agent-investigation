@@ -564,7 +564,7 @@ async def _handle_routing_response(
             await update_message(
                 db=db,
                 message_id=thinking_message_id,
-                content=f"❌ Error: {response.get('message')}",
+                content=f"Error: {response.get('message')}",
                 metadata={
                     "type": "error",
                     "details": response.get("details"),

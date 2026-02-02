@@ -1,8 +1,3 @@
-"""
-Unit tests for AssistantAgent.
-Tests the two-phase plan-execute workflow and state management.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from uuid import uuid4

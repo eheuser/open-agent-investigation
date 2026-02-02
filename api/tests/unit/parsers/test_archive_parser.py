@@ -1,9 +1,3 @@
-"""
-Unit tests for the Archive Parser.
-
-Tests archive extraction functionality for ZIP, 7z, and RAR formats.
-"""
-
 import pytest
 from pathlib import Path
 import zipfile

@@ -1,8 +1,3 @@
-"""
-Integration tests for tags router (deprecated endpoints).
-Tests that all deprecated tag endpoints return 410 Gone.
-"""
-
 import pytest
 from httpx import AsyncClient
 

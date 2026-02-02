@@ -1,7 +1,3 @@
-"""
-Unit tests for job Pydantic schemas.
-"""
-
 import pytest
 from pydantic import ValidationError
 from datetime import datetime, timezone

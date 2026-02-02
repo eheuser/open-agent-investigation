@@ -1,9 +1,3 @@
-"""
-Unit tests for embedding_service module.
-
-Tests automatic embedding generation for events, chat messages, and timeline entries.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

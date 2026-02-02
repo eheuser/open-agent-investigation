@@ -1,9 +1,3 @@
-"""
-Analysis API Router
-
-Provides endpoints for forensic analysis modules including Autoruns and future analyzers.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text

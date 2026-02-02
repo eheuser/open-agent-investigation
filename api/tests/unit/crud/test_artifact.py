@@ -1,7 +1,3 @@
-"""
-Unit tests for artifact CRUD operations.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 from uuid import uuid4

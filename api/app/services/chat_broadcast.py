@@ -142,7 +142,7 @@ async def handle_broadcast_message(
             db=db,
             investigation_id=investigation_id,
             user_id=user_id,
-            content=f"❌ LLM Error: {message.get('error', 'Unknown error')}",
+            content=f"LLM Error: {message.get('error', 'Unknown error')}",
             metadata={"type": "llm_error", "error": message.get("error")},
             include_in_llm_context=False,
         )

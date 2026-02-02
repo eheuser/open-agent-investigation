@@ -1,8 +1,3 @@
-"""
-Unit tests for investigation playbooks.
-Tests playbook loading, selection, and strategy generation.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path

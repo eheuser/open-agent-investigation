@@ -1,9 +1,3 @@
-"""
-Analysis Module Query Tools
-
-Tools for querying forensic analysis modules during investigations.
-"""
-
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 

@@ -1,8 +1,3 @@
-"""
-Integration tests for events endpoints.
-Tests CRUD operations for forensic events.
-"""
-
 import pytest
 from httpx import AsyncClient
 from uuid import uuid4

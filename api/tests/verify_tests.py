@@ -1,7 +1,3 @@
-"""
-Verify test setup - run this first to check everything is working.
-"""
-
 import sys
 import os
 

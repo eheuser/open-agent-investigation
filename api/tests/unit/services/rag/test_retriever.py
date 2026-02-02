@@ -1,9 +1,3 @@
-"""
-Unit tests for retriever module.
-
-Tests RAG retrieval using PGVector similarity search.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np

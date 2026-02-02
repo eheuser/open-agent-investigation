@@ -1,8 +1,3 @@
-"""
-Unit tests for context manager service.
-Tests intelligent message list management for different applications.
-"""
-
 import pytest
 from app.services.context_manager import (
     estimate_tokens,

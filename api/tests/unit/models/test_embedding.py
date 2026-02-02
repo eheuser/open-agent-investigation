@@ -1,7 +1,3 @@
-"""
-Unit tests for Embedding model.
-"""
-
 import pytest
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError

@@ -1,7 +1,3 @@
-"""
-Unit tests for security utilities (JWT, password hashing).
-"""
-
 import pytest
 from datetime import timedelta
 from fastapi import HTTPException

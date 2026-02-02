@@ -1,8 +1,3 @@
-"""
-Unit tests for worker timeline tools.
-Tests batch embedding generation for timeline entries.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

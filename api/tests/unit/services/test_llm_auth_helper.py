@@ -1,8 +1,3 @@
-"""
-Unit tests for LLM authentication helper.
-Tests Bearer token and cookie-based authentication preparation.
-"""
-
 import pytest
 from app.services.llm_auth_helper import prepare_llm_auth
 

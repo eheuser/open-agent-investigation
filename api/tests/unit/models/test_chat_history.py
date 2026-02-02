@@ -1,8 +1,3 @@
-"""
-Unit tests for ChatMessage model.
-Tests message creation, OpenAI format conversion, and relationships.
-"""
-
 import pytest
 from uuid import uuid4
 from datetime import datetime

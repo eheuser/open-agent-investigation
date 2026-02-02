@@ -1,8 +1,3 @@
-"""
-Unit tests for routing metadata schemas.
-Tests the routing feedback metadata structures.
-"""
-
 import pytest
 from app.schemas.routing_metadata import (
     HandlerMetadata,

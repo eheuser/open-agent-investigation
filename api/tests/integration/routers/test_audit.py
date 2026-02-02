@@ -1,8 +1,3 @@
-"""
-Integration tests for audit router.
-Tests audit log retrieval and filtering.
-"""
-
 import pytest
 from httpx import AsyncClient
 

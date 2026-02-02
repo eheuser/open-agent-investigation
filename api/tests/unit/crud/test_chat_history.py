@@ -1,7 +1,3 @@
-"""
-Unit tests for chat history CRUD operations.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

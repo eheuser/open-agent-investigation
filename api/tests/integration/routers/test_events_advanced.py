@@ -1,8 +1,3 @@
-"""
-Advanced integration tests for events endpoints.
-Tests complex filtering, JSONB queries, date ranges, search, and paste functionality.
-"""
-
 import pytest
 from httpx import AsyncClient
 from datetime import datetime, timedelta

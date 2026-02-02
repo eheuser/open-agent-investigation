@@ -1,10 +1,3 @@
-"""
-Unit tests for the Execution Evidence Analyzer.
-
-Tests the ExecutionEvidenceAnalyzer class which analyzes Windows execution artifacts
-including Prefetch, SRUM, Jump Lists, and LNK files.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID

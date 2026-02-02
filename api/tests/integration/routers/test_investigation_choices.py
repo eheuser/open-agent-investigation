@@ -1,8 +1,3 @@
-"""
-Integration tests for investigation choices router.
-Tests choice creation, retrieval, and updates during agent execution.
-"""
-
 import pytest
 from httpx import AsyncClient
 from uuid import uuid4

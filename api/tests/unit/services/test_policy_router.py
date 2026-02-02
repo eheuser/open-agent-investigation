@@ -1,9 +1,3 @@
-"""
-Unit tests for policy_router module.
-
-Tests policy selection, loading, and routing logic.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 from uuid import uuid4

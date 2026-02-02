@@ -1,8 +1,3 @@
-"""Unit tests for general_chat_handler.py.
-
-Tests general chat functionality without database dependencies.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime

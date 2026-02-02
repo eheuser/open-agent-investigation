@@ -1,7 +1,3 @@
-"""
-Unit tests for database configuration and session management.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession

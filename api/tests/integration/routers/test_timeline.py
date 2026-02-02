@@ -1,8 +1,3 @@
-"""
-Integration tests for timeline endpoints.
-Tests CRUD operations for timeline entries.
-"""
-
 import pytest
 from httpx import AsyncClient
 from uuid import uuid4

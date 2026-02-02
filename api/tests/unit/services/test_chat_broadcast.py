@@ -1,9 +1,3 @@
-"""
-Unit tests for chat_broadcast module.
-
-Tests the message broadcasting and persistence logic for agent execution updates.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4

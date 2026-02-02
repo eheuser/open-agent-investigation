@@ -1,8 +1,3 @@
-"""
-Unit tests for user schemas.
-Tests Pydantic validation for user data.
-"""
-
 import pytest
 from pydantic import ValidationError
 from app.schemas.user import UserCreate, UserRead, UserLogin

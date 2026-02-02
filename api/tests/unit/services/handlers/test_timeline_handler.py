@@ -1,9 +1,3 @@
-"""
-Unit tests for timeline_handler module.
-
-Tests the timeline-specific query handler with LLM and timeline tools.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

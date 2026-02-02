@@ -1,7 +1,3 @@
-"""
-Unit tests for job CRUD operations.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4

@@ -1,8 +1,3 @@
-"""
-Unit tests for WebSocket connection manager.
-Tests connection management, broadcasting, and message sending.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from app.services.websocket_manager import ConnectionManager

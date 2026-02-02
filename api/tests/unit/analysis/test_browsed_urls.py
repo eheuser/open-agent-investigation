@@ -1,10 +1,3 @@
-"""
-Unit tests for the Browsed URLs Analyzer.
-
-Tests the BrowsedURLsAnalyzer class which analyzes browser history artifacts
-from Chrome, Firefox, and Edge browsers.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID

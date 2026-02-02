@@ -1,8 +1,3 @@
-"""
-Advanced integration tests for timeline endpoints.
-Tests complex filtering, notes, statistics, and edge cases.
-"""
-
 import pytest
 from httpx import AsyncClient
 from datetime import datetime, timedelta

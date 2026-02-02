@@ -1,7 +1,3 @@
-"""
-Unit tests for Analysis modules
-"""
-
 import pytest
 from pathlib import Path
 from uuid import uuid4

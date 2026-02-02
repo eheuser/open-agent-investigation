@@ -1,8 +1,3 @@
-"""
-Advanced integration tests for audit router.
-Tests audit log retrieval with filtering and pagination.
-"""
-
 import pytest
 from httpx import AsyncClient
 from datetime import datetime, timedelta

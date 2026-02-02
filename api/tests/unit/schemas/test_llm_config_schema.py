@@ -1,8 +1,3 @@
-"""
-Unit tests for LLM config schemas.
-Tests Pydantic validation for LLM configuration data.
-"""
-
 import pytest
 from pydantic import ValidationError
 from app.schemas.llm_config import LLMConfigCreate, LLMConfigRead, LLMConfigUpdate, LLMConfigReadMasked

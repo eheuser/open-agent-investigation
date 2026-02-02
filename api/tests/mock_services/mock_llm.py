@@ -1,10 +1,3 @@
-"""
-Mock LLM service for testing.
-
-Provides a simple HTTP server that mimics OpenAI's chat completion API
-with deterministic responses for testing purposes.
-"""
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any

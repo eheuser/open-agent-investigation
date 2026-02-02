@@ -1,8 +1,3 @@
-"""
-Integration tests for artifacts endpoints.
-Tests artifact upload, listing, and retrieval.
-"""
-
 import pytest
 import io
 from httpx import AsyncClient

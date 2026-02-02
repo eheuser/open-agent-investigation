@@ -1,8 +1,3 @@
-"""
-Integration tests for embeddings router.
-Tests embedding generation and management.
-"""
-
 import pytest
 from httpx import AsyncClient
 

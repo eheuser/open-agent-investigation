@@ -1,7 +1,3 @@
-"""
-Unit tests for log setup utilities.
-"""
-
 import pytest
 import os
 from unittest.mock import patch

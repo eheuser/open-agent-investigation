@@ -1,7 +1,3 @@
-"""
-Unit tests for log streaming service.
-"""
-
 import pytest
 import logging
 import asyncio

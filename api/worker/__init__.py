@@ -1,7 +1,3 @@
-"""Open Agent Investigation - Job Worker
-Processes parsing jobs and agent jobs from the queue.
-"""
-
 # Register all tools on worker startup
 from .tools import tool_wrappers  # noqa: F401 - import for side effects (tool registration)
 

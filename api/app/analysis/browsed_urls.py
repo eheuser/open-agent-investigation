@@ -1,10 +1,3 @@
-"""
-Browsed URLs Analyzer
-
-Analyzes browser history artifacts to identify URLs visited across different browsers.
-Supports Chrome, Firefox, Edge (Chromium and Legacy).
-"""
-
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta

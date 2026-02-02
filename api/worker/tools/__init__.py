@@ -1,5 +1,3 @@
-"""Agent tools for querying events and managing evidence timelines."""
-
 from .event_tools import (
     search_events_by_type,
     search_events_by_timerange,

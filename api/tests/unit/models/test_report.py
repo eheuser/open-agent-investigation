@@ -1,7 +1,3 @@
-"""
-Unit tests for Report model.
-"""
-
 import pytest
 from uuid import uuid4
 from datetime import datetime, timezone

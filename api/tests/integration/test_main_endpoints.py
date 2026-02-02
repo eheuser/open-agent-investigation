@@ -1,4 +1,3 @@
-"""Simple tests to increase coverage slightly."""
 import pytest
 
 
