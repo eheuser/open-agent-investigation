@@ -50,8 +50,6 @@
 
 Provide computed analysis views to get the agents and user started on an investigation.
 
-- Service list
-- Logon list
 - Registry Viewer/Explorer
 - MFT Viewer/Explorer
 

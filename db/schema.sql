@@ -299,10 +299,10 @@ CREATE INDEX idx_timeline_data ON timeline_entries USING GIN(data);
 CREATE INDEX idx_timeline_created ON timeline_entries(investigation_id, created_at DESC);
 CREATE INDEX idx_timeline_visible ON timeline_entries(investigation_id, is_visible) WHERE is_visible = true;
 
--- Partial unique index to enforce uniqueness only when event_id IS NOT NULL (handles NULL properly)
-CREATE UNIQUE INDEX uq_timeline_investigation_event_not_null 
-  ON timeline_entries(investigation_id, event_id) 
-  WHERE event_id IS NOT NULL;
+-- Unique index to enforce uniqueness on (investigation_id, event_id)
+-- PostgreSQL treats NULL as distinct, so multiple rows with NULL event_id are allowed
+CREATE UNIQUE INDEX IF NOT EXISTS uq_timeline_investigation_event 
+  ON timeline_entries(investigation_id, event_id);
 
 -- Reports table (generated investigation reports)
 CREATE TABLE IF NOT EXISTS reports (
@@ -430,13 +430,11 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 CREATE INDEX idx_embeddings_owner ON embeddings(owner_type, owner_id);
--- Covering index for RAG retrieval joins with investigation filtering
-CREATE INDEX idx_embeddings_owner_coverage 
-  ON embeddings(owner_type, owner_id) 
-  INCLUDE (vector, model_name, created_at);
--- Note: IVFFLAT index will be created manually after first embeddings are inserted
--- with the correct dimension for your model (e.g., 768, 1024, or 1536)
--- Example: CREATE INDEX idx_embeddings_vector ON embeddings USING ivfflat (vector vector_cosine_ops) WITH (lists = 100);
+-- Note: Vector indexes are NOT created for large embedding models (>2048 dimensions)
+-- Models like qwen3-embedding-8b (8192 dims) exceed PostgreSQL's 8KB index page limit
+-- Sequential scans are acceptable for <10k embeddings and avoid index maintenance overhead
+-- For smaller models (<= 1536 dims), you can manually create an HNSW index:
+-- CREATE INDEX idx_embeddings_vector_hnsw ON embeddings USING hnsw (vector vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- Investigation notes table (free-form notes)
 CREATE TABLE IF NOT EXISTS investigation_notes (
@@ -576,6 +574,16 @@ ON CONFLICT (version) DO NOTHING;
 -- Record index optimizations as version 15
 INSERT INTO schema_migrations (version, description, checksum)
 VALUES (15, 'Index optimizations: composite indexes, covering indexes, partial unique constraint, fillfactor', '015_index_optimizations')
+ON CONFLICT (version) DO NOTHING;
+
+-- Record timeline unique index fix as version 16
+INSERT INTO schema_migrations (version, description, checksum)
+VALUES (16, 'Fix timeline_entries unique index to support ON CONFLICT clause', '016_fix_timeline_unique_index')
+ON CONFLICT (version) DO NOTHING;
+
+-- Record embedding index removal as version 17
+INSERT INTO schema_migrations (version, description, checksum)
+VALUES (17, 'Remove vector indexes for large embedding models to avoid 8KB page limit', '017_remove_large_vector_indexes')
 ON CONFLICT (version) DO NOTHING;
 
 -- Record chat refactor as version 6

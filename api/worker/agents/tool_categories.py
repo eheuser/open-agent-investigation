@@ -15,6 +15,8 @@ DATA_QUERY_TOOLS = {
     "hybrid_search",
     "execute_sql",
     "apply_jq",
+    "query_analysis_module",
+    "list_analysis_modules",
 }
 
 # Analysis tools (Phase 2 - Result Analysis)

@@ -5,7 +5,9 @@ import {
   ArrowsUpDownIcon,
   PauseIcon,
   PlayIcon,
-  ArrowDownIcon
+  ArrowDownIcon,
+  ClipboardDocumentIcon,
+  ClipboardDocumentCheckIcon
 } from '@heroicons/react/24/outline';
 
 interface LogEntry {
@@ -29,6 +31,8 @@ const LogsViewer: React.FC<LogsViewerProps> = ({ investigationId }) => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isPaused, setIsPaused] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -161,6 +165,30 @@ const LogsViewer: React.FC<LogsViewerProps> = ({ investigationId }) => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const copyLogToClipboard = async (log: LogEntry, index: number) => {
+    const logText = `${log.timestamp} ${log.level.padEnd(8)} ${log.logger.padEnd(40)} ${log.message} ${log.module}:${log.lineno}`;
+    try {
+      await navigator.clipboard.writeText(logText);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy log:', error);
+    }
+  };
+
+  const copyAllLogsToClipboard = async () => {
+    const allLogsText = filteredLogs
+      .map(log => `${log.timestamp} ${log.level.padEnd(8)} ${log.logger.padEnd(40)} ${log.message} ${log.module}:${log.lineno}`)
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(allLogsText);
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy all logs:', error);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* Toolbar */}
@@ -232,6 +260,25 @@ const LogsViewer: React.FC<LogsViewerProps> = ({ investigationId }) => {
           )}
         </button>
 
+        {/* Copy All Button */}
+        <button
+          onClick={copyAllLogsToClipboard}
+          className="flex items-center gap-2 px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-colors"
+          title="Copy all visible logs to clipboard"
+        >
+          {copiedAll ? (
+            <>
+              <ClipboardDocumentCheckIcon className="w-4 h-4 text-green-500" />
+              Copied!
+            </>
+          ) : (
+            <>
+              <ClipboardDocumentIcon className="w-4 h-4" />
+              Copy All
+            </>
+          )}
+        </button>
+
         {/* Log Count */}
         <div className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
           {filteredLogs.length.toLocaleString()} / {logs.length.toLocaleString()} logs
@@ -251,7 +298,7 @@ const LogsViewer: React.FC<LogsViewerProps> = ({ investigationId }) => {
           filteredLogs.map((log, index) => (
             <div
               key={`${log.timestamp}-${index}`}
-              className="flex gap-3 py-1 px-2 rounded hover:bg-gray-800 dark:hover:bg-gray-900 transition-colors"
+              className="group flex gap-3 py-1 px-2 rounded hover:bg-gray-800 dark:hover:bg-gray-900 transition-colors"
             >
               {/* Timestamp */}
               <span className="text-gray-500 dark:text-gray-600 whitespace-nowrap">
@@ -264,13 +311,13 @@ const LogsViewer: React.FC<LogsViewerProps> = ({ investigationId }) => {
                 })}
               </span>
 
-              {/* Level Badge */}
+              {/* Level Badge - Fixed width to prevent size changes */}
               <span
-                className={`px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${getLevelBadgeColor(
+                className={`px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap w-20 text-center ${getLevelBadgeColor(
                   log.level
                 )}`}
               >
-                {log.level.padEnd(8)}
+                {log.level}
               </span>
 
               {/* Logger */}
@@ -287,6 +334,19 @@ const LogsViewer: React.FC<LogsViewerProps> = ({ investigationId }) => {
               <span className="text-gray-600 dark:text-gray-700 whitespace-nowrap text-xs">
                 {log.module}:{log.lineno}
               </span>
+
+              {/* Copy Button - Only visible on hover */}
+              <button
+                onClick={() => copyLogToClipboard(log, index)}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-700 dark:hover:bg-gray-800 rounded flex-shrink-0"
+                title="Copy log to clipboard"
+              >
+                {copiedIndex === index ? (
+                  <ClipboardDocumentCheckIcon className="w-4 h-4 text-green-400" />
+                ) : (
+                  <ClipboardDocumentIcon className="w-4 h-4 text-gray-400 hover:text-gray-200" />
+                )}
+              </button>
             </div>
           ))
         )}

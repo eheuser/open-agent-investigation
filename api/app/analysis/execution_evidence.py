@@ -277,7 +277,32 @@ class ExecutionEvidenceAnalyzer:
 
     def _extract_executable_path(self, category_key: str, payload: Dict[str, Any]) -> Optional[str]:
         """Extract executable path from payload based on category."""
-        # Common field names for executable paths
+        # Category-specific extraction (check first for best accuracy)
+        if category_key == "srum":
+            # SRUM stores executable in data.IdBlob field (flattened)
+            path = payload.get("data.IdBlob") or payload.get("app_id") or payload.get("application")
+            if path and isinstance(path, str) and len(path) > 0:
+                return path
+        elif category_key == "shimcache":
+            return payload.get("path") or payload.get("file_path")
+        elif category_key == "amcache":
+            return payload.get("file_path") or payload.get("full_path")
+        elif category_key == "prefetch":
+            return payload.get("executable_name") or payload.get("file_path")
+        elif category_key == "userassist":
+            return payload.get("value_name") or payload.get("program_name")
+        elif category_key == "bam_dam":
+            return payload.get("image_path") or payload.get("executable_path")
+        elif category_key == "jump_lists":
+            return payload.get("target_path") or payload.get("file_path")
+        elif category_key == "lnk_files":
+            return payload.get("target_path") or payload.get("local_path")
+        elif category_key == "syscache":
+            return payload.get("file_path") or payload.get("path")
+        elif category_key == "shimdb":
+            return payload.get("database_path") or payload.get("shim_name")
+
+        # Common field names for executable paths (fallback)
         path_fields = [
             "path",
             "file_path",
@@ -293,28 +318,6 @@ class ExecutionEvidenceAnalyzer:
             value = payload.get(field)
             if value and isinstance(value, str) and len(value) > 0:
                 return value
-
-        # Category-specific extraction
-        if category_key == "shimcache":
-            return payload.get("path") or payload.get("file_path")
-        elif category_key == "amcache":
-            return payload.get("file_path") or payload.get("full_path")
-        elif category_key == "prefetch":
-            return payload.get("executable_name") or payload.get("file_path")
-        elif category_key == "srum":
-            return payload.get("app_id") or payload.get("application")
-        elif category_key == "userassist":
-            return payload.get("value_name") or payload.get("program_name")
-        elif category_key == "bam_dam":
-            return payload.get("image_path") or payload.get("executable_path")
-        elif category_key == "jump_lists":
-            return payload.get("target_path") or payload.get("file_path")
-        elif category_key == "lnk_files":
-            return payload.get("target_path") or payload.get("local_path")
-        elif category_key == "syscache":
-            return payload.get("file_path") or payload.get("path")
-        elif category_key == "shimdb":
-            return payload.get("database_path") or payload.get("shim_name")
 
         return None
 

@@ -585,7 +585,22 @@ async def route_chat_message(
             result = await handle_policy_execution(
                 db, investigation_id, processing_query, user_id, effort=effort
             )
-            yield result
+            
+            # Check if parsing is in progress
+            if result.get("type") == "parsing_in_progress":
+                logger.info(f"[CHAT_ROUTER] Parsing in progress, delaying agent execution")
+                yield {
+                    "type": "answer_chunk",
+                    "content": result.get("message", "Waiting for parsing to complete..."),
+                    "chunk_id": 0,
+                    "is_final": True,
+                    "metadata": {
+                        "parsing_in_progress": True,
+                        "active_jobs": result.get("active_jobs", 0),
+                    },
+                }
+            else:
+                yield result
 
         elif classification.intent == IntentType.QUERY_KG:
             logger.warning(f"[CHAT_ROUTER] KG query deprecated - routing to general chat")

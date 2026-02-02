@@ -88,10 +88,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
             value={value}
             onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message the investigation agent..."
+            placeholder="Ask a question..."
             rows={1}
             disabled={isAgentRunning || disabled || parsingLocked}
-            className="flex-1 bg-transparent py-3 px-2 resize-none focus:outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 max-h-[200px] overflow-y-auto disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 bg-transparent py-3 px-2 resize-none focus:outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 max-h-[200px] overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
           />
 
           {/* Send/Stop Button */}

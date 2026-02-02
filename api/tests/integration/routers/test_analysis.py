@@ -1323,3 +1323,729 @@ class TestBrowsedURLsEndpoints:
         assert browsed_urls_module["name"] == "Browsed URLs"
         assert browsed_urls_module["icon"] == "globe-alt"
         assert browsed_urls_module["categories"] == 3
+
+
+@pytest.mark.integration
+class TestLogonsEndpoints:
+    """Integration tests for logons analysis endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_list_logons_filter_categories(
+        self, async_client: AsyncClient, admin_headers
+    ):
+        """
+        Test that the /api/v1/analysis/logons/filter-categories endpoint returns filter metadata.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+        
+        Verifies that:
+            - The response status code is 200
+            - Three filter categories are returned: logon_types, source_ips, logon_ids
+            - Logon types include required metadata fields
+        """
+        response = await async_client.get(
+            "/api/v1/analysis/logons/filter-categories",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "filter_categories" in data
+        filter_categories = data["filter_categories"]
+        
+        assert "logon_types" in filter_categories
+        assert "source_ips" in filter_categories
+        assert "logon_ids" in filter_categories
+        
+        # Verify logon types structure
+        assert isinstance(filter_categories["logon_types"], list)
+        assert len(filter_categories["logon_types"]) == 9
+        
+        for logon_type in filter_categories["logon_types"]:
+            assert "key" in logon_type
+            assert "name" in logon_type
+            assert "description" in logon_type
+            assert "icon" in logon_type
+
+    @pytest.mark.asyncio
+    async def test_get_logons_dynamic_filters(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test that the /api/v1/analysis/logons/dynamic-filters endpoint returns dynamic filter values.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - Dynamic filters include source_ips and logon_ids
+            - Values are lists (may be empty)
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/dynamic-filters/{test_investigation_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "dynamic_filters" in data
+        dynamic_filters = data["dynamic_filters"]
+        
+        assert "source_ips" in dynamic_filters
+        assert "logon_ids" in dynamic_filters
+        assert isinstance(dynamic_filters["source_ips"], list)
+        assert isinstance(dynamic_filters["logon_ids"], list)
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_empty_investigation(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test logons analysis on an investigation with no logon events.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - The response contains an empty entries list
+            - Summary is properly structured
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "entries" in data
+        assert "total" in data
+        assert "summary" in data
+        
+        assert isinstance(data["entries"], list)
+        assert data["total"] == 0
+        assert len(data["entries"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_with_logon_type_filter(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test logons analysis with specific logon type filtering.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - Logon type filter is accepted
+            - Results can be filtered by logon type
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers,
+            params={"logon_types": ["Interactive", "RemoteInteractive"]}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "entries" in data
+        assert "total" in data
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_with_source_ip_filter(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test logons analysis with source IP filtering.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - Source IP filter is accepted
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers,
+            params={"source_ips": ["192.168.1.100"]}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "entries" in data
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_with_logon_id_filter(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test logons analysis with logon ID filtering.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - Logon ID filter is accepted
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers,
+            params={"logon_ids": ["0x123456"]}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "entries" in data
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_unauthorized(
+        self, async_client: AsyncClient, test_investigation_id
+    ):
+        """
+        Test that logons analysis requires authentication.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 401 (Unauthorized) when no auth headers are provided
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}"
+        )
+        
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_invalid_investigation(
+        self, async_client: AsyncClient, admin_headers
+    ):
+        """
+        Test logons analysis with a non-existent investigation ID.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+        
+        Verifies that:
+            - The response status code is 404 (Not Found) or 403 (Forbidden)
+        """
+        fake_investigation_id = uuid4()
+        
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{fake_investigation_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code in [403, 404]
+
+    @pytest.mark.asyncio
+    async def test_list_analysis_modules_includes_logons(
+        self, async_client: AsyncClient, admin_headers
+    ):
+        """
+        Test that the logons module is included in the modules list.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+        
+        Verifies that:
+            - The modules list includes logons
+            - Module metadata is correct
+        """
+        response = await async_client.get(
+            "/api/v1/analysis/modules",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        module_ids = [m["id"] for m in data["modules"]]
+        assert "logons" in module_ids
+        
+        # Find logons module
+        logons_module = next(m for m in data["modules"] if m["id"] == "logons")
+        assert logons_module["name"] == "Logons"
+        assert logons_module["icon"] == "user-circle"
+        assert logons_module["categories"] == 3
+
+    @pytest.mark.asyncio
+    async def test_get_logons_dynamic_filters_with_data(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id, async_db
+    ):
+        """
+        Test dynamic filters endpoint returns actual IPs and logon IDs from data.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+            async_db: Database session for setup.
+        
+        Verifies that:
+            - Source IPs are extracted from events
+            - Logon IDs are extracted from events
+            - Duplicates are removed
+        """
+        # Insert test logon events with various IPs and logon IDs
+        insert_query = text(
+            """
+            INSERT INTO events 
+            (investigation_id, event_ts, artifact_id, event_type, payload)
+            VALUES (:investigation_id, NOW(), :artifact_id, :event_type, :payload)
+            """
+        )
+        
+        test_data = [
+            {
+                "event_id": 4624,
+                "event_data.TargetUserName": "user1",
+                "event_data.TargetLogonId": "0x123456",
+                "event_data.LogonType": "10",
+                "event_data.IpAddress": "192.168.1.100"
+            },
+            {
+                "event_id": 4624,
+                "event_data.TargetUserName": "user2",
+                "event_data.TargetLogonId": "0xABCDEF",
+                "event_data.LogonType": "10",
+                "event_data.IpAddress": "10.0.0.50"
+            },
+            {
+                "event_id": 4624,
+                "event_data.TargetUserName": "user1",
+                "event_data.TargetLogonId": "0x123456",  # Duplicate logon ID
+                "event_data.LogonType": "10",
+                "event_data.IpAddress": "192.168.1.100"  # Duplicate IP
+            },
+        ]
+        
+        for payload_data in test_data:
+            await async_db.execute(
+                insert_query,
+                {
+                    "investigation_id": str(test_investigation_id),
+                    "artifact_id": str(uuid4()),
+                    "event_type": "evtx_security_4624",
+                    "payload": json.dumps(payload_data)
+                }
+            )
+        
+        await async_db.commit()
+        
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/dynamic-filters/{test_investigation_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        dynamic_filters = data["dynamic_filters"]
+        
+        # Should have 2 unique IPs and 2 unique logon IDs
+        assert len(dynamic_filters["source_ips"]) == 2
+        assert len(dynamic_filters["logon_ids"]) == 2
+        assert "192.168.1.100" in dynamic_filters["source_ips"]
+        assert "10.0.0.50" in dynamic_filters["source_ips"]
+        assert "0x123456" in dynamic_filters["logon_ids"]
+        assert "0xABCDEF" in dynamic_filters["logon_ids"]
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_empty_investigation(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test logons analysis on an investigation with no logon events.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - The response contains an empty entries list
+            - Summary is properly structured
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "entries" in data
+        assert "total" in data
+        assert "summary" in data
+        
+        assert isinstance(data["entries"], list)
+        assert data["total"] == 0
+        assert len(data["entries"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_with_logon_type_filter(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test logons analysis with specific logon type filtering.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - Logon type filter is accepted
+            - Results can be filtered by logon type
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers,
+            params={"logon_types": ["Interactive", "RemoteInteractive"]}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "entries" in data
+        assert "total" in data
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_with_source_ip_filter(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test logons analysis with source IP filtering.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - Source IP filter is accepted
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers,
+            params={"source_ips": ["192.168.1.100"]}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "entries" in data
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_with_logon_id_filter(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test logons analysis with logon ID filtering.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 200
+            - Logon ID filter is accepted
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers,
+            params={"logon_ids": ["0x123456"]}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "entries" in data
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_unauthorized(
+        self, async_client: AsyncClient, test_investigation_id
+    ):
+        """
+        Test that logons analysis requires authentication.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - The response status code is 401 (Unauthorized) when no auth headers are provided
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}"
+        )
+        
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_invalid_investigation(
+        self, async_client: AsyncClient, admin_headers
+    ):
+        """
+        Test logons analysis with a non-existent investigation ID.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+        
+        Verifies that:
+            - The response status code is 404 (Not Found) or 403 (Forbidden)
+        """
+        fake_investigation_id = uuid4()
+        
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{fake_investigation_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code in [403, 404]
+
+    @pytest.mark.asyncio
+    async def test_logons_response_structure(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id
+    ):
+        """
+        Test that the logons response has the correct structure.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+        
+        Verifies that:
+            - All required fields are present in the response
+            - Data types are correct
+            - Entry structure matches the schema
+        """
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check top-level structure
+        assert "entries" in data
+        assert "total" in data
+        assert "summary" in data
+        
+        # Check data types
+        assert isinstance(data["entries"], list)
+        assert isinstance(data["total"], int)
+        assert isinstance(data["summary"], dict)
+        
+        # If there are entries, check their structure
+        if len(data["entries"]) > 0:
+            entry = data["entries"][0]
+            assert "logon_type" in entry
+            assert "event_action" in entry
+            assert "username" in entry
+            assert isinstance(entry["logon_type"], str)
+            assert isinstance(entry["event_action"], str)
+            assert isinstance(entry["username"], str)
+
+    @pytest.mark.asyncio
+    async def test_logons_with_data(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id, async_db
+    ):
+        """
+        Test logons analysis with actual logon event data.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+            async_db: Database session for setup.
+        
+        Verifies that:
+            - Logon events are correctly analyzed
+            - Entries are properly formatted
+            - Summary counts are accurate
+        """
+        # Insert test logon events
+        insert_query = text(
+            """
+            INSERT INTO events 
+            (investigation_id, event_ts, artifact_id, event_type, payload)
+            VALUES (:investigation_id, NOW(), :artifact_id, :event_type, :payload)
+            """
+        )
+        
+        # Insert 3 successful logons (4624)
+        for i in range(3):
+            await async_db.execute(
+                insert_query,
+                {
+                    "investigation_id": str(test_investigation_id),
+                    "artifact_id": str(uuid4()),
+                    "event_type": "evtx_security_4624",
+                    "payload": json.dumps({
+                        "event_id": 4624,
+                        "event_data.TargetUserName": f"user{i}",
+                        "event_data.TargetDomainName": "CORP",
+                        "event_data.LogonType": "2",  # Interactive
+                        "event_data.IpAddress": "192.168.1.100"
+                    })
+                }
+            )
+        
+        # Insert 2 failed logons (4625)
+        for i in range(2):
+            await async_db.execute(
+                insert_query,
+                {
+                    "investigation_id": str(test_investigation_id),
+                    "artifact_id": str(uuid4()),
+                    "event_type": "evtx_security_4625",
+                    "payload": json.dumps({
+                        "event_id": 4625,
+                        "event_data.TargetUserName": "hacker",
+                        "event_data.LogonType": "3",  # Network
+                        "event_data.IpAddress": "10.0.0.50",
+                        "event_data.FailureReason": "Bad password"
+                    })
+                }
+            )
+        
+        await async_db.commit()
+        
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["total"] == 5
+        assert len(data["entries"]) == 5
+        
+        # Check summary counts
+        assert data["summary"]["action_Logon"] == 3
+        assert data["summary"]["action_Failed Logon"] == 2
+        assert data["summary"]["type_Interactive"] == 3
+        assert data["summary"]["type_Network"] == 2
+
+    @pytest.mark.asyncio
+    async def test_analyze_logons_combined_filters(
+        self, async_client: AsyncClient, admin_headers, test_investigation_id, async_db
+    ):
+        """
+        Test logons analysis with multiple filters applied simultaneously.
+        
+        Args:
+            async_client: An instance of httpx.AsyncClient for making HTTP requests.
+            admin_headers: Authentication headers for an admin user.
+            test_investigation_id: UUID of a test investigation.
+            async_db: Database session for setup.
+        
+        Verifies that:
+            - Multiple filters can be combined
+            - Results are correctly filtered
+        """
+        # Insert test logon events
+        insert_query = text(
+            """
+            INSERT INTO events 
+            (investigation_id, event_ts, artifact_id, event_type, payload)
+            VALUES (:investigation_id, NOW(), :artifact_id, :event_type, :payload)
+            """
+        )
+        
+        # Insert events with different combinations
+        test_events = [
+            # Should match all filters
+            {
+                "event_id": 4624,
+                "event_data.TargetUserName": "admin",
+                "event_data.TargetLogonId": "0x999",
+                "event_data.LogonType": "10",  # RemoteInteractive
+                "event_data.IpAddress": "192.168.1.50"
+            },
+            # Different logon type
+            {
+                "event_id": 4624,
+                "event_data.TargetUserName": "user1",
+                "event_data.TargetLogonId": "0x999",
+                "event_data.LogonType": "2",  # Interactive
+                "event_data.IpAddress": "192.168.1.50"
+            },
+            # Different IP
+            {
+                "event_id": 4624,
+                "event_data.TargetUserName": "admin",
+                "event_data.TargetLogonId": "0x999",
+                "event_data.LogonType": "10",  # RemoteInteractive
+                "event_data.IpAddress": "10.0.0.1"
+            },
+        ]
+        
+        for payload_data in test_events:
+            await async_db.execute(
+                insert_query,
+                {
+                    "investigation_id": str(test_investigation_id),
+                    "artifact_id": str(uuid4()),
+                    "event_type": "evtx_security_4624",
+                    "payload": json.dumps(payload_data)
+                }
+            )
+        
+        await async_db.commit()
+        
+        # Apply multiple filters
+        response = await async_client.get(
+            f"/api/v1/analysis/logons/{test_investigation_id}",
+            headers=admin_headers,
+            params={
+                "logon_types": ["RemoteInteractive"],
+                "source_ips": ["192.168.1.50"],
+                "logon_ids": ["0x999"]
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should only match the first event
+        assert data["total"] == 1
+        assert len(data["entries"]) == 1
+        assert data["entries"][0]["username"] == "admin"
+        assert data["entries"][0]["logon_type"] == "RemoteInteractive"
+        assert data["entries"][0]["source_ip"] == "192.168.1.50"

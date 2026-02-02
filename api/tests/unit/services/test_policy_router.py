@@ -326,18 +326,19 @@ seed_instructions: "Test {question}"
 
         with patch("builtins.open", mock_open(read_data=policy_content)):
             with patch("pathlib.Path.is_file", return_value=True):
-                with patch("app.services.policy_router.enqueue_agent_job", return_value=mock_job):
-                    result = await route_question(
-                        db=db,
-                        investigation_id=investigation_id,
-                        question="Test question",
-                        user_id=user_id,
-                        policy_id="event_search",
-                    )
+                with patch("app.services.policy_router.get_active_parsing_jobs", return_value=[]):
+                    with patch("app.services.policy_router.enqueue_agent_job", return_value=mock_job):
+                        result = await route_question(
+                            db=db,
+                            investigation_id=investigation_id,
+                            question="Test question",
+                            user_id=user_id,
+                            policy_id="event_search",
+                        )
 
-                    assert result["type"] == "job_queued"
-                    assert result["job_id"] == mock_job.job_id
-                    assert result["policy_id"] == "event_search"
+                        assert result["type"] == "job_queued"
+                        assert result["job_id"] == mock_job.job_id
+                        assert result["policy_id"] == "event_search"
 
     async def test_route_with_missing_rules(self):
         """
@@ -424,17 +425,18 @@ seed_instructions: "Search for {question} in {timeframe}"
 
         with patch("builtins.open", mock_open(read_data=policy_content)):
             with patch("pathlib.Path.is_file", return_value=True):
-                with patch("app.services.policy_router.enqueue_agent_job", return_value=mock_job):
-                    result = await route_question(
-                        db=db,
-                        investigation_id=investigation_id,
-                        question="Test question",
-                        user_id=user_id,
-                        policy_id="event_search",
-                    )
+                with patch("app.services.policy_router.get_active_parsing_jobs", return_value=[]):
+                    with patch("app.services.policy_router.enqueue_agent_job", return_value=mock_job):
+                        result = await route_question(
+                            db=db,
+                            investigation_id=investigation_id,
+                            question="Test question",
+                            user_id=user_id,
+                            policy_id="event_search",
+                        )
 
-                    # Should create job with default values
-                    assert result["type"] == "job_queued"
+                        # Should create job with default values
+                        assert result["type"] == "job_queued"
 
     async def test_route_with_nonexistent_policy(self):
         """

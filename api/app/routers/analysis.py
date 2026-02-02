@@ -18,6 +18,7 @@ from ..crud.investigation import check_investigation_access
 from ..analysis.autoruns import AutorunsAnalyzer
 from ..analysis.execution_evidence import ExecutionEvidenceAnalyzer
 from ..analysis.browsed_urls import BrowsedURLsAnalyzer
+from ..analysis.logons import LogonsAnalyzer
 from app.utils.log_setup import get_logger
 
 logger = get_logger(__name__)
@@ -536,6 +537,144 @@ async def analyze_browsed_urls(
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
+@router.get("/logons/filter-categories")
+async def list_logons_filter_categories(
+    user: User = Depends(get_current_user),
+):
+    """
+    List available filter categories for Logons analysis.
+
+    Returns:
+        Dictionary with three filter categories: logon_types, source_ips, logon_ids
+    """
+    analyzer = LogonsAnalyzer()
+    categories = analyzer.get_filter_categories()
+    return {"filter_categories": categories}
+
+
+@router.get("/logons/dynamic-filters/{investigation_id}")
+async def get_logons_dynamic_filters(
+    investigation_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Get dynamic filter values (source IPs and logon IDs) from actual data.
+
+    Args:
+        investigation_id: UUID of the investigation
+        db: Database session (injected)
+        user: Current user (injected)
+
+    Returns:
+        Dictionary with 'source_ips' and 'logon_ids' lists
+
+    Raises:
+        HTTPException 403: If user doesn't have access to the investigation
+    """
+    # Check access
+    await check_investigation_access(db, investigation_id, user)
+
+    analyzer = LogonsAnalyzer()
+    filters = await analyzer.get_dynamic_filters(db, investigation_id)
+    return {"dynamic_filters": filters}
+
+
+@router.get("/logons/{investigation_id}")
+async def analyze_logons(
+    investigation_id: UUID,
+    logon_types: Optional[List[str]] = Query(None, description="Specific logon types to filter by"),
+    source_ips: Optional[List[str]] = Query(None, description="Specific source IPs to filter by"),
+    usernames: Optional[List[str]] = Query(None, description="Specific usernames to filter by"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Analyze logon, logoff, and failed logon events for an investigation.
+
+    This endpoint queries Windows Event Log events for logon-related activity.
+
+    Args:
+        investigation_id: UUID of the investigation to analyze
+        logon_types: Optional list of logon types to filter by (e.g., ["Interactive", "Network"])
+        source_ips: Optional list of source IP addresses to filter by
+        usernames: Optional list of usernames to filter by
+        db: Database session (injected)
+        user: Current user (injected)
+
+    Returns:
+        Dictionary containing:
+            - entries: List of logon entries found
+            - total: Total number of entries
+            - summary: Summary statistics by logon type and event action
+
+    Raises:
+        HTTPException 403: If user doesn't have access to the investigation
+        HTTPException 500: If analysis fails
+    """
+    # Check access
+    await check_investigation_access(db, investigation_id, user)
+
+    try:
+        # Check if parsing is still in progress
+        parsing_status = await check_parsing_status(db, investigation_id)
+        
+        if parsing_status["has_pending_jobs"]:
+            # Wait for parsing to complete (up to 30 seconds)
+            logger.info(
+                f"Parsing in progress for investigation {investigation_id}: "
+                f"{parsing_status['pending_count']} pending, {parsing_status['running_count']} running. "
+                f"Waiting for completion..."
+            )
+            
+            completed = await wait_for_parsing_completion(db, investigation_id, max_wait_seconds=30)
+            
+            if not completed:
+                # Return partial results with a warning
+                logger.warning(
+                    f"Analysis started before parsing completed for investigation {investigation_id}. "
+                    f"Results may be incomplete."
+                )
+        
+        # Initialize analyzer
+        analyzer = LogonsAnalyzer()
+
+        # Run analysis
+        entries = await analyzer.analyze(
+            db=db,
+            investigation_id=investigation_id,
+            logon_types=logon_types,
+            source_ips=source_ips,
+            usernames=usernames,
+        )
+
+        # Convert entries to dicts
+        entries_data = [entry.to_dict() for entry in entries]
+
+        # Generate summary statistics
+        summary: Dict[str, int] = {}
+        for entry in entries:
+            # Count by logon type
+            logon_type_key = f"type_{entry.logon_type}"
+            summary[logon_type_key] = summary.get(logon_type_key, 0) + 1
+            
+            # Count by event action
+            action_key = f"action_{entry.event_action}"
+            summary[action_key] = summary.get(action_key, 0) + 1
+
+        return {
+            "entries": entries_data,
+            "total": len(entries_data),
+            "summary": summary,
+        }
+
+    except Exception as e:
+        import logging
+
+        logging.error(f"Logons analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
 @router.get("/modules")
 async def list_analysis_modules(
     user: User = Depends(get_current_user),
@@ -567,6 +706,13 @@ async def list_analysis_modules(
             "description": "Browser history analysis from Chrome, Firefox, and Edge",
             "icon": "globe-alt",
             "categories": len(BrowsedURLsAnalyzer().get_browsers()),
+        },
+        {
+            "id": "logons",
+            "name": "Logons",
+            "description": "Logon, logoff, and failed logon event analysis",
+            "icon": "user-circle",
+            "categories": 3,  # Three filter categories: logon types, source IPs, logon IDs
         },
     ]
 

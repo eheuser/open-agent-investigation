@@ -15,6 +15,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   TrashIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 
 interface Props {
@@ -62,7 +63,7 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [showEnabled, setShowEnabled] = useState(true);
   const [showDisabled, setShowDisabled] = useState(true);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   
   // Available categories
   const [availableCategories, setAvailableCategories] = useState<Category[]>([]);
@@ -80,6 +81,11 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
   const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
 
+  // Add to timeline
+  const [addingToTimeline, setAddingToTimeline] = useState<number | null>(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
   // Load available categories on mount
   useEffect(() => {
     loadCategories();
@@ -95,11 +101,10 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
   
   useEffect(() => {
     const handleMessage = (message: any) => {
-      // Refresh when events are inserted or parsing completes
+      // Only refresh when parsing is COMPLETE, not on every event insertion
+      // This prevents resource contention during parsing
       if (
-        message.type === 'events_inserted' ||
-        message.type === 'parsing_complete' ||
-        message.type === 'job_status_update'
+        message.type === 'parsing_complete'
       ) {
         // Refresh autoruns data
         loadAutoruns();
@@ -260,8 +265,67 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
     }
   };
 
+  const addToTimeline = async (entry: AutorunEntry) => {
+    if (!entry.event_id) {
+      console.warn('Cannot add to timeline: entry has no event_id');
+      return;
+    }
+    
+    setAddingToTimeline(entry.event_id);
+    try {
+      await api.post(`/api/v1/timeline/${investigationId}/entries`, {
+        event_id: entry.event_id,
+        timestamp: entry.timestamp || new Date().toISOString(),
+        entry_type: 'event',
+        title: entry.entry_name,
+        description: `Category: ${entry.category}\nLocation: ${entry.location}\nPath: ${entry.image_path}`,
+      });
+      
+      setTimeout(() => {
+        setAddingToTimeline(null);
+      }, 1000);
+    } catch (err: any) {
+      console.error('Failed to add to timeline:', err);
+      
+      if (err.response?.status === 409) {
+        setErrorMessage('This event is already on the timeline');
+      } else {
+        setErrorMessage(err.response?.data?.detail || err.message || 'Failed to add to timeline');
+      }
+      
+      setShowErrorModal(true);
+      setAddingToTimeline(null);
+    }
+  };
+
   return (
     <>
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div
+            className="absolute inset-0"
+            onClick={() => setShowErrorModal(false)}
+          />
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Unable to Add to Timeline
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              {errorMessage}
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowErrorModal(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Clear Cache Confirmation Modal */}
       {showClearCacheConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -363,7 +427,9 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
                 Categories
               </label>
               <div className="flex flex-wrap gap-2">
-                {availableCategories.map((cat) => (
+                {availableCategories
+                  .sort((a, b) => (summary[b.name] || 0) - (summary[a.name] || 0))
+                  .map((cat) => (
                   <button
                     key={cat.name}
                     onClick={() => toggleCategory(cat.name)}
@@ -525,7 +591,7 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
                       >
                         {/* Entry Header */}
                         <div
-                          className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                          className="p-3 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                           onClick={() => toggleEntry(globalIndex)}
                         >
                           <div className="flex items-start gap-3">
@@ -571,6 +637,33 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
                               )}
                             </div>
                           </div>
+
+                          {/* Add to Timeline Button */}
+                          {entry.event_id && (
+                            <div className="px-3 pb-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToTimeline(entry);
+                                }}
+                                disabled={addingToTimeline === entry.event_id}
+                                className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white rounded text-xs font-medium transition-colors"
+                                title="Add to timeline"
+                              >
+                                {addingToTimeline === entry.event_id ? (
+                                  <>
+                                    <div className="w-3 h-3 border-2 border-blue-200 dark:border-blue-300 border-t-transparent rounded-full animate-spin" />
+                                    Adding...
+                                  </>
+                                ) : (
+                                  <>
+                                    <PlusIcon className="w-3 h-3" />
+                                    Add to Timeline
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Expanded Details */}

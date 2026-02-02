@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import AutorunsViewer from './AutorunsViewer';
 import ExecutionEvidenceViewer from './ExecutionEvidenceViewer';
 import BrowsedURLsViewer from './BrowsedURLsViewer';
+import LogonsViewer from './LogonsViewer';
 import {
   RocketLaunchIcon,
   PlayCircleIcon,
   GlobeAltIcon,
+  UserCircleIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 
@@ -13,7 +15,7 @@ interface Props {
   investigationId: string;
 }
 
-type AnalysisModule = 'autoruns' | 'execution_evidence' | 'browsed_urls' | null;
+type AnalysisModule = 'autoruns' | 'execution_evidence' | 'browsed_urls' | 'logons' | null;
 
 const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
   const [selectedModule, setSelectedModule] = useState<AnalysisModule>('autoruns');
@@ -40,6 +42,13 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
       description: 'Browser history from Chrome, Firefox, and Edge',
       icon: GlobeAltIcon,
       color: 'indigo',
+    },
+    {
+      id: 'logons' as const,
+      name: 'Logons',
+      description: 'Logon, logoff, and failed logon events',
+      icon: UserCircleIcon,
+      color: 'green',
     },
   ];
 
@@ -79,7 +88,7 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
                         : 'text-gray-400 dark:text-gray-500'
                     }`}
                   />
-                  <div className="flex-1 text-left">
+                  <div className="flex-1 text-left min-w-0">
                     <div
                       className={`text-sm font-medium ${
                         isSelected
@@ -99,9 +108,13 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
                       {module.description}
                     </div>
                   </div>
-                  {isSelected && (
-                    <ChevronRightIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-1" />
-                  )}
+                  <ChevronRightIcon 
+                    className={`w-4 h-4 flex-shrink-0 mt-1 transition-opacity ${
+                      isSelected
+                        ? 'text-blue-600 dark:text-blue-400 opacity-100'
+                        : 'opacity-0'
+                    }`}
+                  />
                 </button>
               );
             })}
@@ -119,6 +132,9 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
         )}
         {selectedModule === 'browsed_urls' && (
           <BrowsedURLsViewer investigationId={investigationId} />
+        )}
+        {selectedModule === 'logons' && (
+          <LogonsViewer investigationId={investigationId} />
         )}
         {!selectedModule && (
           <div className="flex items-center justify-center h-full">

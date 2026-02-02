@@ -151,12 +151,31 @@ class BrowserHistoryParser(BaseParser):
                 url, title, visit_time, transition, visit_count, typed_count, last_visit = row
                 
                 # Chrome stores timestamps as microseconds since 1601-01-01
-                if visit_time:
-                    # Convert Chrome timestamp to Unix timestamp
-                    chrome_epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
-                    timestamp = chrome_epoch + timedelta(microseconds=visit_time)
+                if visit_time and visit_time > 0:
+                    try:
+                        # Chrome epoch is January 1, 1601 UTC
+                        chrome_epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+                        # Convert microseconds to seconds for timedelta
+                        timestamp = chrome_epoch + timedelta(seconds=visit_time / 1000000)
+                    except (ValueError, OverflowError) as e:
+                        logger.debug(f"Invalid Chrome timestamp {visit_time}: {e}")
+                        # Use last_visit_time as fallback
+                        if last_visit and last_visit > 0:
+                            try:
+                                timestamp = chrome_epoch + timedelta(seconds=last_visit / 1000000)
+                            except:
+                                timestamp = datetime.now(timezone.utc)
+                        else:
+                            timestamp = datetime.now(timezone.utc)
+                elif last_visit and last_visit > 0:
+                    try:
+                        chrome_epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+                        timestamp = chrome_epoch + timedelta(seconds=last_visit / 1000000)
+                    except:
+                        timestamp = datetime.now(timezone.utc)
                 else:
-                    timestamp = datetime.now(timezone.utc)
+                    # Skip entries with no valid timestamp
+                    continue
                 
                 payload = flatten_dict({
                     "browser": "chrome_chromium",
@@ -210,10 +229,16 @@ class BrowserHistoryParser(BaseParser):
                 url, title, visit_date, visit_count, typed, visit_type = row
                 
                 # Firefox stores timestamps as microseconds since Unix epoch
-                if visit_date:
-                    timestamp = datetime.fromtimestamp(visit_date / 1000000, tz=timezone.utc)
+                if visit_date and visit_date > 0:
+                    try:
+                        timestamp = datetime.fromtimestamp(visit_date / 1000000, tz=timezone.utc)
+                    except (ValueError, OverflowError) as e:
+                        logger.debug(f"Invalid Firefox timestamp {visit_date}: {e}")
+                        # Skip entries with invalid timestamps
+                        continue
                 else:
-                    timestamp = datetime.now(timezone.utc)
+                    # Skip entries with no valid timestamp
+                    continue
                 
                 payload = flatten_dict({
                     "browser": "firefox",
@@ -285,10 +310,14 @@ class BrowserHistoryParser(BaseParser):
                                         if value_type in [8, 15]:  # Date/time types
                                             value = record.get_value_data_as_integer(col_idx)
                                             if value and value > 0:
-                                                # Convert FILETIME to datetime
-                                                epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
-                                                access_time = epoch + timedelta(microseconds=value / 10)
-                                                break
+                                                try:
+                                                    # Convert FILETIME (100-nanosecond intervals since 1601) to datetime
+                                                    epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+                                                    # Divide by 10,000,000 to convert 100-nanosecond intervals to seconds
+                                                    access_time = epoch + timedelta(seconds=value / 10000000)
+                                                    break
+                                                except (ValueError, OverflowError):
+                                                    pass
                                     except:
                                         pass
                                 
