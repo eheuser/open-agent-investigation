@@ -264,7 +264,7 @@ class WindowsArtifactsParser(BaseParser):
         
         await self._insert_event_batch(db, investigation_id, db_events)
         
-        logger.info(f"Parsed {len(db_events)} entries from Windows artifact: {file_path.name}")
+        logger.debug(f"Parsed {len(db_events)} entries from Windows artifact: {file_path.name}")
         return len(db_events)
     
     async def _parse_cryptnet_cache(self, file_path: Path) -> List[Dict[str, Any]]:

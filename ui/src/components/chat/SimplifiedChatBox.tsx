@@ -11,6 +11,8 @@ import LoadingState from './LoadingState';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import UploadModal from './UploadModal';
 import ParsingStatusBanner from './ParsingStatusBanner';
+import ConfigurationErrorModal from '../ConfigurationErrorModal';
+import { useLLMConfig } from '../../hooks/useLLMConfig';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface SimplifiedChatBoxProps {
@@ -28,6 +30,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [showConfigError, setShowConfigError] = useState(false);
   
   // Floating search state
   const [showSearch, setShowSearch] = useState(false);
@@ -37,6 +40,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { ws, isConnected } = useWebSocketContext();
+  const { checkConfig } = useLLMConfig();
   const { 
     messages, 
     isLoading, 
@@ -49,6 +53,19 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
     selectChoice,
     dismissChoices,
   } = useInvestigationChat(investigationId);
+
+  // Check for LLM configuration errors in messages
+  useEffect(() => {
+    const hasConfigError = messages.some(msg => 
+      msg.message_type === 'error' && 
+      msg.content && 
+      msg.content.toLowerCase().includes('no active llm configuration')
+    );
+    
+    if (hasConfigError) {
+      setShowConfigError(true);
+    }
+  }, [messages]);
 
   // Track scroll position to determine if user has scrolled up
   useEffect(() => {
@@ -82,6 +99,13 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
 
   const handleSend = async () => {
     if (!input.trim() || investigationState === 'running' || !isConnected || parsingLocked) return;
+
+    // Check for LLM config before sending
+    const isValid = await checkConfig();
+    if (!isValid) {
+      setShowConfigError(true);
+      return;
+    }
 
     const messageText = input;
     setInput('');
@@ -259,6 +283,15 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 relative">
+      {/* Configuration Error Modal */}
+      <ConfigurationErrorModal
+        isOpen={showConfigError}
+        onClose={() => setShowConfigError(false)}
+        title="LLM Configuration Required"
+        message="You must configure an LLM provider before using the chat functionality. All natural language processing requires LLM capabilities."
+        showSettingsButton={true}
+      />
+      
       {/* Upload Modal */}
       {showUploadModal && (
         <UploadModal

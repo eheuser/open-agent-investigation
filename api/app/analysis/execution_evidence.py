@@ -115,7 +115,7 @@ class ExecutionEvidenceAnalyzer:
         if use_cache:
             cached = await self._get_cached_results(investigation_id, categories)
             if cached:
-                logger.info(f"✓ Returning {len(cached)} cached execution evidence entries (fast path)")
+                logger.debug(f"Returning {len(cached)} cached execution evidence entries (fast path)")
                 return cached
 
         entries: List[ExecutionEntry] = []
@@ -126,13 +126,13 @@ class ExecutionEvidenceAnalyzer:
         else:
             categories_to_analyze = self.CATEGORIES
 
-        logger.info(
+        logger.debug(
             f"Analyzing {len(categories_to_analyze)} execution evidence categories for investigation {investigation_id}"
         )
         
         # Log what event types we're looking for
         event_types_to_query = [info["event_type"] for info in categories_to_analyze.values()]
-        logger.info(f"Looking for event types: {event_types_to_query}")
+        logger.debug(f"Looking for event types: {event_types_to_query}")
         
         # Debug: Check what event types actually exist
         try:
@@ -150,9 +150,9 @@ class ExecutionEvidenceAnalyzer:
             debug_rows = debug_result.fetchall()
             
             if debug_rows:
-                logger.info(f"Investigation has {len(debug_rows)} event types:")
+                logger.debug(f"Investigation has {len(debug_rows)} event types:")
                 for row in debug_rows:
-                    logger.info(f"  - {row[0]}: {row[1]} events")
+                    logger.debug(f"  - {row[0]}: {row[1]} events")
             else:
                 logger.warning(f"Investigation {investigation_id} has NO events at all!")
         except Exception as e:
@@ -170,7 +170,7 @@ class ExecutionEvidenceAnalyzer:
             )
             entries.extend(category_entries)
 
-        logger.info(f"Total execution evidence entries found: {len(entries)}")
+        logger.debug(f"Total execution evidence entries found: {len(entries)}")
 
         # Cache results
         if use_cache and len(entries) > 0:
@@ -207,7 +207,7 @@ class ExecutionEvidenceAnalyzer:
             result = await db.execute(text(query), params)
             rows = result.fetchall()
 
-            logger.info(f"Category '{category_info['name']}' (event_type='{event_type}') returned {len(rows)} events")
+            logger.debug(f"Category '{category_info['name']}' (event_type='{event_type}') returned {len(rows)} events")
 
             # Process results based on category type
             for row in rows:
@@ -446,7 +446,7 @@ class ExecutionEvidenceAnalyzer:
                 if row:
                     results_json = row[0]
                     created_at = row[1]
-                    logger.info(f"Found cached execution evidence results from {created_at}")
+                    logger.debug(f"Found cached execution evidence results from {created_at}")
 
                     # Convert JSON back to ExecutionEntry objects
                     entries = []
@@ -477,8 +477,8 @@ class ExecutionEvidenceAnalyzer:
                 # Extract categories from entries
                 categories_analyzed = list(set(entry.category for entry in entries))
 
-                # Set expiration (cache for 1 hour)
-                expires_at = datetime.utcnow() + timedelta(hours=1)
+                # Set expiration (cache for 12 hour)
+                expires_at = datetime.utcnow() + timedelta(hours=12)
 
                 # Insert or update cache
                 query = """
@@ -514,7 +514,7 @@ class ExecutionEvidenceAnalyzer:
                 )
                 await cache_db.commit()
 
-                logger.info(f"Cached {len(entries)} execution evidence entries (expires in 1 hour)")
+                logger.debug(f"Cached {len(entries)} execution evidence entries (expires in 12 hours)")
 
         except Exception as e:
             logger.error(f"Failed to cache results: {e}", exc_info=True)

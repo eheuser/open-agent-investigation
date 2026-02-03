@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List
+from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
+import aiohttp
+import asyncio
 
 from ..deps import get_db, get_current_user
 from typing import cast
@@ -16,6 +19,26 @@ from ..crud import llm_config as crud
 
 
 router = APIRouter()
+
+
+# Test request schemas
+class LLMTestRequest(BaseModel):
+    """Schema for testing LLM configuration."""
+    provider_name: str
+    api_endpoint: str
+    api_key: Optional[str] = None
+    model_name: str
+    max_context_length: int = 8192
+    temperature: float = 0.7
+    timeout: int = 30
+
+
+class EmbeddingTestRequest(BaseModel):
+    """Schema for testing embedding configuration."""
+    embedding_provider: str
+    embedding_api_url: str
+    embedding_api_key: Optional[str] = None
+    embedding_model_name: str
 
 
 def _to_masked_response(config: LLMProviderConfig) -> LLMConfigReadMasked:
@@ -303,6 +326,195 @@ async def delete_config(
         )
 
     await crud.delete_llm_config(db, config_id)
+
+
+@router.post("/test")
+async def test_llm_config(
+    payload: LLMTestRequest,
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Test an LLM configuration by sending a minimal test query.
+    
+    This endpoint validates that the LLM provider is accessible and responding correctly
+    without saving the configuration to the database.
+    
+    Args:
+        payload: LLM configuration to test
+        current_user: Authenticated user (required for authorization)
+    
+    Returns:
+        Dict with 'success' boolean, 'message' string, and optional 'error' string
+    """
+    try:
+        # Prepare minimal test request
+        headers = {
+            "Content-Type": "application/json",
+        }
+        
+        # Add API key to headers if provided
+        if payload.api_key:
+            if "anthropic" in payload.api_endpoint.lower():
+                headers["x-api-key"] = payload.api_key
+                headers["anthropic-version"] = "2023-06-01"
+            elif "openai" in payload.api_endpoint.lower() or "openrouter" in payload.api_endpoint.lower():
+                headers["Authorization"] = f"Bearer {payload.api_key}"
+            elif "generativelanguage" in payload.api_endpoint.lower():
+                # Google uses API key in URL
+                pass
+        
+        # Minimal test message
+        test_messages = [{"role": "user", "content": "Say 'OK'"}]
+        
+        # Build request body based on provider
+        if "anthropic" in payload.api_endpoint.lower():
+            request_body = {
+                "model": payload.model_name,
+                "messages": test_messages,
+                "max_tokens": 10,
+                "temperature": payload.temperature,
+            }
+        else:
+            # OpenAI-compatible format
+            request_body = {
+                "model": payload.model_name,
+                "messages": test_messages,
+                "max_tokens": 10,
+                "temperature": payload.temperature,
+            }
+        
+        # Send test request
+        timeout = aiohttp.ClientTimeout(total=payload.timeout)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                payload.api_endpoint,
+                json=request_body,
+                headers=headers,
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {
+                        "success": True,
+                        "message": f"LLM test successful! Model: {payload.model_name}"
+                    }
+                else:
+                    error_text = await response.text()
+                    return {
+                        "success": False,
+                        "error": f"LLM test failed (HTTP {response.status}): {error_text[:200]}"
+                    }
+    
+    except asyncio.TimeoutError:
+        return {
+            "success": False,
+            "error": f"LLM test timed out after {payload.timeout} seconds"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"LLM test failed: {str(e)[:200]}"
+        }
+
+
+@router.post("/test-embedding")
+async def test_embedding_config(
+    payload: EmbeddingTestRequest,
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Test an embedding configuration by generating a test embedding.
+    
+    This endpoint validates that the embedding provider is accessible and responding correctly
+    without saving the configuration to the database.
+    
+    Args:
+        payload: Embedding configuration to test
+        current_user: Authenticated user (required for authorization)
+    
+    Returns:
+        Dict with 'success' boolean, 'message' string, and optional 'error' string
+    """
+    # Check if provider is None/empty
+    if not payload.embedding_provider or payload.embedding_provider.strip() == '':
+        return {
+            "success": False,
+            "error": "Embedding provider is set to 'None'. RAG functionality will be disabled. To enable RAG, select a provider (openai, cohere, or ollama) and configure all required fields."
+        }
+    
+    # Check if required fields are missing
+    missing_fields = []
+    if not payload.embedding_api_url or payload.embedding_api_url.strip() == '':
+        missing_fields.append('Embedding API URL')
+    if not payload.embedding_model_name or payload.embedding_model_name.strip() == '':
+        missing_fields.append('Embedding Model Name')
+    
+    if missing_fields:
+        return {
+            "success": False,
+            "error": f"Missing required fields: {', '.join(missing_fields)}. Please complete the embedding configuration."
+        }
+    
+    try:
+        # Prepare minimal test request
+        headers = {
+            "Content-Type": "application/json",
+        }
+        
+        # Add API key to headers if provided
+        if payload.embedding_api_key:
+            if "cohere" in payload.embedding_api_url.lower():
+                headers["Authorization"] = f"Bearer {payload.embedding_api_key}"
+            elif "openai" in payload.embedding_api_url.lower() or "openrouter" in payload.embedding_api_url.lower():
+                headers["Authorization"] = f"Bearer {payload.embedding_api_key}"
+        
+        # Minimal test text
+        test_text = "test"
+        
+        # Build request body based on provider
+        if payload.embedding_provider == "cohere":
+            request_body = {
+                "texts": [test_text],
+                "model": payload.embedding_model_name,
+                "input_type": "search_document",
+            }
+        else:
+            # OpenAI-compatible format
+            request_body = {
+                "input": test_text,
+                "model": payload.embedding_model_name,
+            }
+        
+        # Send test request
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                payload.embedding_api_url,
+                json=request_body,
+                headers=headers,
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {
+                        "success": True,
+                        "message": f"Embedding test successful! Model: {payload.embedding_model_name}"
+                    }
+                else:
+                    error_text = await response.text()
+                    return {
+                        "success": False,
+                        "error": f"Embedding test failed (HTTP {response.status}): {error_text[:200]}"
+                    }
+    
+    except asyncio.TimeoutError:
+        return {
+            "success": False,
+            "error": "Embedding test timed out after 30 seconds"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Embedding test failed: {str(e)[:200]}"
+        }
 
 
 __all__ = ["router"]

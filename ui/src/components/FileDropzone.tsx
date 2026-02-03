@@ -8,6 +8,8 @@ import {
   ExclamationCircleIcon,
   ArrowPathIcon 
 } from '@heroicons/react/24/outline';
+import ConfigurationErrorModal from './ConfigurationErrorModal';
+import { useLLMConfig } from '../hooks/useLLMConfig';
 
 interface Props {
   investigationId: string;
@@ -38,6 +40,8 @@ const FileDropzone: React.FC<Props> = ({
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
+  const { hasConfig, checkConfig } = useLLMConfig();
+  const [showConfigError, setShowConfigError] = useState(false);
 
   // Handle initial files if provided
   useEffect(() => {
@@ -185,6 +189,13 @@ const FileDropzone: React.FC<Props> = ({
   };
 
   const handleUpload = async () => {
+    // Check for LLM config before uploading
+    const isValid = await checkConfig();
+    if (!isValid) {
+      setShowConfigError(true);
+      return;
+    }
+
     setUploading(true);
     
     try {
@@ -219,8 +230,16 @@ const FileDropzone: React.FC<Props> = ({
     disabled: uploading,
   });
 
-          return (
-    <div className="flex flex-col h-full">
+  return (
+    <>
+      <ConfigurationErrorModal
+        isOpen={showConfigError}
+        onClose={() => setShowConfigError(false)}
+        title="LLM Configuration Required"
+        message="You must configure an LLM provider before uploading artifacts. Artifact processing and parsing require LLM capabilities for analysis and embedding generation."
+        showSettingsButton={true}
+      />
+      <div className="flex flex-col h-full">
       {/* Dropzone */}
       <div
         {...getRootProps()}
@@ -372,6 +391,7 @@ const FileDropzone: React.FC<Props> = ({
         </div>
       )}
     </div>
+    </>
   );
 };
 

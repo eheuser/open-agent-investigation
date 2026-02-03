@@ -49,8 +49,8 @@ services:
       PYTHONPATH: /app
     volumes:
       - ./api:/app
-      - ./test-results:/test-results
-      - ./htmlcov:/htmlcov
+      - test_results:/test-results
+      - test_htmlcov:/htmlcov
     command: >
       sh -c "
         echo '=== Installing dependencies ===' &&
@@ -80,3 +80,9 @@ services:
       interval: 5s
       timeout: 2s
       retries: 5
+
+volumes:
+  test_results:
+    name: oai-test-results
+  test_htmlcov:
+    name: oai-test-htmlcov

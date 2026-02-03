@@ -116,10 +116,10 @@ class BrowsedURLsAnalyzer:
         if use_cache:
             cached = await self._get_cached_results(investigation_id, browsers, search_term)
             if cached is not None:
-                logger.info(f"Returning cached browsed URLs results for investigation {investigation_id}")
+                logger.debug(f"Returning cached browsed URLs results for investigation {investigation_id}")
                 return cached
         
-        logger.info(f"Analyzing browsed URLs for investigation {investigation_id}")
+        logger.debug(f"Analyzing browsed URLs for investigation {investigation_id}")
         
         # Build query
         query_parts = []
@@ -157,7 +157,7 @@ class BrowsedURLsAnalyzer:
             result = await db.execute(query, params)
             rows = result.fetchall()
             
-            logger.info(f"Found {len(rows)} browser history events")
+            logger.debug(f"Found {len(rows)} browser history events")
             
             for row in rows:
                 event_id = row[0]
@@ -199,7 +199,7 @@ class BrowsedURLsAnalyzer:
             except Exception as rollback_error:
                 logger.warning(f"Failed to rollback transaction: {rollback_error}")
         
-        logger.info(f"Analyzed {len(entries)} browsed URL entries")
+        logger.debug(f"Analyzed {len(entries)} browsed URL entries")
         
         # Cache results if enabled
         if use_cache and not search_term:  # Don't cache search results

@@ -267,7 +267,7 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
 
   const addToTimeline = async (entry: AutorunEntry) => {
     if (!entry.event_id) {
-      console.warn('Cannot add to timeline: entry has no event_id');
+      //console.warn('Cannot add to timeline: entry has no event_id');
       return;
     }
     

@@ -117,7 +117,7 @@ class BrowserHistoryParser(BaseParser):
         
         await self._insert_event_batch(db, investigation_id, db_events)
         
-        logger.info(f"Parsed {len(db_events)} browser history entries from: {file_path.name}")
+        logger.debug(f"Parsed {len(db_events)} browser history entries from: {file_path.name}")
         return len(db_events)
     
     async def _parse_chromium_history(self, file_path: Path) -> List[Dict[str, Any]]:

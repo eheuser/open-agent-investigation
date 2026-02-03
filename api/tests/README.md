@@ -11,11 +11,11 @@ docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit
 
 The test suite uses a three-tier strategy:
 
-1. **Unit Tests** (730+ tests) - Fast, isolated tests for individual functions
-2. **Integration Tests** (200+ tests) - Database and API endpoint tests
+1. **Unit Tests** (783+ tests) - Fast, isolated tests for individual functions
+2. **Integration Tests** (331+ tests) - Database and API endpoint tests
 3. **End-to-End Tests** (planned) - Full workflow tests
 
-**Current Status:** 1201 tests, 70.39% coverage (targeting 80%)
+**Current Status:** 1745 tests, 71.93% coverage (targeting 80%)
 
 ## Structure
 
@@ -27,7 +27,7 @@ tests/
 ├── factories.py                 # Data factories for test data generation
 ├── README.md                    # This file
 │
-├── unit/                        # Unit tests (~730 tests, no database)
+├── unit/                        # Unit tests (~783 tests, no database)
 │   ├── auth/                    # Authentication module tests
 │   │   ├── test_auth_module.py  # JWT token creation/verification
 │   │   └── test_password_hashing.py  # Argon2 password hashing
@@ -72,6 +72,8 @@ tests/
 │   │   ├── test_mcp_server.py   # MCP server CRUD (50 tests)
 │   │   ├── test_report.py       # Report CRUD (37 tests)
 │   │   └── test_tool_execution.py # Tool execution CRUD (55 tests)
+│   ├── routers/                 # Router unit tests (1 file)
+│   │   └── test_events.py       # Events router (53 tests)
 │   ├── services/                # Service layer tests (11 files)
 │   │   ├── test_chat_router.py  # Chat routing logic
 │   │   ├── test_websocket_manager.py  # WebSocket connections
@@ -196,7 +198,7 @@ docker compose -f docker-compose.test.yml down -v
 
 ## Coverage
 
-**Current Coverage**: 70.39% (1201 tests)
+**Current Coverage**: 71.93% (1745 tests)
 **Target**: 80% line coverage
 
 The test suite aims for:
@@ -232,8 +234,11 @@ The test suite aims for:
 - `app/services/websocket_manager.py` - 100%
 - `app/services/rag/embedding.py` - 100%
 
+### Recently Improved Coverage
+- `app/routers/events.py` - **10% → 92%** (+82%) - Added 53 unit tests for JSONB queries, filtering, and paste functionality
+
 ### Modules Needing Coverage (<50%)
-- `app/routers/events.py` - 10% (223 statements) - Complex JSONB queries and paste functionality
+- `app/routers/events.py` - **92%** (223 statements) ✅ - Complex JSONB queries and paste functionality
 - `app/routers/chat.py` - 13% (266 statements) - WebSocket handlers
 - `app/routers/timeline.py` - 13% (266 statements) - Advanced filtering and notes
 - `app/routers/agents.py` - 20% (84 statements) - Agent execution flows
@@ -486,10 +491,10 @@ GitHub Actions workflow (`.github/workflows/tests.yml`):
 ## Performance
 
 Test execution times (approximate):
-- **Unit tests**: ~15 seconds (870+ tests)
-- **Integration tests**: ~9 seconds (331+ tests)
+- **Unit tests**: ~20 seconds (783+ tests)
+- **Integration tests**: ~60 seconds (331+ tests)
 - **E2E tests**: ~2 minutes (planned)
-- **Full suite**: ~24 seconds (1201 tests total)
+- **Full suite**: ~80 seconds (1745 tests total)
 
 ## Contributing
 

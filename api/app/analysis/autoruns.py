@@ -99,7 +99,7 @@ class AutorunsAnalyzer:
         if use_cache:
             cached = await self._get_cached_results(investigation_id, categories)
             if cached:
-                logger.info(f"✓ Returning {len(cached)} cached autoruns entries (fast path)")
+                logger.debug(f"Returning {len(cached)} cached autoruns entries (fast path)")
                 return cached
         
         entries: List[AutorunEntry] = []
@@ -111,7 +111,7 @@ class AutorunsAnalyzer:
         else:
             categories_to_analyze = all_categories
 
-        logger.info(
+        logger.debug(
             f"Analyzing {len(categories_to_analyze)} categories for investigation {investigation_id}"
         )
 
@@ -159,7 +159,7 @@ class AutorunsAnalyzer:
                         )
                         entries.extend(path_entries)
 
-        logger.info(f"Total autoruns entries found: {len(entries)}")
+        logger.debug(f"Total autoruns entries found: {len(entries)}")
         
         # Cache results (uses separate session to avoid transaction pollution)
         if use_cache and len(entries) > 0:
@@ -246,39 +246,19 @@ class AutorunsAnalyzer:
         if match_subkeys:
             params["path_subkeys"] = pattern_subkeys
         
-        logger.info(f"Original path: {registry_path}")
-        logger.info(f"Normalized path: {normalized_path}")
-        logger.info(f"Match subkeys: {match_subkeys}")
-        logger.info(f"Pattern exact: {params['path_exact']}")
-        if match_subkeys:
-            logger.info(f"Pattern subkeys: {params.get('path_subkeys', 'N/A')}")
-        
         if value_names:
             for i, vname in enumerate(value_names):
                 params[f"vname_{i}"] = vname
         
         # Execute
         try:
-            logger.info(f"Querying normalized path: {normalized_path}")
-            if match_subkeys:
-                logger.info(f"Pattern will match: {params['path_exact']} or {params.get('path_subkeys', 'N/A')}")
-            else:
-                logger.info(f"Pattern will match: {params['path_exact']} (exact only)")
-            
             # Test query first (optional - comment out for production)
             # test_query = f"SELECT COUNT(*) FROM events WHERE investigation_id = :investigation_id AND event_type = 'registry_value' AND LOWER(payload->>'key_path') LIKE LOWER(:path_exact)"
             # test_result = await db.execute(text(test_query), {"investigation_id": params["investigation_id"], "path_exact": params["path_exact"]})
             # test_count = test_result.scalar()
-            # logger.info(f"Test query for exact path returned: {test_count} events")
-            
             result = await db.execute(text(query), params)
             rows = result.fetchall()
-            
-            if len(rows) > 0:
-                logger.info(f"Path '{normalized_path}' returned {len(rows)} events (after all filters)")
-            else:
-                logger.debug(f"Path '{normalized_path}' returned 0 events")
-            
+
             # Process results
             for row in rows:
                 event_id, event_ts, payload = row[0], row[1], row[2]
@@ -340,7 +320,7 @@ class AutorunsAnalyzer:
             result = await db.execute(text(query), params)
             rows = result.fetchall()
             
-            logger.info(f"Event type '{event_type}' returned {len(rows)} events")
+            logger.debug(f"Event type '{event_type}' returned {len(rows)} events")
             
             # Process results
             for row in rows:
@@ -529,7 +509,7 @@ class AutorunsAnalyzer:
                 if row:
                     results_json = row[0]
                     created_at = row[1]
-                    logger.info(f"Found cached autoruns results from {created_at}")
+                    logger.debug(f"Found cached autoruns results from {created_at}")
                     
                     # Convert JSON back to AutorunEntry objects
                     entries = []
@@ -563,8 +543,8 @@ class AutorunsAnalyzer:
                 # Extract categories from entries
                 categories_analyzed = list(set(entry.category for entry in entries))
                 
-                # Set expiration (cache for 1 hour)
-                expires_at = datetime.utcnow() + timedelta(hours=1)
+                # Set expiration (cache for 12 hours)
+                expires_at = datetime.utcnow() + timedelta(hours=12)
                 
                 # Insert or update cache
                 query = """
@@ -600,7 +580,7 @@ class AutorunsAnalyzer:
                 )
                 await cache_db.commit()
                 
-                logger.info(f"Cached {len(entries)} autoruns entries (expires in 1 hour)")
+                logger.debug(f"Cached {len(entries)} autoruns entries (expires in 12 hours)")
                 
         except Exception as e:
             logger.error(f"Failed to cache results: {e}", exc_info=True)

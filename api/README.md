@@ -403,6 +403,8 @@ WORKER_TIMEOUT=30
 | POST | `/api/v1/llm-config` | Create LLM config (includes embedding config) |
 | PUT | `/api/v1/llm-config/{id}` | Update LLM config |
 | DELETE | `/api/v1/llm-config/{id}` | Delete LLM config |
+| POST | `/api/v1/llm-config/test` | Test LLM configuration with minimal query |
+| POST | `/api/v1/llm-config/test-embedding` | Test embedding configuration with minimal text |
 
 ### Playbooks
 

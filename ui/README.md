@@ -436,18 +436,32 @@ playbook: |
 **Location**: `/settings`
 
 **Features**:
-- LLM provider configuration
+- LLM provider configuration with validation
 - API endpoint settings
 - Model selection
 - Temperature control
 - Max context length
 - API key management (encrypted)
 - Active config selection
+- **Configuration validation**: Real-time status badges (Valid/Invalid) for LLM and Embedding configs
+- **Test Settings**: Validates both LLM and embedding configurations with actual API calls
+- **Strict validation**: 
+  - API keys required for internet providers (OpenAI, Anthropic, Google, OpenRouter)
+  - Save button disabled until LLM test passes
+  - Test button disabled until all required fields are filled
+- **Embedding configuration**: Optional RAG setup with separate validation
 
 **First-time Setup**:
 - Users without an LLM configuration are automatically redirected here after login
 - A welcome banner provides guidance on configuring the LLM provider
 - Configuration is required before the system can process natural language queries
+
+**Configuration Validation**:
+- **LLM Status Badge**: Shows Valid (green) or Invalid (red) based on required fields
+- **Embedding Status Badge**: Shows Valid (green) or Invalid (red) based on required fields
+- **Test Settings Button**: Sends minimal test queries to validate both configurations
+- **Test Results**: Displays success/failure with verbose error messages from backend
+- **Protection**: Users cannot upload artifacts or send chat messages without valid LLM config
 
 ---
 

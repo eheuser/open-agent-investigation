@@ -456,7 +456,7 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
         )
         await db.commit()
 
-        logger.info(f"Job {job_id} completed successfully. " f"Inserted {events_inserted} events.")
+        logger.debug(f"Job {job_id} completed successfully. " f"Inserted {events_inserted} events.")
 
         # Notify WebSocket clients that new events were inserted (silent refresh)
         if events_inserted > 0:

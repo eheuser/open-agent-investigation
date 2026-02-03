@@ -129,12 +129,12 @@ class LogonsAnalyzer:
         if use_cache:
             cached = await self._get_cached_results(investigation_id, logon_types, source_ips, usernames)
             if cached:
-                logger.info(f"Returning {len(cached)} cached logon entries (fast path)")
+                logger.debug(f"Returning {len(cached)} cached logon entries (fast path)")
                 return cached
 
         entries: List[LogonEntry] = []
 
-        logger.info(f"Analyzing logon events for investigation {investigation_id}")
+        logger.debug(f"Analyzing logon events for investigation {investigation_id}")
 
         # Query Windows Event Log events
         event_log_entries = await self._query_event_logs(
@@ -146,7 +146,7 @@ class LogonsAnalyzer:
         )
         entries.extend(event_log_entries)
 
-        logger.info(f"Total logon entries found: {len(entries)}")
+        logger.debug(f"Total logon entries found: {len(entries)}")
 
         # Cache results
         if use_cache and len(entries) > 0:
@@ -195,7 +195,7 @@ class LogonsAnalyzer:
             result = await db.execute(text(query), params)
             rows = result.fetchall()
 
-            logger.info(f"Found {len(rows)} event log entries")
+            logger.debug(f"Found {len(rows)} event log entries")
 
             # Process results
             for row in rows:
@@ -547,7 +547,7 @@ class LogonsAnalyzer:
                 if row:
                     results_json = row[0]
                     created_at = row[1]
-                    logger.info(f"Found cached logon results from {created_at}")
+                    logger.debug(f"Found cached logon results from {created_at}")
 
                     # Convert JSON back to LogonEntry objects
                     entries = []
@@ -587,8 +587,8 @@ class LogonsAnalyzer:
                 # Extract unique values for metadata
                 logon_types_analyzed = list(set(entry.logon_type for entry in entries))
 
-                # Set expiration (cache for 1 hour)
-                expires_at = datetime.utcnow() + timedelta(hours=1)
+                # Set expiration (cache for 12 hours)
+                expires_at = datetime.utcnow() + timedelta(hours=12)
 
                 # Insert or update cache
                 query = """
@@ -624,7 +624,7 @@ class LogonsAnalyzer:
                 )
                 await cache_db.commit()
 
-                logger.info(f"Cached {len(entries)} logon entries (expires in 1 hour)")
+                logger.debug(f"Cached {len(entries)} logon entries (expires in 12 hours)")
 
         except Exception as e:
             logger.error(f"Failed to cache results: {e}", exc_info=True)

@@ -188,7 +188,7 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         `/api/v1/analysis/logons/${investigationId}`
       );
       
-      console.log('Loaded initial data:', response.data.entries.length, 'entries');
+      //console.log('Loaded initial data:', response.data.entries.length, 'entries');
       setEntries(response.data.entries);
       setSummary(response.data.summary);
       
@@ -218,7 +218,7 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         usernames: usernameCounts,
       });
       
-      console.log('Cardinality counts:', { logonTypeCounts, sourceIPCounts, usernameCounts });
+      //console.log('Cardinality counts:', { logonTypeCounts, sourceIPCounts, usernameCounts });
       
       // Build dynamic filter lists from the cardinality counts, sorted by count (descending)
       const sourceIPList = Object.keys(sourceIPCounts).sort((a, b) => sourceIPCounts[b] - sourceIPCounts[a]);
@@ -229,7 +229,7 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         usernames: usernameList,
       });
       
-      console.log('Dynamic filters set:', { sourceIPList: sourceIPList.length, usernameList: usernameList.length });
+      //console.log('Dynamic filters set:', { sourceIPList: sourceIPList.length, usernameList: usernameList.length });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load logon data');
       console.error('Failed to load initial data:', err);
@@ -404,7 +404,7 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
 
   const addToTimeline = async (entry: LogonEntry) => {
     if (!entry.event_id) {
-      console.warn('Cannot add to timeline: entry has no event_id');
+      //console.warn('Cannot add to timeline: entry has no event_id');
       return;
     }
     

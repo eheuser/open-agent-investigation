@@ -112,17 +112,17 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
 
   const addToTimeline = async (entry: BrowsedURLEntry) => {
     if (!entry.event_id) {
-      console.warn('Cannot add to timeline: entry has no event_id');
+      //console.warn('Cannot add to timeline: entry has no event_id');
       return;
     }
     
     setAddingToTimeline(entry.event_id);
     try {
-      console.log('Adding to timeline:', {
-        event_id: entry.event_id,
-        timestamp: entry.timestamp,
-        url: entry.url
-      });
+      //console.log('Adding to timeline:', {
+      //  event_id: entry.event_id,
+      //  timestamp: entry.timestamp,
+      //  url: entry.url
+      //});
       
       await api.post(`/api/v1/timeline/${investigationId}/entries`, {
         event_id: entry.event_id,

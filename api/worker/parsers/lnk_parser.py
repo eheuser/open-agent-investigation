@@ -114,7 +114,7 @@ class LnkParser(BaseParser):
 
         await self._insert_event_batch(db, investigation_id, [event])
 
-        logger.info(f"Parsed LNK file: {target_path}")
+        logger.debug(f"Parsed LNK file: {target_path}")
         return 1
 
 

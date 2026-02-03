@@ -37,7 +37,7 @@ async def invalidate_analysis_cache(db: AsyncSession, investigation_id: uuid.UUI
         rows_deleted = cursor_result.rowcount or 0
         
         if rows_deleted > 0:
-            logger.info(f"Invalidated {rows_deleted} cached analysis results for investigation {investigation_id}")
+            logger.debug(f"Invalidated {rows_deleted} cached analysis results for investigation {investigation_id}")
         else:
             logger.debug(f"No cached analysis results to invalidate for investigation {investigation_id}")
         
@@ -130,11 +130,11 @@ class BaseParser(ABC):
             RuntimeError: If parsing fails
         """
         parser_name = self.__class__.__name__
-        logger.info(f"Parsing artifact {artifact_id} with {parser_name}: {file_path}")
+        logger.debug(f"Parsing artifact {artifact_id} with {parser_name}: {file_path}")
         
         try:
             events_inserted = await self._parse_impl(db, investigation_id, artifact_id, file_path)
-            logger.info(f"{parser_name} inserted {events_inserted} events from {file_path}")
+            logger.debug(f"{parser_name} inserted {events_inserted} events from {file_path}")
             return events_inserted
         except Exception as e:
             logger.error(f"{parser_name} failed to parse {file_path}: {e}")

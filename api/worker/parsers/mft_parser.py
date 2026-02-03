@@ -332,7 +332,7 @@ class MftParser(BaseParser):
             await self._insert_event_batch(db, investigation_id, event_batch)
             events_inserted += len(event_batch)
 
-        logger.info(
+        logger.debug(
             f"Parsed {events_inserted} MFT records (skipped {skipped_errors} errors, {skipped_no_timestamp} entries without timestamps)"
         )
         return events_inserted

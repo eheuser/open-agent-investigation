@@ -93,7 +93,7 @@ async def wait_for_parsing_completion(
         status = await check_parsing_status(db, investigation_id)
         
         if not status["has_pending_jobs"]:
-            logger.info(f"All parsing jobs completed for investigation {investigation_id}")
+            logger.debug(f"All parsing jobs completed for investigation {investigation_id}")
             return True
         
         logger.debug(
@@ -253,7 +253,7 @@ async def analyze_execution_evidence(
         
         if parsing_status["has_pending_jobs"]:
             # Wait for parsing to complete (up to 30 seconds)
-            logger.info(
+            logger.debug(
                 f"Parsing in progress for investigation {investigation_id}: "
                 f"{parsing_status['pending_count']} pending, {parsing_status['running_count']} running. "
                 f"Waiting for completion..."
@@ -404,7 +404,7 @@ async def clear_analysis_cache(
         cleared_count = cursor_result.rowcount or 0
         await db.commit()
         
-        logger.info(f"Cleared {cleared_count} cached analysis results for investigation {investigation_id}")
+        logger.debug(f"Cleared {cleared_count} cached analysis results for investigation {investigation_id}")
         
         return {
             "status": "ok",
@@ -476,7 +476,7 @@ async def analyze_browsed_urls(
         
         if parsing_status["has_pending_jobs"]:
             # Wait for parsing to complete (up to 30 seconds)
-            logger.info(
+            logger.debug(
                 f"Parsing in progress for investigation {investigation_id}: "
                 f"{parsing_status['pending_count']} pending, {parsing_status['running_count']} running. "
                 f"Waiting for completion..."
@@ -615,7 +615,7 @@ async def analyze_logons(
         
         if parsing_status["has_pending_jobs"]:
             # Wait for parsing to complete (up to 30 seconds)
-            logger.info(
+            logger.debug(
                 f"Parsing in progress for investigation {investigation_id}: "
                 f"{parsing_status['pending_count']} pending, {parsing_status['running_count']} running. "
                 f"Waiting for completion..."

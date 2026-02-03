@@ -228,7 +228,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
     
     // Check if parsing is locked
     if (parsingLocked) {
-      console.warn('Cannot send message while parsing is in progress');
+      //console.warn('Cannot send message while parsing is in progress');
       return;
     }
 
@@ -388,7 +388,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
               // Deduplicate: check if message already exists
               const exists = prev.some(m => m.message_id === newMessage.message_id);
               if (exists) {
-                console.warn(`Duplicate message_created for message_id=${newMessage.message_id}, skipping`);
+                //console.warn(`Duplicate message_created for message_id=${newMessage.message_id}, skipping`);
                 return prev;
               }
               return [...prev, newMessage];

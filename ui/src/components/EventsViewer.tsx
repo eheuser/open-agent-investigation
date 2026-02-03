@@ -221,7 +221,7 @@ const EventsViewer: React.FC<Props> = ({ investigationId, onClose, replicatedQue
         if (response.data && response.data.fields) {
           setCommonFields(response.data.fields);
         } else {
-          console.warn('No fields returned from API');
+          //console.warn('No fields returned from API');
           setCommonFields([]);
         }
       } catch (err: any) {
