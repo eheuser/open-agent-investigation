@@ -1,16 +1,12 @@
-"""
-Integration tests for events endpoints.
-Tests CRUD operations for forensic events.
-"""
-
 import pytest
 from httpx import AsyncClient
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timedelta
+import json
 
 
 @pytest.mark.integration
-class TestGetEvents:
+class TestListEvents:
     """Test GET /api/v1/events/{investigation_id} endpoint."""
 
     async def test_get_events_empty(
@@ -627,3 +623,596 @@ class TestEventsFullWorkflow:
         )
 
         assert verify_response.status_code == 404
+
+
+@pytest.mark.integration
+class TestListEventsAdvanced:
+    """Test advanced filtering, JSONB queries, and search functionality."""
+
+    async def test_list_events_with_date_range(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test filtering events by date range."""
+        # Create test events with different timestamps
+        from sqlalchemy import text
+        
+        base_time = datetime.utcnow()
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": base_time - timedelta(days=2),
+                "event_type": "test_event",
+                "payload": json.dumps({"key": "old"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": base_time,
+                "event_type": "test_event",
+                "payload": json.dumps({"key": "recent"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        # Query with date range
+        start_date = (base_time - timedelta(days=1)).isoformat()
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={"start_date": start_date}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1  # Only recent event
+
+    async def test_list_events_with_search(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test full-text search in payload and event_type."""
+        from sqlalchemy import text
+        
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"TargetUserName": "admin", "IpAddress": "192.168.1.100"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_sysmon_1",
+                "payload": json.dumps({"Image": "C:\\\\Windows\\\\System32\\\\cmd.exe"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        # Search for "admin"
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={"search": "admin"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1
+        assert "admin" in str(data["events"][0]["payload"])
+
+    async def test_list_events_with_jsonb_equals(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test JSONB field query with equals operator."""
+        from sqlalchemy import text
+        
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"LogonType": "3"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"LogonType": "10"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        # Query for LogonType = 10
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={
+                "jsonb_path_0": "LogonType",
+                "jsonb_operator_0": "=",
+                "jsonb_value_0": "10"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1
+        assert data["events"][0]["payload"]["LogonType"] == "10"
+
+    async def test_list_events_with_jsonb_like(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test JSONB field query with LIKE operator."""
+        from sqlalchemy import text
+        
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_sysmon_1",
+                "payload": json.dumps({"Image": "C:\\\\Windows\\\\System32\\\\cmd.exe"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_sysmon_1",
+                "payload": json.dumps({"Image": "C:\\\\Program Files\\\\app.exe"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        # Query for Image LIKE *System32*
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={
+                "jsonb_path_0": "Image",
+                "jsonb_operator_0": "LIKE",
+                "jsonb_value_0": "*System32*"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1
+        assert "System32" in data["events"][0]["payload"]["Image"]
+
+    async def test_list_events_with_jsonb_contains(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test JSONB field query with CONTAINS operator."""
+        from sqlalchemy import text
+        
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "test_event",
+                "payload": json.dumps({"CommandLine": "powershell.exe -ExecutionPolicy Bypass"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "test_event",
+                "payload": json.dumps({"CommandLine": "cmd.exe /c dir"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        # Query for CommandLine CONTAINS powershell
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={
+                "jsonb_path_0": "CommandLine",
+                "jsonb_operator_0": "CONTAINS",
+                "jsonb_value_0": "powershell"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1
+
+    async def test_list_events_with_multiple_jsonb_filters(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test multiple JSONB filters combined."""
+        from sqlalchemy import text
+        
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"LogonType": "10", "TargetUserName": "admin"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"LogonType": "3", "TargetUserName": "admin"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        # Query for LogonType=10 AND TargetUserName=admin
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={
+                "jsonb_path_0": "LogonType",
+                "jsonb_operator_0": "=",
+                "jsonb_value_0": "10",
+                "jsonb_path_1": "TargetUserName",
+                "jsonb_operator_1": "=",
+                "jsonb_value_1": "admin"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 1
+
+    async def test_list_events_with_invalid_operator(self, async_client: AsyncClient, test_investigation, auth_headers):
+        """Test JSONB query with invalid operator returns 400."""
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={
+                "jsonb_path_0": "field",
+                "jsonb_operator_0": "INVALID",
+                "jsonb_value_0": "value"
+            }
+        )
+        
+        assert response.status_code == 400
+        assert "Invalid JSONB operator" in response.json()["detail"]
+
+    async def test_list_events_with_invalid_date(self, async_client: AsyncClient, test_investigation, auth_headers):
+        """Test filtering with invalid date format returns 400."""
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={"start_date": "not-a-date"}
+        )
+        
+        assert response.status_code == 400
+        assert "Invalid start_date format" in response.json()["detail"]
+
+    async def test_list_events_order_asc(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test sorting events in ascending order."""
+        from sqlalchemy import text
+        
+        base_time = datetime.utcnow()
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": base_time - timedelta(hours=2),
+                "event_type": "test_event",
+                "payload": json.dumps({"order": 1})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": base_time,
+                "event_type": "test_event",
+                "payload": json.dumps({"order": 2})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        # Query with ascending order
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}",
+            headers=auth_headers,
+            params={"order": "asc"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == 2
+        # First event should be oldest
+        assert data["events"][0]["payload"]["order"] == 1
+
+
+@pytest.mark.integration
+class TestGetEventTypes:
+    """Test GET /api/v1/events/{investigation_id}/event-types endpoint."""
+
+    async def test_get_event_types_with_data(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test retrieving event types when events exist."""
+        from sqlalchemy import text
+        
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"key": "value1"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"key": "value2"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_sysmon_1",
+                "payload": json.dumps({"key": "value3"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}/event-types",
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "event_types" in data
+        assert "total_types" in data
+        assert data["total_types"] == 2
+        
+        # Check counts
+        event_types_dict = {et["event_type"]: et["count"] for et in data["event_types"]}
+        assert event_types_dict["evtx_security_4624"] == 2
+        assert event_types_dict["evtx_sysmon_1"] == 1
+
+
+@pytest.mark.integration
+class TestGetEventFields:
+    """Test GET /api/v1/events/{investigation_id}/fields endpoint."""
+
+    async def test_get_event_fields_all_types(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test retrieving fields from all event types."""
+        from sqlalchemy import text
+        
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"LogonType": "10", "TargetUserName": "admin"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_sysmon_1",
+                "payload": json.dumps({"Image": "cmd.exe", "CommandLine": "cmd.exe /c dir"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}/fields",
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "fields" in data
+        assert "count" in data
+        assert set(data["fields"]) == {"LogonType", "TargetUserName", "Image", "CommandLine"}
+
+    async def test_get_event_fields_filtered_by_type(self, async_client: AsyncClient, test_investigation, auth_headers, db_session):
+        """Test retrieving fields for specific event type."""
+        from sqlalchemy import text
+        
+        events = [
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_security_4624",
+                "payload": json.dumps({"LogonType": "10", "TargetUserName": "admin"})
+            },
+            {
+                "investigation_id": str(test_investigation.investigation_id),
+                "event_ts": datetime.utcnow(),
+                "event_type": "evtx_sysmon_1",
+                "payload": json.dumps({"Image": "cmd.exe"})
+            },
+        ]
+        
+        for event in events:
+            await db_session.execute(
+                text(
+                    "INSERT INTO events (investigation_id, event_ts, event_type, payload) "
+                    "VALUES (:investigation_id, :event_ts, :event_type, CAST(:payload AS jsonb))"
+                ),
+                event
+            )
+        await db_session.commit()
+        
+        response = await async_client.get(
+            f"/api/v1/events/{test_investigation.investigation_id}/fields",
+            headers=auth_headers,
+            params={"event_type": "evtx_security_4624"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert set(data["fields"]) == {"LogonType", "TargetUserName"}
+
+
+@pytest.mark.integration
+class TestPasteEvents:
+    """Test POST /api/v1/events/paste endpoint."""
+
+    async def test_paste_json_events(self, async_client: AsyncClient, test_investigation, auth_headers):
+        """Test pasting JSON event data."""
+        json_data = json.dumps([
+            {
+                "event_type": "pasted_event",
+                "timestamp": datetime.utcnow().isoformat(),
+                "data": {"key": "value1"}
+            },
+            {
+                "event_type": "pasted_event",
+                "timestamp": datetime.utcnow().isoformat(),
+                "data": {"key": "value2"}
+            }
+        ])
+        
+        response = await async_client.post(
+            f"/api/v1/events/paste?investigation_id={test_investigation.investigation_id}",
+            headers={**auth_headers, "Content-Type": "text/plain"},
+            content=json_data
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["format"] == "json"
+        assert data["inserted"] == 2
+        assert "file_saved" in data
+
+    async def test_paste_yaml_events(self, async_client: AsyncClient, test_investigation, auth_headers):
+        """Test pasting YAML event data."""
+        yaml_data = """- event_type: pasted_event
+  timestamp: 2024-01-01T00:00:00Z
+  data:
+    key: value1
+- event_type: pasted_event
+  timestamp: 2024-01-01T00:00:00Z
+  data:
+    key: value2
+"""
+        
+        response = await async_client.post(
+            f"/api/v1/events/paste?investigation_id={test_investigation.investigation_id}",
+            headers={**auth_headers, "Content-Type": "text/plain"},
+            content=yaml_data
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["format"] == "yaml"
+        assert data["inserted"] == 2
+
+    async def test_paste_csv_events(self, async_client: AsyncClient, test_investigation, auth_headers):
+        """Test pasting CSV event data."""
+        csv_data = """event_type,timestamp,data
+pasted_event,2024-01-01T00:00:00Z,value1
+pasted_event,2024-01-01T00:00:00Z,value2
+"""
+        
+        response = await async_client.post(
+            f"/api/v1/events/paste?investigation_id={test_investigation.investigation_id}",
+            headers={**auth_headers, "Content-Type": "text/plain"},
+            content=csv_data
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["format"] == "csv"
+        assert data["inserted"] == 2
+
+    async def test_paste_invalid_format(self, async_client: AsyncClient, test_investigation, auth_headers):
+        """Test pasting invalid data format returns 400."""
+        invalid_data = "This is not JSON, YAML, or CSV"
+        
+        response = await async_client.post(
+            f"/api/v1/events/paste?investigation_id={test_investigation.investigation_id}",
+            headers={**auth_headers, "Content-Type": "text/plain"},
+            content=invalid_data
+        )
+        
+        assert response.status_code == 400
+        assert "Unable to parse" in response.json()["detail"]
+
+    async def test_paste_empty_data(self, async_client: AsyncClient, test_investigation, auth_headers):
+        """Test pasting empty data returns 400."""
+        empty_data = "[]"
+        
+        response = await async_client.post(
+            f"/api/v1/events/paste?investigation_id={test_investigation.investigation_id}",
+            headers={**auth_headers, "Content-Type": "text/plain"},
+            content=empty_data
+        )
+        
+        assert response.status_code == 400
+        assert "No records found" in response.json()["detail"]
+
+    async def test_paste_unauthorized(self, async_client: AsyncClient, test_investigation):
+        """Test pasting events without authentication returns 401."""
+        json_data = json.dumps([{"event_type": "test", "timestamp": datetime.utcnow().isoformat()}])
+        
+        response = await async_client.post(
+            f"/api/v1/events/paste?investigation_id={test_investigation.investigation_id}",
+            headers={"Content-Type": "text/plain"},
+            content=json_data
+        )
+        
+        assert response.status_code == 401

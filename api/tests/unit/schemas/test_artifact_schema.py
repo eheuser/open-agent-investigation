@@ -1,8 +1,3 @@
-"""
-Unit tests for artifact schemas.
-Tests Pydantic validation for artifact data.
-"""
-
 import pytest
 from pydantic import ValidationError
 from app.schemas.artifact import ArtifactMetadata, ArtifactUploadResponse, ArtifactListResponse

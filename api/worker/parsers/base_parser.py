@@ -6,11 +6,45 @@ import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.engine import CursorResult
 
 from app.utils.log_setup import get_logger
 from .utils import safe_json_dumps
 
 logger = get_logger(__name__)
+
+
+async def invalidate_analysis_cache(db: AsyncSession, investigation_id: uuid.UUID):
+    """
+    Invalidate all cached analysis results for an investigation.
+    
+    This should be called whenever new events are inserted to ensure
+    that analysis modules re-run and pick up the new data.
+    
+    Args:
+        db: Async database session
+        investigation_id: UUID of the investigation
+    """
+    try:
+        delete_query = text(
+            """
+            DELETE FROM analysis_results
+            WHERE investigation_id = :investigation_id
+            """
+        )
+        
+        cursor_result: CursorResult = await db.execute(delete_query, {"investigation_id": str(investigation_id)})  # type: ignore
+        rows_deleted = cursor_result.rowcount or 0
+        
+        if rows_deleted > 0:
+            logger.debug(f"Invalidated {rows_deleted} cached analysis results for investigation {investigation_id}")
+        else:
+            logger.debug(f"No cached analysis results to invalidate for investigation {investigation_id}")
+        
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to invalidate analysis cache for investigation {investigation_id}: {e}")
+        await db.rollback()
 
 
 class BaseParser(ABC):
@@ -96,11 +130,11 @@ class BaseParser(ABC):
             RuntimeError: If parsing fails
         """
         parser_name = self.__class__.__name__
-        logger.info(f"Parsing artifact {artifact_id} with {parser_name}: {file_path}")
+        logger.debug(f"Parsing artifact {artifact_id} with {parser_name}: {file_path}")
         
         try:
             events_inserted = await self._parse_impl(db, investigation_id, artifact_id, file_path)
-            logger.info(f"{parser_name} inserted {events_inserted} events from {file_path}")
+            logger.debug(f"{parser_name} inserted {events_inserted} events from {file_path}")
             return events_inserted
         except Exception as e:
             logger.error(f"{parser_name} failed to parse {file_path}: {e}")
@@ -158,6 +192,10 @@ class BaseParser(ABC):
         try:
             await db.execute(insert_query, events)
             await db.commit()
+            
+            # Invalidate analysis cache since new events were added
+            await invalidate_analysis_cache(db, investigation_id)
+            
         except Exception as e:
             logger.error(f"Failed to insert event batch of {len(events):,} events: {e}", exc_info=True)
             await db.rollback()

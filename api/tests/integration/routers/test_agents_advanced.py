@@ -1,8 +1,3 @@
-"""
-Advanced integration tests for agents router.
-Tests agent execution and policy routing endpoints.
-"""
-
 import pytest
 from httpx import AsyncClient
 import json

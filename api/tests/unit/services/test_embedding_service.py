@@ -1,8 +1,3 @@
-"""
-Unit tests for EmbeddingService.
-Tests embedding generation, reranking, and concurrent call handling.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.services.llm_service import EmbeddingService

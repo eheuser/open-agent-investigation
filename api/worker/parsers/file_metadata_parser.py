@@ -430,7 +430,7 @@ class FileMetadataParser(BaseParser):
             # Insert event
             await self._insert_event_batch(db, investigation_id, [event])
             
-            logger.info(
+            logger.debug(
                 f"Extracted metadata for {file_path.name}: "
                 f"{file_size:,} bytes, entropy={round(entropy, 2) if file_size <= MAX_FILE_SIZE_FOR_ANALYSIS else 'N/A'}, "
                 f"type={file_type_info.get('file_type', 'UNKNOWN') if file_size <= MAX_FILE_SIZE_FOR_ANALYSIS else 'UNKNOWN'}"

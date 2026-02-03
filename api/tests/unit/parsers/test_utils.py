@@ -1,9 +1,3 @@
-"""
-Unit tests for parser utility functions.
-
-Tests JSON sanitization for PostgreSQL JSONB compatibility.
-"""
-
 import pytest
 import json
 

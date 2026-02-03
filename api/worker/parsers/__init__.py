@@ -1,6 +1,3 @@
-"""
-Artifact parsers for Windows forensic artifacts.
-"""
 from .dispatcher import parse_artifact
 from .utils import flatten_dict
 from .base_parser import BaseParser

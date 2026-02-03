@@ -94,7 +94,7 @@ class ArchiveParser(BaseParser):
         Returns:
             Number of files extracted (not events - those come from sub-parsers)
         """
-        logger.info(f"Extracting archive: {file_path}")
+        logger.debug(f"Extracting archive: {file_path}")
         
         # Track extraction statistics
         stats = {
@@ -128,7 +128,7 @@ class ArchiveParser(BaseParser):
                 logger.error(f"Failed to process extracted files from {file_path}: {e}", exc_info=True)
                 raise RuntimeError(f"Processing extracted files failed: {e}")
         
-        logger.info(
+        logger.debug(
             f"Archive extraction complete: {stats['files_extracted']} files extracted, "
             f"{stats['archives_found']} nested archives found"
         )

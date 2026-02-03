@@ -1,8 +1,3 @@
-"""
-Advanced integration tests for auth router.
-Tests authentication, registration, and token refresh.
-"""
-
 import pytest
 from httpx import AsyncClient
 

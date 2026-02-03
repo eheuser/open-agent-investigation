@@ -85,11 +85,11 @@ class JumplistParser(BaseParser):
         elif filename_lower.endswith(".customdestinations-ms"):
             events = await self._parse_custom_destinations(file_path)
         else:
-            logger.warning(f"Unknown jump list format: {file_path.name}")
+            logger.debug(f"Unknown jump list format: {file_path.name}")
             return 0
         
         if not events:
-            logger.warning(f"No valid entries found in jump list: {file_path}")
+            logger.debug(f"No valid entries found in jump list: {file_path}")
             return 0
         
         # Prepare events for insertion
@@ -105,7 +105,7 @@ class JumplistParser(BaseParser):
         
         await self._insert_event_batch(db, investigation_id, db_events)
         
-        logger.info(f"Parsed {len(db_events)} entries from jump list: {file_path.name}")
+        logger.debug(f"Parsed {len(db_events)} entries from jump list: {file_path.name}")
         return len(db_events)
     
     async def _parse_automatic_destinations(self, file_path: Path) -> List[Dict[str, Any]]:
@@ -217,7 +217,7 @@ class JumplistParser(BaseParser):
             app_id = file_path.stem
             
             if len(data) < 32:
-                logger.warning(f"File too small to be valid custom destinations: {file_path.name}")
+                logger.debug(f"File too small to be valid custom destinations: {file_path.name}")
                 return events
             
             offset = 0

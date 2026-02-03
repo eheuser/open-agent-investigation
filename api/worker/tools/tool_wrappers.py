@@ -12,6 +12,7 @@ from . import (
     control_tools_extended,
     advanced_query_tools,
     diagram_tools,
+    analysis_tools,
 )
 
 from app.utils.log_setup import get_logger
@@ -667,6 +668,82 @@ async def render_diagram_wrapper(
     )
 
 
+async def query_analysis_module_wrapper(
+    db: AsyncSession,
+    investigation_id: str,
+    stats: Dict[str, Any],
+    module_id: str,
+    page: int = 1,
+    page_size: int = 50,
+    filters: Optional[Dict[str, list]] = None,
+    description: str = "",
+) -> Dict[str, Any]:
+    """
+    Query a forensic analysis module for high-level insights.
+
+    Parameters
+    ----------
+    db : AsyncSession
+        Asynchronous database session.
+    investigation_id : str
+        Investigation identifier.
+    stats : Dict[str, Any]
+        Statistics dictionary.
+    module_id : str
+        Analysis module ID (autoruns, execution_evidence, browsed_urls, logons).
+    page : int, optional
+        Page number (1-indexed), defaults to 1.
+    page_size : int, optional
+        Results per page (max 50), defaults to 50.
+    filters : Optional[Dict[str, list]], optional
+        Module-specific filters (e.g., {"categories": ["Logon", "Services"]}).
+    description : str, optional
+        Description of what you're looking for.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Analysis results with entries, pagination info, and summary statistics.
+    """
+    return await analysis_tools.query_analysis_module(
+        db=db,
+        investigation_id=investigation_id,
+        module_id=module_id,
+        page=page,
+        page_size=page_size,
+        filters=filters,
+        description=description,
+    )
+
+
+async def list_analysis_modules_wrapper(
+    db: AsyncSession,
+    investigation_id: str,
+    stats: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    List available forensic analysis modules.
+
+    Parameters
+    ----------
+    db : AsyncSession
+        Asynchronous database session.
+    investigation_id : str
+        Investigation identifier.
+    stats : Dict[str, Any]
+        Statistics dictionary.
+
+    Returns
+    -------
+    Dict[str, Any]
+        List of available modules with metadata.
+    """
+    return await analysis_tools.list_analysis_modules(
+        db=db,
+        investigation_id=investigation_id,
+    )
+
+
 
 def register_all_tools():
     """
@@ -1116,6 +1193,59 @@ def register_all_tools():
                 "required": ["source", "description"],
             },
             impl=render_diagram_wrapper,
+        )
+    )
+
+    # Analysis module tools
+    tool_registry.register(
+        ToolSpec(
+            name="query_analysis_module",
+            description="Query forensic analysis modules for high-level insights from processed artifacts. Use this instead of querying raw events for: persistence mechanisms (autoruns), program execution evidence (execution_evidence), browser history (browsed_urls), or logon activity (logons). Results are pre-processed and paginated (max 50 per page).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "module_id": {
+                        "type": "string",
+                        "enum": ["autoruns", "execution_evidence", "browsed_urls", "logons"],
+                        "description": "Analysis module: 'autoruns' (persistence), 'execution_evidence' (program execution), 'browsed_urls' (browser history), 'logons' (logon/logoff events)",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "description": "Page number (1-indexed, default: 1)",
+                        "default": 1,
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "description": "Results per page (max 50, default: 50)",
+                        "default": 50,
+                    },
+                    "filters": {
+                        "type": "object",
+                        "description": "Module-specific filters. For autoruns/execution_evidence: {\"categories\": [\"Logon\", \"Services\"]}. For browsed_urls: {\"browsers\": [\"chrome_chromium\"]}. For logons: {\"logon_types\": [\"Interactive\"], \"source_ips\": [\"192.168.1.100\"], \"usernames\": [\"admin\"]}",
+                        "additionalProperties": True,
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "What you're investigating (shown in UI)",
+                    },
+                },
+                "required": ["module_id", "description"],
+                "additionalProperties": False,
+            },
+            impl=query_analysis_module_wrapper,
+        )
+    )
+
+    tool_registry.register(
+        ToolSpec(
+            name="list_analysis_modules",
+            description="List available forensic analysis modules to discover what high-level insights are available. Call this first to see what modules exist and what filters they support before querying them.",
+            parameters={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            impl=list_analysis_modules_wrapper,
         )
     )
 

@@ -27,6 +27,7 @@ Open Agent Investigation (OAI) provides an end‑to‑end workflow for Windows h
 |---------|------------------------------|
 | **Chat** | [![Chat](docs/img/chat-thumb.png)](docs/img/chat.png) |
 | **Events** | [![Events](docs/img/events-thumb.png)](docs/img/events.png) |
+| **Analysis** | [![Analysis](docs/img/analysis-thumb.png)](docs/img/analysis.png) |
 | **Timeline** | [![Timeline](docs/img/timeline-thumb.png)](docs/img/timeline.png) |
 | **Report** | [![Report](docs/img/report-thumb.png)](docs/img/report.png) |
 | **Logging** | [![Logging](docs/img/logging-thumb.png)](docs/img/logging.png) |
@@ -77,9 +78,10 @@ For detailed instructions, see [Getting Started](docs/getting-started.md).
 Routing is performed by an LLM‑based intent classifier; manual selection is also supported.
 
 ### 2. Artifact Processing
-* **Archive handling:** Automatic extraction of nested archives up to 5 levels deep (max 10 GB, 50 000 files). Path information is encoded in filenames (`Windows__System32__Security.evtx`).
+* **Archive handling:** Automatic extraction of nested archives up to 5 levels deep (max 10 GB, 50 000 files). Path information is encoded in filenames (`Windows__System32__Security.evtx`).
 * **Supported Windows artifacts** – EVTX logs, Registry hives, $MFT, Prefetch, LNK shortcuts, Jump Lists, Chrome/Firefox/Edge histories, scheduled tasks, SRUM, Windows Search index, and generic file metadata (hashes, entropy, strings, PE headers). See `api/worker/parsers/README.md` for the full list.
 * **Parsing stack:** Rust‑based EVTX parser, Regipy, MFT parser, prefetch2es, LnkParse3, olefile, pyesedb, and custom SQLite adapters.
+* **Analysis modules:** Dedicated views for common investigation patterns—Autoruns (persistence mechanisms), Execution Evidence (ShimCache, AmCache, Prefetch, SRUM), Browsed URLs (browser history), and Logons (authentication events). Results are cached for performance.
 
 ### 3. Evidence Timeline
 * Events are stored once; timeline entries reference source IDs to avoid duplication.
@@ -87,12 +89,19 @@ Routing is performed by an LLM‑based intent classifier; manual selection is al
 * Annotations can be added manually or programmatically by playbooks.
 * Export options: PDF (via WeasyPrint) and Markdown.
 
-### 4. Playbook Engine
+### 5. Playbook Engine
 * **Built‑in library:** 20+ MITRE ATT&CK‑aligned playbooks covering Initial Access, Execution, Persistence, Privilege Escalation, Defense Evasion, Credential Access, Discovery, Lateral Movement, Collection, Exfiltration, and Impact.
 * **Customization:** Clone any playbook, edit steps in Markdown, enable/disable per investigation.
 * **Execution model:** Bounded turn‑based system (quick = 3 turns, standard = 6, thorough = 9; dynamic up to 30 with justification). Each turn may invoke up to five tool calls.
 
-### 5. Reporting
+### 5. Analysis Modules
+* **Autoruns:** Windows autostart persistence analysis across registry run keys, scheduled tasks, services, WMI subscriptions, and startup folders. Categorized by location with filtering and sorting capabilities.
+* **Execution Evidence:** Consolidated view of program execution artifacts including ShimCache, AmCache, Prefetch, SRUM, BAM/DAM, and UserAssist. Filter by category, search by path/hash, and sort by execution time.
+* **Browsed URLs:** Browser history from Chrome, Firefox, and Edge with URL filtering, visit count analysis, and timestamp sorting. Supports filtering by browser and domain.
+* **Logons:** Authentication event analysis covering successful logons, failed attempts, and logoffs. Filter by event type, logon type (interactive, network, remote), username, and source IP/workstation.
+* **Performance:** Analysis results are cached per investigation; cache can be cleared to refresh data after uploading additional artifacts.
+
+### 6. Reporting
 * One‑click generation of comprehensive reports that include timeline entries, raw event excerpts, and playbook rationale.
 * Reports are versioned alongside the investigation for auditability.
 

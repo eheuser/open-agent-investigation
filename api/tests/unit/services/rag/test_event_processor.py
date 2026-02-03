@@ -1,9 +1,3 @@
-"""
-Unit tests for event_processor module.
-
-Tests event formatting and processing logic for RAG/timeline features.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

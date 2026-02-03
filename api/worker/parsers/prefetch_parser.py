@@ -74,7 +74,7 @@ class PrefetchParser(BaseParser):
             exe_name_bytes = data[exe_name_offset : exe_name_offset + 60]
             exe_name = exe_name_bytes.decode("utf-16-le").split("\x00")[0]
         except Exception as e:
-            logger.warning(f"Failed to extract executable name: {e}")
+            logger.debug(f"Failed to extract executable name: {e}")
             exe_name = file_path.stem
 
         # Extract last execution time from prefetch file
@@ -116,7 +116,7 @@ class PrefetchParser(BaseParser):
         # If we couldn't extract timestamp from prefetch structure, skip this file
         # (forensically invalid to use filesystem metadata)
         if event_ts is None:
-            logger.warning(
+            logger.debug(
                 f"Could not extract execution timestamp from prefetch file {file_path} - skipping"
             )
             return 0
@@ -138,7 +138,7 @@ class PrefetchParser(BaseParser):
 
         await self._insert_event_batch(db, investigation_id, [event])
 
-        logger.info(f"Parsed prefetch file for executable: {exe_name}")
+        logger.debug(f"Parsed prefetch file for executable: {exe_name}")
         return 1
 
 

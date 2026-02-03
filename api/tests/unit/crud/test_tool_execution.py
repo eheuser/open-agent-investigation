@@ -1,7 +1,3 @@
-"""
-Unit tests for tool execution CRUD operations.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime

@@ -1,7 +1,3 @@
-"""
-Unit tests for HTTP log handler utilities.
-"""
-
 import pytest
 import logging
 from unittest.mock import Mock, patch, MagicMock

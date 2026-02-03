@@ -1,8 +1,3 @@
-"""
-Unit tests for RAG embedding service wrapper.
-Tests the Embedder wrapper class that delegates to centralized service.
-"""
-
 import pytest
 import numpy as np
 from unittest.mock import AsyncMock, MagicMock, patch

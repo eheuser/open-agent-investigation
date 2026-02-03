@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import aiohttp
 
 from ..core.config import settings
-from ..crud.job import enqueue_agent_job
+from ..crud.job import enqueue_agent_job, get_active_parsing_jobs
 from ..crud.llm_config import get_active_llm_config
 from .llm_auth_helper import prepare_llm_auth
 
@@ -436,7 +436,25 @@ Answer with ONLY ONE policy name from the list above:"""
         )
         return {"type": "error", "message": f"Policy configuration error. Please contact support."}
 
-    # Step 6: Create agent job
+    # Step 6: Check for active parsing jobs before creating agent job
+    active_parsing_jobs = await get_active_parsing_jobs(db, investigation_id)
+    
+    if active_parsing_jobs:
+        job_count = len(active_parsing_jobs)
+        logger.info(
+            f"[POLICY_ROUTER] Delaying agent job creation for investigation {investigation_id}: "
+            f"{job_count} parsing job(s) still active (IDs: {[j.job_id for j in active_parsing_jobs]})"
+        )
+        return {
+            "type": "parsing_in_progress",
+            "message": f"Waiting for {job_count} parsing job{'s' if job_count > 1 else ''} to complete before starting analysis. "
+                      f"Please wait a moment and try again.",
+            "active_jobs": job_count,
+            "suggestion": "The system will automatically retry once parsing is complete.",
+        }
+    
+    # Step 7: Create agent job (only if no parsing jobs are active)
+    logger.info(f"[POLICY_ROUTER] No active parsing jobs, creating agent job for investigation {investigation_id}")
     job = await enqueue_agent_job(
         db,
         investigation_id=investigation_id,

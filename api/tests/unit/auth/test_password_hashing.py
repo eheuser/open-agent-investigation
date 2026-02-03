@@ -1,8 +1,3 @@
-"""
-Unit tests for password hashing.
-Tests Argon2 password hashing and verification.
-"""
-
 import time
 import pytest
 from app.auth import hash_password, verify_password

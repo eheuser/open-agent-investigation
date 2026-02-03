@@ -1,8 +1,3 @@
-"""
-Integration tests for MCP (Model Context Protocol) server router.
-Tests CRUD operations for MCP server definitions.
-"""
-
 import pytest
 from httpx import AsyncClient
 

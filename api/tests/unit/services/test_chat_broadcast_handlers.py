@@ -1,9 +1,3 @@
-"""
-Unit tests for specific chat_broadcast handlers.
-
-Tests individual handler functions for different message types.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

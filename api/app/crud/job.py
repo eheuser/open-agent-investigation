@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from datetime import datetime, timezone
@@ -182,6 +182,25 @@ async def set_agent_job_status(
     return result.rowcount > 0
 
 
+async def get_active_parsing_jobs(db: AsyncSession, investigation_id: uuid.UUID) -> List[ParsingJob]:
+    """
+    Retrieve all parsing jobs for an investigation that are currently pending or running.
+
+    Args:
+        db: An active asynchronous SQLAlchemy session.
+        investigation_id: The UUID of the investigation to check.
+
+    Returns:
+        A list of ParsingJob instances that have status PENDING or RUNNING.
+    """
+    result = await db.execute(
+        select(ParsingJob)
+        .where(ParsingJob.investigation_id == investigation_id)
+        .where(ParsingJob.status.in_([ParseStatus.PENDING, ParseStatus.RUNNING]))
+    )
+    return list(result.scalars().all())
+
+
 __all__ = [
     "enqueue_parsing_job",
     "enqueue_agent_job",
@@ -189,4 +208,5 @@ __all__ = [
     "get_agent_job",
     "set_parsing_job_status",
     "set_agent_job_status",
+    "get_active_parsing_jobs",
 ]

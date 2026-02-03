@@ -1,9 +1,3 @@
-"""
-Unit tests for rag_handler module.
-
-Tests RAG query handling with vector similarity search.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

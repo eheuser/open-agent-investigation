@@ -223,7 +223,7 @@ class RegistryParser(BaseParser):
                 await self._insert_event_batch(db, investigation_id, event_batch)
                 events_inserted += len(event_batch)
 
-            logger.info(
+            logger.debug(
                 f"Registry parsing complete: {events_inserted} total events ({plugin_event_count} plugin events, {events_inserted - plugin_event_count} registry values)"
             )
             logger.debug(f"Processed {key_count} keys and {value_count} values")
@@ -300,7 +300,7 @@ class RegistryParser(BaseParser):
                     plugin_events = self._parse_plugin_data(plugin_data, plugin_name, artifact_id)
                     if plugin_events:
                         all_events.extend(plugin_events)
-                        logger.info(
+                        logger.debug(
                             f"{plugin_name}: extracted {len(plugin_events)} events (event_type: registry_{plugin_name})"
                         )
                     else:

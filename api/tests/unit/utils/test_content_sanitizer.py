@@ -1,7 +1,3 @@
-"""
-Unit tests for content sanitization utilities.
-"""
-
 import pytest
 
 from app.utils.content_sanitizer import sanitize_llm_content, remove_duplicate_lines

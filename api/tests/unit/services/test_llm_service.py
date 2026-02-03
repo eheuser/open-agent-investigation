@@ -1,9 +1,3 @@
-"""
-Unit tests for llm_service module.
-
-Tests the centralized LLM service for API calls and embeddings.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from decimal import Decimal

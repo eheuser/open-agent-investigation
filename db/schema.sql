@@ -270,7 +270,6 @@ CREATE INDEX idx_events_payload ON events USING GIN(payload);
 
 -- Full-text search index for BM25 ranking (Feature 1: Hybrid Search)
 CREATE INDEX IF NOT EXISTS idx_events_payload_fts ON events USING GIN (to_tsvector('english', payload::text));
-COMMENT ON INDEX idx_events_payload_fts IS 'Full-text search index for BM25 ranking in hybrid search. Enables ts_rank_cd queries.';
 
 -- Timeline entries table (unified across all investigations)
 CREATE TABLE IF NOT EXISTS timeline_entries (
@@ -299,10 +298,10 @@ CREATE INDEX idx_timeline_data ON timeline_entries USING GIN(data);
 CREATE INDEX idx_timeline_created ON timeline_entries(investigation_id, created_at DESC);
 CREATE INDEX idx_timeline_visible ON timeline_entries(investigation_id, is_visible) WHERE is_visible = true;
 
--- Partial unique index to enforce uniqueness only when event_id IS NOT NULL (handles NULL properly)
-CREATE UNIQUE INDEX uq_timeline_investigation_event_not_null 
-  ON timeline_entries(investigation_id, event_id) 
-  WHERE event_id IS NOT NULL;
+-- Unique index to enforce uniqueness on (investigation_id, event_id)
+-- PostgreSQL treats NULL as distinct, so multiple rows with NULL event_id are allowed
+CREATE UNIQUE INDEX IF NOT EXISTS uq_timeline_investigation_event 
+  ON timeline_entries(investigation_id, event_id);
 
 -- Reports table (generated investigation reports)
 CREATE TABLE IF NOT EXISTS reports (
@@ -370,13 +369,6 @@ CREATE TABLE IF NOT EXISTS chat_log_summaries (
 CREATE INDEX idx_chat_summaries_investigation ON chat_log_summaries(investigation_id, iteration_number DESC);
 CREATE INDEX idx_chat_summaries_job ON chat_log_summaries(job_id) WHERE job_id IS NOT NULL;
 
-COMMENT ON TABLE chat_log_summaries IS 'LLM-generated summaries of chat history for token-efficient context management. Enables 40%+ token reduction while preserving critical information.';
-COMMENT ON COLUMN chat_log_summaries.messages_start_idx IS 'Starting index in chat_log array that was summarized';
-COMMENT ON COLUMN chat_log_summaries.messages_end_idx IS 'Ending index in chat_log array that was summarized';
-COMMENT ON COLUMN chat_log_summaries.summary_text IS 'Compact LLM-generated summary preserving key findings, event IDs, and decisions';
-COMMENT ON COLUMN chat_log_summaries.event_ids_discovered IS 'Array of event IDs mentioned in the summarized portion';
-COMMENT ON COLUMN chat_log_summaries.tools_executed IS 'Array of tool names executed in the summarized portion';
-
 -- ============================================================================
 -- FIELD DICTIONARY TABLE
 -- ============================================================================
@@ -406,14 +398,6 @@ CREATE INDEX idx_field_dict_inv_type_coverage
   ON field_dictionary(investigation_id, event_type) 
   INCLUDE (field_name, description, cached_markdown);
 
-COMMENT ON TABLE field_dictionary IS 'Permanent storage of JSONB field descriptions per investigation. LLM-generated descriptions help agents understand available fields.';
-COMMENT ON COLUMN field_dictionary.investigation_id IS 'Investigation this field dictionary entry belongs to';
-COMMENT ON COLUMN field_dictionary.event_type IS 'Event type this field belongs to (e.g., evtx_security_4624, mft_entry)';
-COMMENT ON COLUMN field_dictionary.field_name IS 'JSONB field name (e.g., TargetUserName, system.Computer)';
-COMMENT ON COLUMN field_dictionary.description IS 'Brief forensic description of what this field represents (5-10 words) - NULL until LLM generates';
-COMMENT ON COLUMN field_dictionary.sample_values IS 'Example values from actual events to provide context';
-COMMENT ON COLUMN field_dictionary.cached_markdown IS 'Pre-formatted markdown for efficient context loading (e.g., "- `TargetUserName` - Account targeted by operation")';
-
 -- ============================================================================
 -- RAG & EMBEDDING TABLES
 -- ============================================================================
@@ -430,13 +414,11 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 CREATE INDEX idx_embeddings_owner ON embeddings(owner_type, owner_id);
--- Covering index for RAG retrieval joins with investigation filtering
-CREATE INDEX idx_embeddings_owner_coverage 
-  ON embeddings(owner_type, owner_id) 
-  INCLUDE (vector, model_name, created_at);
--- Note: IVFFLAT index will be created manually after first embeddings are inserted
--- with the correct dimension for your model (e.g., 768, 1024, or 1536)
--- Example: CREATE INDEX idx_embeddings_vector ON embeddings USING ivfflat (vector vector_cosine_ops) WITH (lists = 100);
+-- Note: Vector indexes are NOT created for large embedding models (>2048 dimensions)
+-- Models like qwen3-embedding-8b (8192 dims) exceed PostgreSQL's 8KB index page limit
+-- Sequential scans are acceptable for <10k embeddings and avoid index maintenance overhead
+-- For smaller models (<= 1536 dims), you can manually create an HNSW index:
+-- CREATE INDEX idx_embeddings_vector_hnsw ON embeddings USING hnsw (vector vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- Investigation notes table (free-form notes)
 CREATE TABLE IF NOT EXISTS investigation_notes (
@@ -509,12 +491,6 @@ CREATE INDEX idx_playbooks_user ON playbooks(user_id);
 CREATE INDEX idx_playbooks_name ON playbooks(name);
 CREATE INDEX idx_playbooks_enabled ON playbooks(is_enabled) WHERE is_enabled = true;
 
-COMMENT ON TABLE playbooks IS 'User-created investigation playbooks - mutable database storage. Base playbooks are immutable YAML files.';
-COMMENT ON COLUMN playbooks.name IS 'Playbook identifier (e.g., lateral_movement_custom)';
-COMMENT ON COLUMN playbooks.description IS 'Brief description of investigation strategy';
-COMMENT ON COLUMN playbooks.playbook IS 'Markdown playbook content with investigation steps';
-COMMENT ON COLUMN playbooks.is_enabled IS 'Whether playbook is globally enabled for the user';
-
 -- Investigation-playbook relationship table
 CREATE TABLE IF NOT EXISTS investigation_playbooks (
     id BIGSERIAL PRIMARY KEY,
@@ -528,100 +504,6 @@ CREATE TABLE IF NOT EXISTS investigation_playbooks (
 CREATE INDEX idx_investigation_playbooks_investigation ON investigation_playbooks(investigation_id);
 CREATE INDEX idx_investigation_playbooks_playbook ON investigation_playbooks(playbook_id);
 CREATE INDEX idx_investigation_playbooks_enabled ON investigation_playbooks(investigation_id, is_enabled) WHERE is_enabled = true;
-
-COMMENT ON TABLE investigation_playbooks IS 'Many-to-many relationship between investigations and user playbooks. Base playbooks are always enabled.';
-COMMENT ON COLUMN investigation_playbooks.is_enabled IS 'Whether this playbook is enabled for this specific investigation';
-COMMENT ON COLUMN investigation_playbooks.enabled_at IS 'When the playbook was enabled for this investigation';
-
--- ============================================================================
--- MIGRATION TRACKING
--- ============================================================================
-
--- Schema migrations tracking table
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version INTEGER PRIMARY KEY,
-    description TEXT NOT NULL,
-    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    applied_by TEXT DEFAULT CURRENT_USER,
-    checksum TEXT
-);
-
-CREATE INDEX idx_schema_migrations_applied ON schema_migrations(applied_at DESC);
-
--- Record initial schema as version 1
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (1, 'Initial schema - core tables, job queues, audit logs, unified investigation tables', 'initial')
-ON CONFLICT (version) DO NOTHING;
-
--- Record chat_messages table as version 2
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (2, 'Add chat_messages table for conversation persistence', '002_add_chat_messages')
-ON CONFLICT (version) DO NOTHING;
-
--- Record unified tables refactor as version 3
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (3, 'Refactor to unified events/graph_nodes/graph_edges tables with investigation_id column', '003_unify_tables')
-ON CONFLICT (version) DO NOTHING;
-
--- Record timeline refactor as version 4
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (4, 'Refactor knowledge graph to evidence timeline - replace graph_nodes/edges with timeline_entries/notes', '004_graph_to_timeline')
-ON CONFLICT (version) DO NOTHING;
-
--- Record unique constraint as version 5
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (5, 'Add unique constraint on (investigation_id, event_id) for timeline_entries', '005_add_timeline_unique_constraint')
-ON CONFLICT (version) DO NOTHING;
-
--- Record index optimizations as version 15
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (15, 'Index optimizations: composite indexes, covering indexes, partial unique constraint, fillfactor', '015_index_optimizations')
-ON CONFLICT (version) DO NOTHING;
-
--- Record chat refactor as version 6
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (6, 'Add message_type and parent_message_id columns to chat_messages for single source of truth architecture', '006_chat_refactor')
-ON CONFLICT (version) DO NOTHING;
-
--- Record RAG feature as version 7
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (7, 'Add PGVector extension, embeddings table, investigation_notes, tool_results, filter_config tables for RAG feature', '007_add_rag_feature')
-ON CONFLICT (version) DO NOTHING;
-
--- Record flexible vector dimensions as version 8
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (8, 'Support flexible vector dimensions for different embedding models', '008_flexible_vector_dimensions')
-ON CONFLICT (version) DO NOTHING;
-
--- Record investigation choices as version 9
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (9, 'Add investigation_choices table for agent-suggested next steps (ChatGPT-style continuation)', '009_add_investigation_choices')
-ON CONFLICT (version) DO NOTHING;
-
--- Record field dictionary as version 10
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (10, 'Add field_dictionary table for permanent storage of JSONB field descriptions', '010_add_field_dictionary')
-ON CONFLICT (version) DO NOTHING;
-
--- Record field dictionary optimization as version 13
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (13, 'Add investigation_id to field_dictionary, add cached_markdown column, add trigger for auto-population', '013_optimize_field_dictionary')
-ON CONFLICT (version) DO NOTHING;
-
--- Record chat log summaries as version 11
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (11, 'Add chat_log_summaries table for token-efficient context management (Feature 5)', '011_add_chat_summaries')
-ON CONFLICT (version) DO NOTHING;
-
--- Record reports table as version 12
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (12, 'Add reports table for persistent investigation report storage', '012_add_reports')
-ON CONFLICT (version) DO NOTHING;
-
--- Record playbooks tables as version 14
-INSERT INTO schema_migrations (version, description, checksum)
-VALUES (14, 'Add playbooks and investigation_playbooks tables for user-created playbooks', '014_add_playbooks')
-ON CONFLICT (version) DO NOTHING;
 
 -- ============================================================================
 -- AUDIT & DELETION LOGS
@@ -740,6 +622,24 @@ CREATE TRIGGER update_playbooks_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- Analysis results cache table (for analysis modules like Autoruns, Execution Evidence, etc.)
+CREATE TABLE IF NOT EXISTS analysis_results (
+    result_id BIGSERIAL PRIMARY KEY,
+    investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
+    analysis_type TEXT NOT NULL,  -- 'autoruns', 'execution_evidence', 'browsed_urls', 'logons'
+    analysis_version TEXT NOT NULL,  -- Version of the analyzer (e.g., '1.0')
+    parameters JSONB NOT NULL DEFAULT '{}'::jsonb,  -- Filter parameters used
+    results JSONB NOT NULL,  -- Cached analysis results
+    entry_count INTEGER,  -- Number of entries in results
+    categories_analyzed TEXT[],  -- Categories/filters that were analyzed
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,  -- NULL = never expires, or timestamp for cache expiration
+    CONSTRAINT uq_analysis_cache_key UNIQUE (investigation_id, analysis_type, parameters)
+);
+
+CREATE INDEX idx_analysis_results_investigation ON analysis_results(investigation_id, analysis_type);
+CREATE INDEX idx_analysis_results_expires ON analysis_results(expires_at) WHERE expires_at IS NOT NULL;
+
 -- ============================================================================
 -- DEFAULT DATA
 -- ============================================================================
@@ -749,55 +649,3 @@ CREATE TRIGGER update_playbooks_updated_at
 INSERT INTO users (username, password_hash, role)
 VALUES ('admin', '$argon2id$v=19$m=65536,t=3,p=4$g1BKCYEwJsS4l5LyPickJA$8ZGtyRXgCPnXyShzNjjZ1ByH2Qgyp2nLRTInMVWMUZc', 1)
 ON CONFLICT (username) DO NOTHING;
-
--- ============================================================================
--- COMMENTS
--- ============================================================================
-
-COMMENT ON TABLE users IS 'User accounts with role-based access control';
-COMMENT ON TABLE investigations IS 'Investigation metadata - references unified events/graph tables via investigation_id';
-COMMENT ON TABLE events IS 'Unified event data across all investigations, partitioned by investigation_id';
-COMMENT ON TABLE timeline_entries IS 'Evidence timeline entries - chronologically ordered events, findings, and observations';
-COMMENT ON TABLE timeline_notes IS 'User annotations and notes on timeline entries for collaborative investigation';
-COMMENT ON TABLE artifacts IS 'Uploaded files with binary storage and classification';
-COMMENT ON TABLE mcp_servers IS 'User-defined MCP server endpoints for agent tool access';
-COMMENT ON TABLE jobs_parsing IS 'Queue for parsing jobs (artifact processing)';
-COMMENT ON TABLE jobs_agents IS 'Queue for agent execution jobs (policy-driven analysis). User_id links to LLM config for model/API key.';
-COMMENT ON TABLE audit_log IS 'Immutable audit trail of all system actions';
-COMMENT ON TABLE deletion_log IS 'Immutable record of deleted investigations';
-COMMENT ON TABLE schema_migrations IS 'Tracks applied database schema migrations for version control';
-COMMENT ON TABLE llm_provider_config IS 'Per-user LLM provider configuration for inference (API endpoint, model, temperature, context length)';
-COMMENT ON TABLE chat_messages IS 'Chat conversation history in OpenAI message format';
-COMMENT ON TABLE tool_executions IS 'Explicit tool execution tracking - one row per tool call';
-COMMENT ON COLUMN tool_executions.chat_message_id IS 'Parent agent message this tool belongs to';
-COMMENT ON COLUMN tool_executions.status IS 'Tool status: executing, completed, failed';
-COMMENT ON COLUMN chat_messages.deleted_at IS 'Soft delete timestamp - null means not deleted';
-COMMENT ON COLUMN chat_messages.role IS 'OpenAI role: system, user, assistant, tool';
-COMMENT ON COLUMN chat_messages.content IS 'Message content (null for tool_calls)';
-COMMENT ON COLUMN chat_messages.name IS 'Optional name for function/tool messages';
-COMMENT ON COLUMN chat_messages.tool_calls IS 'Tool calls array (for assistant messages)';
-COMMENT ON COLUMN chat_messages.tool_call_id IS 'Tool call ID (for tool response messages)';
-COMMENT ON COLUMN chat_messages.metadata IS 'Additional metadata (intent, confidence, job_id, etc.)';
-COMMENT ON COLUMN chat_messages.include_in_llm_context IS 'Whether to include this message when building LLM context';
-COMMENT ON COLUMN chat_messages.visible_in_ui IS 'Whether to display this message in the chat UI (excludes internal system messages)';
-COMMENT ON COLUMN chat_messages.created_at IS 'Message timestamp';
-COMMENT ON COLUMN chat_messages.message_type IS 'Message type: question, assistant_answer, agent_chat, tool_execution, summary, error, system';
-COMMENT ON COLUMN investigations.parsing_locked IS 'True while artifact parsing is in progress - blocks new user questions';
-COMMENT ON COLUMN chat_messages.parent_message_id IS 'Parent message ID for threading conversations';
-COMMENT ON TABLE investigation_choices IS 'Agent-suggested next investigative steps when turn limit reached (ChatGPT-style user interrogation)';
-COMMENT ON COLUMN investigation_choices.title IS 'Short title for the suggested path (e.g., "Analyze logon patterns")';
-COMMENT ON COLUMN investigation_choices.description IS 'Detailed description of what this choice will investigate';
-COMMENT ON COLUMN investigation_choices.rationale IS 'Why the agent suggests this path based on evidence so far';
-COMMENT ON COLUMN investigation_choices.suggested_query IS 'The question/query to execute if user selects this choice';
-COMMENT ON COLUMN investigation_choices.suggested_effort IS 'Suggested effort level (low=3 turns, medium=6 turns, high=9 turns)';
-COMMENT ON COLUMN investigation_choices.tool_suggestions IS 'Optional hints about which tools to use';
-COMMENT ON COLUMN investigation_choices.display_order IS 'Order to display choices (lower = higher priority)';
-COMMENT ON COLUMN investigation_choices.selected IS 'Whether user has selected this choice';
-COMMENT ON COLUMN investigation_choices.selected_at IS 'When the choice was selected';
-COMMENT ON COLUMN investigation_choices.selected_job_id IS 'Job ID created when user selected this choice';
-COMMENT ON TABLE reports IS 'Generated investigation reports - only the most recent report per investigation is kept';
-COMMENT ON COLUMN reports.markdown_content IS 'Full markdown report content including executive summary, timeline narrative, findings, and recommendations';
-COMMENT ON COLUMN reports.user_prompt IS 'Optional custom prompt provided by user for report generation';
-COMMENT ON COLUMN reports.generated_at IS 'Timestamp when report was generated';
-
-

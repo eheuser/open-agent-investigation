@@ -833,7 +833,7 @@ async def process_interesting_events(
         )
 
         events = result.fetchall()
-        logger.info(
+        logger.debug(
             f"Processing {len(events):,} events for embedding generation (artifact {artifact_id})"
         )
 
@@ -893,7 +893,7 @@ async def process_interesting_events(
             logger.debug(f"Error finalizing transaction: {commit_error}")
             await db.rollback()
 
-        logger.info(
+        logger.debug(
             f"Processed {len(events):,} events from artifact {artifact_id}: "
             f"{len(interesting_events):,} interesting, {created_count:,} embeddings created"
         )

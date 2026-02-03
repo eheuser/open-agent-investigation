@@ -1,8 +1,3 @@
-"""
-Integration tests for chat messages router.
-Tests message CRUD operations, tool executions, and WebSocket notifications.
-"""
-
 import pytest
 from httpx import AsyncClient
 from uuid import uuid4

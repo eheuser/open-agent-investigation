@@ -1,7 +1,3 @@
-"""
-Unit tests for chat router (intent classification and routing).
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid

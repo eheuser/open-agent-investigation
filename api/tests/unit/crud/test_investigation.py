@@ -1,7 +1,3 @@
-"""
-Unit tests for investigation CRUD operations.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from uuid import uuid4, UUID

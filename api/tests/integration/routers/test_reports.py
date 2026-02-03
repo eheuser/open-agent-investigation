@@ -1,8 +1,3 @@
-"""
-Integration tests for reports router.
-Tests report generation and export functionality.
-"""
-
 import pytest
 from httpx import AsyncClient
 

@@ -1,9 +1,3 @@
-"""
-Unit tests for report_generator module.
-
-Tests report generation logic for investigation reports.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

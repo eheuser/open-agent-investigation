@@ -1,8 +1,3 @@
-"""
-Advanced integration tests for reports router.
-Tests report generation and retrieval endpoints.
-"""
-
 import pytest
 from httpx import AsyncClient
 

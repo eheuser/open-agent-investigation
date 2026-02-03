@@ -1,8 +1,3 @@
-"""
-Advanced integration tests for chat endpoints.
-Tests HTTP endpoints, WebSocket messages, and complex chat flows.
-"""
-
 import pytest
 from httpx import AsyncClient
 from datetime import datetime

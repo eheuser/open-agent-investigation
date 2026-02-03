@@ -1,8 +1,3 @@
-"""
-Integration tests for investigations endpoints.
-Tests CRUD operations for investigations.
-"""
-
 import pytest
 import uuid
 from httpx import AsyncClient

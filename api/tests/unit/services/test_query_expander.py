@@ -1,8 +1,3 @@
-"""
-Unit tests for query expansion service.
-Tests query expansion logic with mocked dependencies.
-"""
-
 import pytest
 from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock, patch

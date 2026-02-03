@@ -1,7 +1,3 @@
-"""
-Unit tests for InvestigationNote model.
-"""
-
 import pytest
 from uuid import uuid4
 

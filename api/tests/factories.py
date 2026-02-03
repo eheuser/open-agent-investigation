@@ -1,9 +1,3 @@
-"""
-Factory Boy factories for generating test data.
-
-These factories create realistic test data for models using Factory Boy
-and Faker. All factories support both synchronous and asynchronous creation.
-"""
 import factory  # type: ignore[import]
 from factory import fuzzy  # type: ignore[import]
 from datetime import datetime, timedelta

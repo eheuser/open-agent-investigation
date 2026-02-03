@@ -194,7 +194,7 @@ const TimelineViewer: React.FC<TimelineViewerProps> = ({ investigationId }) => {
           setCommonFields(response.data.fields);
           //console.log(`Loaded ${response.data.fields.length} fields from ${response.data.entries_sampled} timeline entries`);
         } else {
-          console.warn('No fields returned from API');
+          //console.warn('No fields returned from API');
           setCommonFields([]);
         }
       } catch (err: any) {

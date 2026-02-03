@@ -1,11 +1,3 @@
-"""
-Routing metadata schemas for chat router feedback.
-
-This module defines the structure for routing decision metadata that is
-displayed in the UI to show users which handler processed their query
-and what resources were used.
-"""
-
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 

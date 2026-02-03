@@ -32,7 +32,7 @@ async def stream_logs():
         try:
             # Register this client
             await handler.add_client(queue)
-            logger.info("New log streaming client connected")
+            logger.debug("New log streaming client connected")
             
             # First, send recent logs from the buffer
             recent_logs = handler.get_recent_logs(limit=100)
@@ -50,7 +50,7 @@ async def stream_logs():
                     yield ": keepalive\n\n"
                     
         except asyncio.CancelledError:
-            logger.info("Log streaming client disconnected")
+            logger.debug("Log streaming client disconnected")
         finally:
             # Unregister this client
             await handler.remove_client(queue)

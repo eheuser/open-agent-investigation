@@ -51,7 +51,7 @@ services:
     volumes:
       - ./api/data/policies:/app/data/policies:ro
       - ./api/data/agents:/app/data/agents:ro
-      - ./data/investigations:/data/investigations
+      - investigations_data:/data/investigations
 
   worker:
     container_name: oai-worker
@@ -75,7 +75,7 @@ services:
     volumes:
       - ./api/data/policies:/app/data/policies:ro
       - ./api/data/agents:/app/data/agents:ro
-      - ./data/investigations:/data/investigations  # Read-write mount (needed for archive extraction)
+      - investigations_data:/data/investigations  # Read-write mount (needed for archive extraction)
       - /tmp:/tmp  # Writable temp space
     restart: unless-stopped
 
@@ -95,3 +95,5 @@ services:
 volumes:
   pg_data:
     name: oai-pg-data
+  investigations_data:
+    name: oai-investigations-data

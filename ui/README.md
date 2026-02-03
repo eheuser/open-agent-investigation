@@ -23,6 +23,7 @@ The UI provides a complete investigation workflow:
 - Natural language chat interface with intelligent routing
 - Evidence timeline builder with advanced filtering
 - Event browser with JSONB field queries
+- Analysis modules for common investigation patterns
 - Investigation playbook manager
 - Real-time agent progress via WebSocket
 - Report generation (PDF and Markdown)
@@ -158,6 +159,7 @@ npm run dev
 - Delete investigation
 - Search/filter investigations
 - View investigation metadata (created date, owner)
+- Quick access to chat, events, analysis, timeline, and report views
 
 **First-time Login Behavior**:
 - If no LLM configuration exists, users are automatically redirected to Settings
@@ -170,6 +172,8 @@ Dashboard → Click "Create Investigation"
   → Enter title: "Ransomware Investigation - March 2024"
   → Click "Create"
   → Redirects to investigation detail page
+  → Upload artifacts → Parse
+  → Use Chat for questions, Events for browsing, Analysis for patterns, Timeline for chronology
 ```
 
 ### 2. Chat Interface
@@ -233,7 +237,65 @@ User: "Find failed logon attempts"
   → Response displayed with markdown formatting and statistics
 ```
 
-### 3. Evidence Timeline Viewer
+### 3. Analysis Modules
+
+**Location**: `/investigations/{id}` (Analysis tab)
+
+**Overview**:
+Dedicated analysis modules provide specialized views for common investigation patterns. Each module analyzes parsed artifacts and presents results in a structured, filterable format.
+
+**Modules**:
+
+#### Autoruns
+Windows autostart persistence analysis:
+- **Categories**: Registry run keys, scheduled tasks, services, WMI subscriptions, startup folders, browser extensions, AppInit DLLs, LSA providers, print monitors, boot execute, Winlogon entries
+- **Fields**: Entry name, category, location (registry path/file path), image path, enabled status, launch string
+- **Filters**: Category selection, search by name/path, enabled/disabled toggle
+- **Sorting**: Name, category, location, image path
+- **Actions**: View full entry details, copy JSON to clipboard
+
+#### Execution Evidence
+Consolidated program execution artifacts:
+- **Categories**: ShimCache, AmCache, Prefetch, SRUM, BAM/DAM, UserAssist
+- **Fields**: Program path, execution time, file size, hash (SHA-1), run count, category
+- **Filters**: Category selection (multi-select), search by path/hash, date range
+- **Sorting**: Execution time, program path, category, run count
+- **Actions**: View full entry details, copy JSON to clipboard
+- **Source Priority**: Prefetch > SRUM > AmCache > ShimCache > BAM/DAM > UserAssist
+
+#### Browsed URLs
+Browser history from Chrome, Firefox, and Edge:
+- **Fields**: URL, title, visit count, last visit time, browser, transition type
+- **Filters**: Browser selection, domain search, URL/title search, date range
+- **Sorting**: Last visit time, visit count, URL, browser
+- **Actions**: View full entry details, open URL in new tab, copy URL to clipboard
+- **Browsers**: Chrome, Firefox, Edge (all profiles)
+
+#### Logons
+Authentication event analysis:
+- **Event Types**: Successful logons (4624), failed logons (4625), logoffs (4634)
+- **Logon Types**: Interactive (2), Network (3), Batch (4), Service (5), Unlock (7), NetworkCleartext (8), NewCredentials (9), RemoteInteractive (10), CachedInteractive (11)
+- **Fields**: Event type, timestamp, username, domain, logon type, source IP/workstation, logon ID, process name, authentication package
+- **Filters**: Event type selection, logon type selection, username search, source IP/workstation search, date range
+- **Sorting**: Timestamp, username, event type, logon type, source IP
+- **Actions**: View full event details, copy JSON to clipboard
+
+**Performance**:
+- Results are cached per investigation for fast subsequent loads
+- Cache invalidation via "Clear Cache" button forces fresh analysis
+- Use cache clearing after uploading new artifacts to see updated results
+
+**Common Workflow**:
+```
+1. Upload artifacts → Automatic parsing
+2. Navigate to Analysis tab → Select module
+3. Initial analysis runs → Results cached
+4. Apply filters → Refine results
+5. Export findings → Add to timeline or report
+6. Upload more artifacts → Clear cache → Re-analyze
+```
+
+### 4. Evidence Timeline Viewer
 
 **Location**: `/investigations/{id}` (Timeline tab)
 
@@ -271,7 +333,7 @@ User: "Find failed logon attempts"
 - Date range filters
 - Clear all filters button
 
-### 4. Events Viewer
+### 5. Events Viewer
 
 **Location**: `/investigations/{id}` (Events tab)
 
@@ -311,7 +373,7 @@ User: "Find failed logon attempts"
 - Event ID
 - Actions (expand, add to timeline)
 
-### 5. Artifact Upload
+### 6. Artifact Upload
 
 **Location**: `/investigations/{id}` (Upload button)
 
@@ -322,7 +384,7 @@ User: "Find failed logon attempts"
 - Automatic parsing job creation
 - Supported formats: `.evtx`, `.pf`, `.lnk`, `$MFT`, registry hives
 
-### 6. Playbook Manager
+### 7. Playbook Manager
 
 **Location**: `/playbooks`
 
@@ -369,23 +431,37 @@ playbook: |
 5. (Optional) Enable/disable per investigation via API
 ```
 
-### 7. Settings Panel
+### 8. Settings Panel
 
 **Location**: `/settings`
 
 **Features**:
-- LLM provider configuration
+- LLM provider configuration with validation
 - API endpoint settings
 - Model selection
 - Temperature control
 - Max context length
 - API key management (encrypted)
 - Active config selection
+- **Configuration validation**: Real-time status badges (Valid/Invalid) for LLM and Embedding configs
+- **Test Settings**: Validates both LLM and embedding configurations with actual API calls
+- **Strict validation**: 
+  - API keys required for internet providers (OpenAI, Anthropic, Google, OpenRouter)
+  - Save button disabled until LLM test passes
+  - Test button disabled until all required fields are filled
+- **Embedding configuration**: Optional RAG setup with separate validation
 
 **First-time Setup**:
 - Users without an LLM configuration are automatically redirected here after login
 - A welcome banner provides guidance on configuring the LLM provider
 - Configuration is required before the system can process natural language queries
+
+**Configuration Validation**:
+- **LLM Status Badge**: Shows Valid (green) or Invalid (red) based on required fields
+- **Embedding Status Badge**: Shows Valid (green) or Invalid (red) based on required fields
+- **Test Settings Button**: Sends minimal test queries to validate both configurations
+- **Test Results**: Displays success/failure with verbose error messages from backend
+- **Protection**: Users cannot upload artifacts or send chat messages without valid LLM config
 
 ---
 

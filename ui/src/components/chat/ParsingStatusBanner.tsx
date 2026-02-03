@@ -159,12 +159,12 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
     
     if (parsingActive && parsingStartTime === null && !isLoading) {
       // Parsing just started (and initial load is complete)
-      console.log('[ParsingStatusBanner] Starting timer - parsing active');
+      //console.log('[ParsingStatusBanner] Starting timer - parsing active');
       setParsingStartTime(Date.now());
       setElapsedSeconds(0);
     } else if (!parsingActive && parsingStartTime !== null) {
       // Parsing finished - reset sticky flags for next parsing session
-      console.log('[ParsingStatusBanner] Stopping timer - parsing complete');
+      //console.log('[ParsingStatusBanner] Stopping timer - parsing complete');
       setParsingStartTime(null);
       setElapsedSeconds(0);
       setEverHadQueued(false);

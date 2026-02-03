@@ -1,8 +1,3 @@
-"""
-Unit tests for RAG filter engine.
-Tests filtering logic for forensic artifacts (EVTX, MFT, Registry, etc.).
-"""
-
 import pytest
 from datetime import datetime
 from app.services.rag.filter_engine import FilterEngine

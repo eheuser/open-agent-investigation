@@ -1,1 +1,0 @@
-"""Schema unit tests."""

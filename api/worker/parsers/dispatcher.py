@@ -102,7 +102,7 @@ async def parse_artifact(
         try:
             if parser_class.identify(artifact.filename, file_path):
                 selected_parser = parser_class()
-                logger.info(
+                logger.debug(
                     f"Selected {parser_class.__name__} for artifact {artifact_id} ({artifact.filename})"
                 )
                 break
@@ -133,7 +133,7 @@ async def parse_artifact(
                 # Use FileMetadataParser as fallback
                 fallback_parser = FileMetadataParser()
                 events_inserted = await fallback_parser.parse(db, investigation_id, artifact_id, file_path)
-                logger.info(
+                logger.debug(
                     f"FileMetadataParser successfully processed artifact {artifact_id} as fallback "
                     f"({events_inserted} events inserted)"
                 )
@@ -157,7 +157,7 @@ async def parse_artifact(
                 db, investigation_id, artifact_id, user_id
             )
             if timeline_entries_created > 0:
-                logger.info(
+                logger.debug(
                     f"Created {timeline_entries_created} timeline entries from artifact {artifact_id}"
                 )
         except Exception as e:

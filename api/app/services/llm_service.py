@@ -3,6 +3,7 @@ import json
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import aiohttp
+import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..crud.llm_config import get_active_llm_config
@@ -994,15 +995,21 @@ class EmbeddingService:
         Returns:
             List of reranked results.
         """
-        # Use reranker model instead of embedding model
+        # Build payload for reranking
+        # For OpenAI-compatible endpoints: use same format as embeddings but with reranker model
+        # The reranker model will compute similarity scores between query and documents
+        # Format: {"model": "reranker-model", "input": [query, doc1, doc2, ...]}
+        
+        # Combine query and documents into single input list
+        # Query goes first, then all documents
+        combined_input = [query] + documents
+        
         payload = {
             "model": self.reranker_model_name,
-            "query": query,
-            "documents": documents,
+            "input": combined_input,
         }
-
-        if top_k is not None:
-            payload["top_n"] = top_k
+        
+        # Note: top_k filtering will be done post-processing since OpenAI format doesn't support top_n
 
         # Retry loop
         last_error = None
@@ -1010,10 +1017,12 @@ class EmbeddingService:
             try:
                 async with aiohttp.ClientSession() as session:
                     # Use rerank endpoint (OpenAI-compatible format)
-                    rerank_url = self.api_url.replace("/embeddings", "/rerank")
+                    #rerank_url = self.api_url.replace("/embeddings", "/rerank")
+
                     
                     async with session.post(
-                        rerank_url,
+                        #rerank_url,
+                        self.api_url,
                         json=payload,
                         headers=headers,
                         timeout=aiohttp.ClientTimeout(total=self.timeout),
@@ -1026,17 +1035,62 @@ class EmbeddingService:
 
                         result = await response.json()
 
-                # Parse response (OpenAI-compatible format)
-                if "results" in result:
+                # Check for error response first
+                if "error" in result:
+                    error_msg = result.get("error", {})
+                    if isinstance(error_msg, dict):
+                        error_text = error_msg.get("message", str(error_msg))
+                    else:
+                        error_text = str(error_msg)
+                    raise RuntimeError(f"Reranking API returned error: {error_text}")
+
+                # Parse embeddings response and compute similarity scores
+                # Response format: {"data": [{"embedding": [...]}, {"embedding": [...]}, ...]}
+                if "data" in result:
+                    embeddings_data = result["data"]
+                    
+                    if len(embeddings_data) < 2:
+                        raise ValueError(f"Expected at least 2 embeddings (query + documents), got {len(embeddings_data)}")
+                    
+                    # First embedding is the query
+                    query_embedding = embeddings_data[0]["embedding"]
+                    
+                    # Remaining embeddings are the documents
+                    doc_embeddings = [item["embedding"] for item in embeddings_data[1:]]
+                    
+                    # Compute cosine similarity between query and each document
+                    query_vec = np.array(query_embedding)
+                    reranked = []
+                    
+                    for idx, doc_emb in enumerate(doc_embeddings):
+                        doc_vec = np.array(doc_emb)
+                        
+                        # Cosine similarity: dot(a, b) / (norm(a) * norm(b))
+                        similarity = np.dot(query_vec, doc_vec) / (np.linalg.norm(query_vec) * np.linalg.norm(doc_vec))
+                        
+                        reranked.append({
+                            "index": idx,
+                            "score": float(similarity),
+                            "relevance_score": float(similarity),
+                            "document": documents[idx],
+                        })
+                    
+                    # Sort by score (descending)
+                    reranked.sort(key=lambda x: x["score"], reverse=True)
+                    
+                    # Apply top_k filtering
+                    if top_k is not None:
+                        reranked = reranked[:top_k]
+                    
+                elif "results" in result:
+                    # Native reranking API format (Cohere, Jina)
                     reranked = result["results"]
-                elif "data" in result:
-                    reranked = result["data"]
                 else:
-                    raise ValueError(f"Unexpected rerank response format: {result.keys()}")
+                    raise ValueError(f"Unexpected rerank response format: {result.keys()}. Full response: {result}")
 
                 logger.debug(
                     f"Reranking successful (batch {batch_idx}): {len(documents):,} documents, "
-                    f"{len(reranked):,} results returned"
+                    f"{len(reranked):,} results returned (using {'native API' if 'results' in result else 'similarity scoring'})"
                 )
 
                 return reranked

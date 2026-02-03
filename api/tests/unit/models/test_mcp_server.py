@@ -1,8 +1,3 @@
-"""
-Unit tests for MCPServer model.
-Tests MCP server configuration model.
-"""
-
 import pytest
 from datetime import datetime
 from app.models.mcp_server import MCPServer

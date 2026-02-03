@@ -1,7 +1,3 @@
-"""
-Unit tests for ToolResult model.
-"""
-
 import pytest
 from uuid import uuid4
 

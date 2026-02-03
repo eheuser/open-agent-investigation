@@ -1,4 +1,3 @@
-"""Services package for business logic."""
 from . import chat_router
 from . import chat_persistence
 from . import llm_context

@@ -1,8 +1,3 @@
-"""
-Integration tests for chat WebSocket endpoint.
-Tests the real-time chat interface with WebSocket connections.
-"""
-
 import pytest
 import json
 from httpx import AsyncClient

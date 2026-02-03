@@ -1,8 +1,3 @@
-"""
-Unit tests for worker context manager.
-Tests phase-specific context loading for the assistant agent.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

@@ -1,6 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { PaperAirplaneIcon, PlusIcon, StopIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { AgentEffort, RouterMode } from '../../hooks/useInvestigationChat';
+import ConfigurationErrorModal from '../ConfigurationErrorModal';
+import { useLLMConfig } from '../../hooks/useLLMConfig';
 
 interface ChatInputProps {
   value: string;
@@ -49,6 +51,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onModeChange,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { hasConfig, checkConfig } = useLLMConfig();
+  const [showConfigError, setShowConfigError] = useState(false);
+
+  const handleSendClick = async () => {
+    // Check for LLM config before sending
+    const isValid = await checkConfig();
+    if (!isValid) {
+      setShowConfigError(true);
+      return;
+    }
+    onSend();
+  };
 
   // Auto-resize the textarea as the user types
   useEffect(() => {
@@ -60,17 +74,31 @@ const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [value]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (onKeyPress) {
       onKeyPress(e);
     } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // Check for LLM config before sending
+      const isValid = await checkConfig();
+      if (!isValid) {
+        setShowConfigError(true);
+        return;
+      }
       onSend();
     }
   };
 
   return (
-    <div className="p-4">
+    <>
+      <ConfigurationErrorModal
+        isOpen={showConfigError}
+        onClose={() => setShowConfigError(false)}
+        title="LLM Configuration Required"
+        message="You must configure an LLM provider before sending messages. All chat functionality requires LLM capabilities for processing natural language queries."
+        showSettingsButton={true}
+      />
+      <div className="p-4">
       <div className="max-w-3xl mx-auto">
         {/* Connection Status */}
         {!isConnected && (
@@ -88,10 +116,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
             value={value}
             onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message the investigation agent..."
+            placeholder="Ask a question..."
             rows={1}
             disabled={isAgentRunning || disabled || parsingLocked}
-            className="flex-1 bg-transparent py-3 px-2 resize-none focus:outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 max-h-[200px] overflow-y-auto disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 bg-transparent py-3 px-2 resize-none focus:outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 max-h-[200px] overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
           />
 
           {/* Send/Stop Button */}
@@ -105,7 +133,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             </button>
           ) : (
             <button
-              onClick={onSend}
+              onClick={handleSendClick}
               disabled={!value.trim() || !isConnected || isAgentRunning || parsingLocked}
               className={`flex-shrink-0 p-2.5 rounded-full transition-all ${
                 value.trim() && isConnected && !isAgentRunning && !parsingLocked
@@ -171,6 +199,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 

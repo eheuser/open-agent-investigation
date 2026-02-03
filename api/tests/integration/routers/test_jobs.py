@@ -1,8 +1,3 @@
-"""
-Integration tests for jobs endpoints.
-Tests parsing and agent job status queries.
-"""
-
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select

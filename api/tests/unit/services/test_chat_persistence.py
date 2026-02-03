@@ -1,8 +1,3 @@
-"""
-Unit tests for chat persistence service.
-Tests message persistence utilities with mocked CRUD operations.
-"""
-
 import pytest
 from uuid import uuid4
 from unittest.mock import AsyncMock, patch, MagicMock

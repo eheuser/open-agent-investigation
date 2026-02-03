@@ -1,7 +1,3 @@
-"""
-Unit tests for MCP server CRUD operations.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import List

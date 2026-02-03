@@ -32,6 +32,7 @@ The API service provides:
 - Diagram generation (GraphViz/Mermaid)
 - Automated report generation (PDF and Markdown)
 - Chat history summarization for long investigations
+- Dedicated analysis modules for Autoruns, Execution Evidence, Browsed URLs, and Logons
 
 ### Technology Stack
 
@@ -326,7 +327,7 @@ Configure via `.env` file or environment variables:
 DATABASE_URL=postgresql+asyncpg://postgres:example@db/open_agent_inv
 
 # Security
-JWT_SECRET=change-me-in-production-supersecret  # ⚠️ CHANGE THIS!
+JWT_SECRET=change-me-in-production-supersecret  # CHANGE THIS!
 
 # API Server
 API_HOST=api
@@ -402,6 +403,8 @@ WORKER_TIMEOUT=30
 | POST | `/api/v1/llm-config` | Create LLM config (includes embedding config) |
 | PUT | `/api/v1/llm-config/{id}` | Update LLM config |
 | DELETE | `/api/v1/llm-config/{id}` | Delete LLM config |
+| POST | `/api/v1/llm-config/test` | Test LLM configuration with minimal query |
+| POST | `/api/v1/llm-config/test-embedding` | Test embedding configuration with minimal text |
 
 ### Playbooks
 
@@ -417,6 +420,74 @@ WORKER_TIMEOUT=30
 | GET | `/api/v1/playbooks/investigation/{id}` | Get enabled playbooks for investigation |
 | POST | `/api/v1/playbooks/investigation/{id}/enable` | Enable playbook for investigation |
 | DELETE | `/api/v1/playbooks/investigation/{id}/disable/{playbook_id}` | Disable playbook for investigation |
+
+### Analysis
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/analysis/modules` | List available analysis modules |
+| GET | `/api/v1/analysis/autoruns/categories` | Get Autoruns category metadata |
+| GET | `/api/v1/analysis/autoruns/{investigation_id}` | Get Autoruns entries with filtering |
+| GET | `/api/v1/analysis/execution-evidence/categories` | Get Execution Evidence category metadata |
+| GET | `/api/v1/analysis/execution-evidence/{investigation_id}` | Get execution artifacts with filtering |
+| GET | `/api/v1/analysis/browsed-urls/browsers` | Get available browser list |
+| GET | `/api/v1/analysis/browsed-urls/{investigation_id}` | Get browser history with filtering |
+| GET | `/api/v1/analysis/logons/filter-categories` | Get logon filter categories |
+| GET | `/api/v1/analysis/logons/{investigation_id}` | Get logon events with filtering |
+| DELETE | `/api/v1/analysis/cache/{investigation_id}` | Clear analysis cache for investigation |
+
+**Analysis Modules**:
+
+1. **Autoruns** - Windows autostart persistence analysis
+   - Categories: Registry run keys, scheduled tasks, services, WMI subscriptions, startup folders, browser extensions, AppInit DLLs, LSA providers, print monitors, boot execute, Winlogon entries
+   - Filters: Category, search by name/path, enabled/disabled
+   - Returns: Entry name, category, location, image path, enabled status, launch string
+
+2. **Execution Evidence** - Consolidated program execution artifacts
+   - Categories: ShimCache, AmCache, Prefetch, SRUM, BAM/DAM, UserAssist
+   - Filters: Category (multi-select), search by path/hash, date range
+   - Returns: Program path, execution time, file size, hash, run count, category
+   - Source priority: Prefetch > SRUM > AmCache > ShimCache > BAM/DAM > UserAssist
+
+3. **Browsed URLs** - Browser history from Chrome, Firefox, and Edge
+   - Filters: Browser, domain search, URL/title search, date range
+   - Returns: URL, title, visit count, last visit time, browser, transition type
+
+4. **Logons** - Authentication event analysis
+   - Event types: Successful logons (4624), failed logons (4625), logoffs (4634)
+   - Logon types: Interactive, Network, Batch, Service, Unlock, NetworkCleartext, NewCredentials, RemoteInteractive, CachedInteractive
+   - Filters: Event type, logon type, username, source IP/workstation, date range
+   - Returns: Event type, timestamp, username, domain, logon type, source IP/workstation, logon ID, process name, authentication package
+
+**Caching**:
+- Analysis results are cached per investigation using `@lru_cache`
+- Cache key: `(investigation_id, filter_params_hash)`
+- Cache cleared via DELETE endpoint or automatically on artifact upload
+- Improves performance for repeated queries with same filters
+
+**Usage Examples**:
+
+```bash
+# Get Autoruns entries (development mode)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/v1/analysis/autoruns/{investigation_id}?categories=run_keys,scheduled_tasks&search=powershell"
+
+# Docker Compose mode
+curl -k -H "Authorization: Bearer $TOKEN" \
+  "https://localhost/api/v1/analysis/autoruns/{investigation_id}?categories=run_keys,scheduled_tasks&search=powershell"
+
+# Get execution evidence with date filter
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/v1/analysis/execution-evidence/{investigation_id}?categories=prefetch,srum&start_date=2024-01-01&end_date=2024-12-31"
+
+# Get logon events
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/v1/analysis/logons/{investigation_id}?event_types=4624,4625&logon_types=10&username=admin"
+
+# Clear cache
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/v1/analysis/cache/{investigation_id}"
+```
 
 ### Reports
 

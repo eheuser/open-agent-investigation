@@ -1,9 +1,3 @@
-"""
-Unit tests for event_handler module.
-
-Tests event insertion from structured data and natural language.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4

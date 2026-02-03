@@ -1,5 +1,3 @@
-"""Pydantic models for agent messages and tool calls."""
-
 from .messages import (
     MessageBase,
     SystemMessage,

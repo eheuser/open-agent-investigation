@@ -1,8 +1,3 @@
-"""
-Integration tests for /fields endpoints.
-Tests field discovery for both events and timeline entries.
-"""
-
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import text

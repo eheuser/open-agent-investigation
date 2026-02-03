@@ -1,7 +1,3 @@
-"""
-Unit tests for User model.
-"""
-
 import pytest
 from datetime import datetime
 

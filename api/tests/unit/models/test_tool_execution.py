@@ -1,8 +1,3 @@
-"""
-Unit tests for ToolExecution model.
-Tests tool execution tracking and status management.
-"""
-
 import pytest
 from datetime import datetime
 from app.models.tool_execution import ToolExecution

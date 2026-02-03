@@ -162,7 +162,7 @@ async def chat_websocket(
 
     except WebSocketDisconnect:
         manager.disconnect(investigation_id, websocket)
-        logger.info(f"Client disconnected from investigation {investigation_id}")
+        logger.debug(f"Client disconnected from investigation {investigation_id}")
 
     except Exception as e:
         logger.error(f"WebSocket error: {e}", exc_info=True)
@@ -360,7 +360,7 @@ async def _handle_question(
 
             # If this was a RAG query, persist tool executions now that we have the message_id
             if final_metadata.get("handler") == "rag" and final_metadata.get("event_sequence"):
-                logger.info(f"Persisting RAG tool executions for message {thinking_message_id}")
+                logger.debug(f"Persisting RAG tool executions for message {thinking_message_id}")
                 execution_ids = await persist_rag_tool_executions(
                     db=db,
                     message_id=thinking_message_id,
@@ -389,7 +389,7 @@ async def _handle_question(
                         metadata=final_metadata,
                     )
                     await db.commit()
-                    logger.info(f"Updated event_sequence with {len(execution_ids):,} execution_ids")
+                    logger.debug(f"Updated event_sequence with {len(execution_ids):,} execution_ids")
 
             # Broadcast message update
             await manager.broadcast(
@@ -483,7 +483,7 @@ async def _handle_routing_response(
 
     elif response_type == "job_queued":
         # Update the existing thinking message with job_id instead of creating a new one
-        logger.info(
+        logger.debug(
             f"job_queued handler: thinking_message_id={thinking_message_id}, job_id={response.get('job_id')}"
         )
         if thinking_message_id:
@@ -491,7 +491,7 @@ async def _handle_routing_response(
 
             # IMPORTANT: Update streaming_message_id to match what the worker will look for
             # This prevents duplicate messages when worker broadcasts agent_started
-            logger.info(
+            logger.debug(
                 f"Updating existing thinking message {thinking_message_id} with streaming_id=agent_{response.get('job_id')}"
             )
             
@@ -564,7 +564,7 @@ async def _handle_routing_response(
             await update_message(
                 db=db,
                 message_id=thinking_message_id,
-                content=f"❌ Error: {response.get('message')}",
+                content=f"Error: {response.get('message')}",
                 metadata={
                     "type": "error",
                     "details": response.get("details"),
@@ -755,7 +755,7 @@ async def _handle_stop_agent(
     )
     await db.commit()
 
-    logger.info(f"Stop signal set for job {job_id}")
+    logger.debug(f"Stop signal set for job {job_id}")
 
     # Acknowledge the stop request and broadcast to all clients
     await manager.broadcast(
@@ -974,7 +974,7 @@ async def continue_investigation(
     await db.commit()
     await db.refresh(new_job)
 
-    logger.info(
+    logger.debug(
         f"Created continuation job {new_job.job_id} from job {job_id} with {additional_turns} additional turns"
     )
 
@@ -1063,7 +1063,7 @@ async def broadcast_message(
         and broadcasting fail.
     """
     message_type = message.get("type")
-    logger.info(f"[BROADCAST] type={message_type}, inv={investigation_id[:8]}")
+    logger.debug(f"[BROADCAST] type={message_type}, inv={investigation_id[:8]}")
 
     try:
         # Validate investigation_id format
@@ -1077,7 +1077,7 @@ async def broadcast_message(
 
         # Broadcast to WebSocket clients
         recipients = manager.get_connection_count(investigation_id)
-        logger.info(
+        logger.debug(
             f"Broadcasting {message_type} to {recipients} clients for investigation {investigation_id}"
         )
         await manager.broadcast(investigation_id, message)

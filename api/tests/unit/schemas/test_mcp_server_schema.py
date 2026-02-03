@@ -1,8 +1,3 @@
-"""
-Unit tests for MCP server schemas.
-Tests Pydantic validation for MCP server data.
-"""
-
 import pytest
 from pydantic import ValidationError
 from app.schemas.mcp_server import MCPServerCreate, MCPServerRead, MCPServerUpdate
