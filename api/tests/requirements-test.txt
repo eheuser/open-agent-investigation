@@ -1,7 +1,7 @@
 # Testing framework
 pytest==8.2.*
 pytest-asyncio==0.23.*
-pytest-cov==5.0.*
+pytest-cov==7.0.*
 pytest-mock==3.14.*
 pytest-timeout==2.3.*
 
