@@ -179,7 +179,7 @@ class BaseParser(ABC):
                     payload_obj = json.loads(event["payload"])
                     event["payload"] = safe_json_dumps(payload_obj)
                 except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"Failed to sanitize payload, using as-is: {e}")
+                    logger.debug(f"Failed to sanitize payload, using as-is: {e}")
         
         # Use unified events table
         insert_query = text(

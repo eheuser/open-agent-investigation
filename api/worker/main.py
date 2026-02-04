@@ -106,6 +106,10 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
             api_key_raw = llm_config.api_key
             llm_api_key = cast(str, api_key_raw) if api_key_raw is not None else None
             llm_max_context = cast(int, llm_config.max_context_length)
+            
+            # Get concurrent calls setting (for field dictionary generation)
+            allow_concurrent_val = getattr(llm_config, "allow_concurrent_embedding_calls", None)
+            allow_concurrent_calls = bool(allow_concurrent_val) if allow_concurrent_val is not None else False
 
             llm_client = LLMClient(
                 endpoint=llm_endpoint,
@@ -115,7 +119,8 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
 
             # OPTIMIZED: Use new finalizer that only processes pending fields
             logger.info(
-                f"Finalizing field dictionary for investigation {investigation_id} using {llm_model}..."
+                f"Finalizing field dictionary for investigation {investigation_id} using {llm_model}... "
+                f"(concurrent calls: {'enabled' if allow_concurrent_calls else 'disabled'})"
             )
 
             stats = await finalize_field_dictionary(
@@ -123,6 +128,7 @@ async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
                 investigation_id=str(investigation_id),
                 llm_client=llm_client,
                 max_output_tokens=min(16_384, int(llm_max_context * 0.75)),
+                allow_concurrent_calls=allow_concurrent_calls,
             )
 
             fields_processed = stats.get("fields_processed", 0)

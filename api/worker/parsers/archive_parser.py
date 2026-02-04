@@ -70,7 +70,7 @@ class ArchiveParser(BaseParser):
                     return True
                     
         except Exception as e:
-            logger.warning(f"Failed to read magic bytes from {filename}: {e}")
+            logger.debug(f"Failed to read magic bytes from {filename}: {e}")
             return False
         
         return False
@@ -307,7 +307,7 @@ class ArchiveParser(BaseParser):
             RuntimeError: If depth or file count limits are exceeded
         """
         if depth > MAX_EXTRACTION_DEPTH:
-            logger.warning(f"Maximum extraction depth ({MAX_EXTRACTION_DEPTH}) reached, stopping recursion")
+            logger.debug(f"Maximum extraction depth ({MAX_EXTRACTION_DEPTH}) reached, stopping recursion")
             return
         
         # Recursively find all files
@@ -317,7 +317,7 @@ class ArchiveParser(BaseParser):
             
             # Check file count limit
             if stats['files_extracted'] >= MAX_EXTRACTED_FILES:
-                logger.warning(f"Maximum file count ({MAX_EXTRACTED_FILES}) reached, stopping extraction")
+                logger.debug(f"Maximum file count ({MAX_EXTRACTED_FILES}) reached, stopping extraction")
                 return
             
             stats['files_extracted'] += 1
@@ -326,7 +326,7 @@ class ArchiveParser(BaseParser):
             try:
                 file_bytes = item.read_bytes()
             except Exception as e:
-                logger.warning(f"Failed to read extracted file {item}: {e}")
+                logger.debug(f"Failed to read extracted file {item}: {e}")
                 continue
             
             # Get relative path for filename (preserves directory structure)

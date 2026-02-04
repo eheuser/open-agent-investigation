@@ -1,7 +1,8 @@
+import asyncio
 import json
 from typing import Dict, List, Optional
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.utils.log_setup import get_logger
 
@@ -125,6 +126,8 @@ async def finalize_field_dictionary(
     investigation_id: str,
     llm_client,
     max_output_tokens: int = 16384,
+    allow_concurrent_calls: bool = False,
+    max_concurrent_batches: int = 4,
 ) -> Dict[str, int]:
     """
     Discover fields and generate LLM descriptions after parsing.
@@ -142,6 +145,8 @@ async def finalize_field_dictionary(
         investigation_id: UUID of the investigation
         llm_client: LLM client for generating descriptions
         max_output_tokens: Maximum tokens for LLM output (default 16384)
+        allow_concurrent_calls: Enable parallel LLM calls (default False)
+        max_concurrent_batches: Maximum concurrent batches (default 4)
 
     Returns:
         Dict with statistics:
@@ -189,8 +194,8 @@ async def finalize_field_dictionary(
             f"across {len(fields_by_type):,} event types"
         )
 
-        # Calculate batch size (same logic as field_dictionary_db.py)
-        batch_size = max(200, int(max_output_tokens / 15))
+        # Reduce batch size to prevent JSON parsing errors (was 200-1000, now 100-250)
+        batch_size = min(250, max(100, int(max_output_tokens / 30)))
 
         # Process in batches
         event_types_list = list(fields_by_type.items())
@@ -198,18 +203,12 @@ async def finalize_field_dictionary(
         current_field_count = 0
         fields_processed = 0
 
+        # Build all batches first
+        all_batches = []
         for event_type, field_list in event_types_list:
             # Check if adding this event type would exceed batch size
             if current_field_count + len(field_list) > batch_size and current_batch:
-                # Process current batch
-                count = await _process_field_batch(
-                    db,
-                    investigation_id,
-                    llm_client,
-                    current_batch,
-                    max_output_tokens,
-                )
-                fields_processed += count
+                all_batches.append(current_batch)
                 current_batch = []
                 current_field_count = 0
 
@@ -217,16 +216,89 @@ async def finalize_field_dictionary(
             current_batch.append((event_type, field_list))
             current_field_count += len(field_list)
 
-        # Process remaining batch
+        # Add remaining batch
         if current_batch:
-            count = await _process_field_batch(
-                db,
-                investigation_id,
-                llm_client,
-                current_batch,
-                max_output_tokens,
+            all_batches.append(current_batch)
+        
+        # Process batches (concurrent or sequential)
+        if allow_concurrent_calls and len(all_batches) > 1:
+            logger.info(
+                f"Concurrent LLM calls enabled: processing {len(all_batches):,} batches in parallel "
+                f"(up to {max_concurrent_batches} concurrent)"
             )
-            fields_processed += count
+            
+            # Import here to avoid circular dependency
+            from app.core.config import settings
+            
+            # Create separate database engine for concurrent operations
+            # This prevents "another operation is in progress" errors
+            concurrent_engine = create_async_engine(
+                settings.database_url,
+                echo=False,
+                pool_pre_ping=True,
+                pool_size=max_concurrent_batches + 2,  # One per concurrent task + buffer
+            )
+            
+            ConcurrentSessionLocal = async_sessionmaker(
+                concurrent_engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            
+            batch_results = []
+            
+            try:
+                # Process in chunks of max_concurrent_batches
+                for i in range(0, len(all_batches), max_concurrent_batches):
+                    batch_chunk = all_batches[i:i + max_concurrent_batches]
+                    
+                    # Create tasks for this chunk - each with its own DB session
+                    tasks = []
+                    for batch in batch_chunk:
+                        tasks.append(
+                            _process_field_batch_with_session(
+                                ConcurrentSessionLocal,
+                                investigation_id,
+                                llm_client,
+                                batch,
+                                max_output_tokens,
+                            )
+                        )
+                    
+                    # Wait for all tasks in this chunk
+                    chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Handle results and errors
+                    for batch_idx, result in enumerate(chunk_results):
+                        global_batch_idx = i + batch_idx
+                        if isinstance(result, BaseException):
+                            logger.error(
+                                f"Batch {global_batch_idx + 1}/{len(all_batches)} failed: {result}",
+                                exc_info=result,
+                            )
+                            batch_results.append(0)
+                        else:
+                            batch_results.append(result)
+                            fields_processed += result
+                
+                logger.info(
+                    f"Concurrent processing complete: {len(all_batches):,} batches, "
+                    f"{fields_processed:,} fields processed"
+                )
+            finally:
+                # Clean up concurrent engine
+                await concurrent_engine.dispose()
+        else:
+            # Sequential processing (default)
+            for batch in all_batches:
+                count = await _process_field_batch(
+                    db,
+                    investigation_id,
+                    llm_client,
+                    batch,
+                    max_output_tokens,
+                )
+                fields_processed += count
 
         logger.info(
             f"Field dictionary finalized: {fields_processed:,}/{total_pending:,} fields processed"
@@ -249,6 +321,36 @@ async def finalize_field_dictionary(
         }
 
 
+async def _process_field_batch_with_session(
+    session_factory,
+    investigation_id: str,
+    llm_client,
+    batch: List[tuple],
+    max_output_tokens: int = 16384,
+) -> int:
+    """
+    Process a batch with its own database session (for concurrent execution).
+    
+    Args:
+        session_factory: AsyncSessionmaker to create a new session
+        investigation_id: UUID of the investigation
+        llm_client: LLM client for generating descriptions
+        batch: List of (event_type, [(field_name, sample_values), ...]) tuples
+        max_output_tokens: Maximum tokens for LLM output
+    
+    Returns:
+        Number of fields successfully processed
+    """
+    async with session_factory() as db:
+        return await _process_field_batch(
+            db,
+            investigation_id,
+            llm_client,
+            batch,
+            max_output_tokens,
+        )
+
+
 async def _process_field_batch(
     db: AsyncSession,
     investigation_id: str,
@@ -269,6 +371,9 @@ async def _process_field_batch(
     Returns:
         Number of fields successfully processed
     """
+    # Calculate total fields in batch for better error handling
+    total_fields = sum(len(field_list) for _, field_list in batch)
+    
     # Build comprehensive prompt for all event types in batch
     event_type_sections = []
 
@@ -276,12 +381,12 @@ async def _process_field_batch(
         # Build section for this event type
         section = f"\n{event_type}:\n"
 
-        # Show sample values for first 10 fields
+        # Show sample values for first 3 fields (reduced to keep prompt smaller)
         samples_shown = 0
-        for field_name, sample_values in field_list[:10]:
-            if sample_values and samples_shown < 10:
+        for field_name, sample_values in field_list[:3]:
+            if sample_values and samples_shown < 3:
                 # Truncate samples for prompt efficiency
-                samples_str = ", ".join(str(v)[:50] for v in sample_values[:2])
+                samples_str = ", ".join(str(v)[:40] for v in sample_values[:2])
                 section += f"  - {field_name}: [{samples_str}]\n"
                 samples_shown += 1
 
@@ -297,7 +402,9 @@ async def _process_field_batch(
 Event Types and Fields:
 {''.join(event_type_sections)}
 
-Return ONLY a JSON object with this structure:
+CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanatory text.
+
+JSON structure:
 {{
   "event_type": {{
     "field_name": "Brief description (5-10 words)",
@@ -311,11 +418,16 @@ Examples:
 - "IpAddress": "Source IP of connection"
 - "ProcessId": "Process identifier (PID)"
 - "EventRecordID": "Unique event log record number"
+
+Generate descriptions for ALL {total_fields} fields listed above.
 """
 
     try:
         messages = [
-            {"role": "system", "content": "You are a forensic analyst. Output only valid JSON."},
+            {
+                "role": "system", 
+                "content": "You are a forensic analyst. Output ONLY valid JSON with no additional text, markdown formatting, or code blocks."
+            },
             {"role": "user", "content": prompt},
         ]
 
@@ -329,13 +441,35 @@ Examples:
         response_msg = await llm_client.parse_stream_to_message(stream)
         content = response_msg.content or "{}"
 
-        # Extract JSON
+        # More aggressive JSON extraction
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
-
-        batch_descriptions = json.loads(content)
+        
+        # Remove any leading/trailing non-JSON text
+        # Find first { and last }
+        start_idx = content.find('{')
+        end_idx = content.rfind('}')
+        
+        if start_idx != -1 and end_idx != -1:
+            content = content[start_idx:end_idx + 1]
+        
+        # Try to parse JSON
+        try:
+            batch_descriptions = json.loads(content)
+        except json.JSONDecodeError as json_err:
+            logger.error(
+                f"JSON parsing failed: {json_err}. "
+                f"Content preview: {content[:500]}... (total {len(content):,} chars)"
+            )
+            # Log full content for debugging
+            logger.debug(f"Full LLM response:\n{content}")
+            logger.warning(
+                f"Skipping batch due to malformed JSON. "
+                f"Batch had {total_fields:,} fields across {len(batch):,} event types."
+            )
+            return 0
 
         # Store all descriptions in database with cached markdown
         stored_count = 0
@@ -368,13 +502,21 @@ Examples:
 
         await db.commit()
         logger.info(
-            f"Batch: Stored {stored_count:,} descriptions for {len(batch_descriptions):,} event types"
+            f"Batch: Stored {stored_count:,} descriptions for {len(batch_descriptions):,} event types "
+            f"({total_fields:,} total fields)"
         )
 
         return stored_count
 
     except Exception as e:
-        logger.warning(f"Batch LLM call failed: {e}", exc_info=True)
+        logger.warning(
+            f"Batch LLM call failed ({total_fields:,} fields, {len(batch):,} event types): {e}", 
+            exc_info=True
+        )
+        try:
+            await db.rollback()  # Rollback on error
+        except:
+            pass  # Ignore rollback errors
         return 0
 
 

@@ -653,12 +653,37 @@ The system supports separate models for embedding generation and reranking:
 - **Concurrent Calls**: Enable `allow_concurrent_embedding_calls` to batch and parallelize requests:
   - **Embedding**: Batches of 50 texts processed in parallel (for 50+ total texts)
   - **Reranking**: Batches of 100 documents processed in parallel (for 100+ total documents)
+  - **Field Dictionary Generation**: Batches of ~400-500 fields processed in parallel (up to 4 concurrent LLM calls)
   - **Use Case**: High-capacity public APIs (OpenAI, Anthropic) can handle many concurrent requests
   - **Disable For**: Local endpoints with limited GPU resources (Ollama, LM Studio)
 
 - **Fallback Behavior**: If `reranker_model_name` is not configured or is the same as `embedding_model_name`, reranking is skipped and the system uses vector similarity scores only.
 
 This two-tier approach balances speed (fast embeddings on all data) with accuracy (powerful reranking on top results).
+
+**Field Dictionary Generation:**
+
+When artifacts are parsed, the system automatically discovers all JSONB fields and generates forensic descriptions using the LLM. This process can be accelerated with concurrent calls:
+
+- **Sequential Mode** (default): Processes field batches one at a time (~30 seconds per batch for 100-250 fields)
+- **Concurrent Mode** (`allow_concurrent_embedding_calls=true`): Processes up to 4 batches in parallel (4x faster)
+- **Batch Size**: Automatically calculated based on LLM max context length (typically 100-250 fields per batch)
+  - Reduced from previous 400-500 to prevent JSON parsing errors with large responses
+  - Each concurrent batch gets its own database connection to prevent conflicts
+- **Use Case**: Large investigations with many event types (500+ unique JSONB fields)
+- **Example**: 13,330 fields across 552 event types processes in ~2-3 minutes with concurrent mode vs. ~8-12 minutes sequential
+- **Error Handling**: Automatic rollback on failures, detailed logging for debugging
+
+**Performance Comparison:**
+```
+Sequential (default):  [Batch 1] → [Batch 2] → [Batch 3] → [Batch 4] → ...
+                       ~30s       ~30s       ~30s       ~30s
+
+Concurrent (enabled):  [Batch 1, 2, 3, 4] → [Batch 5, 6, 7, 8] → ...
+                       ~30s                  ~30s
+```
+
+The concurrent setting applies to both embedding generation (RAG) and field dictionary generation, providing significant speedups for high-capacity APIs.
 
 ### How Playbooks Work with Agents
 

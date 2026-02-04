@@ -324,7 +324,7 @@ class MftParser(BaseParser):
                 record_count += 1
 
             except Exception as e:
-                logger.warning(f"Failed to parse MFT entry: {e}")
+                logger.debug(f"Failed to parse MFT entry: {e}")
                 continue
 
         # Insert remaining events
