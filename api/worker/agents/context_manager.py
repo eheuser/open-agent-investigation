@@ -5,7 +5,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
-from .field_dictionary_db import generate_field_dictionary
 from ..tools import event_tools
 
 logger = get_logger(__name__)
@@ -112,7 +111,6 @@ async def load_investigation_context(
     investigation_id: str,
     max_retries: int = 3,
     llm_client=None,
-    use_field_dictionary: bool = True,
     llm_max_context: int = 32768,
 ) -> str:
     """
@@ -127,18 +125,16 @@ async def load_investigation_context(
     max_retries: int, optional
         Maximum number of retry attempts for database queries (default is 3). Currently unused but kept for API compatibility.
     llm_client: Any, optional
-        Optional language-model client used to generate descriptive field dictionaries. If `None` or `use_field_dictionary` is False, a simple list of fields is returned instead.
-    use_field_dictionary: bool, default True
-        When true and an `llm_client` is provided, the function attempts to build a richer field dictionary with LLM-generated descriptions; otherwise it falls back to a plain field list.
+        Optional language-model client (unused, kept for compatibility).
     llm_max_context: int, default 32768
-        Maximum token budget passed to the LLM when generating the field dictionary.
+        Maximum token budget (unused, kept for compatibility).
 
     Returns
     -------
     str
         A formatted markdown string containing:
         * a summary of event type counts,
-        * either a descriptive field dictionary or a concise list of available JSONB fields,
+        * a concise list of available JSONB fields,
         * a snapshot of recent timeline entries,
         * and helpful usage notes for downstream agents.
 
@@ -182,45 +178,32 @@ async def load_investigation_context(
         context_parts.append("\n### Available Data\n")
         context_parts.append(f"Error loading data: {type(e).__name__}: {e}\n")
 
-    # Get available JSONB fields with descriptions (if LLM client provided)
+    # Get available JSONB fields (simple list)
     try:
-        if use_field_dictionary and llm_client:
-            # Use cached field dictionary from database
-            field_dict = await generate_field_dictionary(
-                db=db,
-                investigation_id=investigation_id,
-                llm_client=llm_client,
-                max_fields_per_type=30,
-                llm_max_context=llm_max_context,
+        available_fields = await event_tools.get_available_jsonb_fields(db, investigation_id)
+
+        if available_fields:
+            context_parts.append("\n### Available JSONB Fields\n")
+            context_parts.append(
+                "Use these exact field names with `query_jsonb_field` or `aggregate_jsonb_field`:\n\n"
             )
 
-            context_parts.append(field_dict)
-        else:
-            # Fallback: simple field list without descriptions
-            available_fields = await event_tools.get_available_jsonb_fields(db, investigation_id)
-
-            if available_fields:
-                context_parts.append("\n### Available JSONB Fields\n")
+            # Show first 50 fields
+            if len(available_fields) <= 50:
+                context_parts.append(f"`{', '.join(available_fields)}`\n")
+            else:
+                sample = available_fields[:50]
                 context_parts.append(
-                    "Use these exact field names with `query_jsonb_field` or `aggregate_jsonb_field`:\n\n"
+                    f"`{', '.join(sample)}` (+{len(available_fields)-50:,} more)\n"
                 )
 
-                # Show first 50 fields
-                if len(available_fields) <= 50:
-                    context_parts.append(f"`{', '.join(available_fields)}`\n")
-                else:
-                    sample = available_fields[:50]
-                    context_parts.append(
-                        f"`{', '.join(sample)}` (+{len(available_fields)-50:,} more)\n"
-                    )
-
-                context_parts.append(
-                    "\n**IMPORTANT**: Use exact field names from above. Common prefixes:\n"
-                )
-                context_parts.append(
-                    "- `event_data.*` - Event-specific data (e.g., `event_data.TargetUserName`)\n"
-                )
-                context_parts.append("- `system.*` - System metadata (e.g., `system.Computer`)\n")
+            context_parts.append(
+                "\n**IMPORTANT**: Use exact field names from above. Common prefixes:\n"
+            )
+            context_parts.append(
+                "- `event_data.*` - Event-specific data (e.g., `event_data.TargetUserName`)\n"
+            )
+            context_parts.append("- `system.*` - System metadata (e.g., `system.Computer`)\n")
     except Exception as e:
         logger.error(f"Failed to load available fields: {e}", exc_info=True)
 
@@ -292,7 +275,6 @@ async def load_execution_phase_context(
     db: AsyncSession,
     investigation_id: str,
     llm_client=None,
-    use_field_dictionary: bool = True,
     llm_max_context: int = 32768,
 ) -> str:
     """
@@ -310,11 +292,9 @@ async def load_execution_phase_context(
     investigation_id: str
         Investigation identifier.
     llm_client: Any, optional
-        LLM client for field dictionary generation.
-    use_field_dictionary: bool, default True
-        Whether to use LLM-generated field dictionary.
+        LLM client (unused, kept for compatibility).
     llm_max_context: int, default 32768
-        Maximum token budget for field dictionary.
+        Maximum token budget (unused, kept for compatibility).
 
     Returns
     -------
@@ -356,42 +336,31 @@ async def load_execution_phase_context(
         context_parts.append("\n### Event Types\n")
         context_parts.append(f"Error loading data: {type(e).__name__}: {e}\n")
 
-    # Get available JSONB fields
+    # Get available JSONB fields (simple list)
     try:
-        if use_field_dictionary and llm_client:
-            # Use cached field dictionary from database
-            field_dict = await generate_field_dictionary(
-                db=db,
-                investigation_id=investigation_id,
-                llm_client=llm_client,
-                max_fields_per_type=30,
-                llm_max_context=llm_max_context,
+        available_fields = await event_tools.get_available_jsonb_fields(db, investigation_id)
+
+        if available_fields:
+            context_parts.append("\n### Available JSONB Fields\n")
+            context_parts.append(
+                "Use these exact field names with `query_jsonb_field` or `aggregate_jsonb_field`:\n\n"
             )
-            context_parts.append(field_dict)
-        else:
-            available_fields = await event_tools.get_available_jsonb_fields(db, investigation_id)
 
-            if available_fields:
-                context_parts.append("\n### Available JSONB Fields\n")
+            if len(available_fields) <= 50:
+                context_parts.append(f"`{', '.join(available_fields)}`\n")
+            else:
+                sample = available_fields[:50]
                 context_parts.append(
-                    "Use these exact field names with `query_jsonb_field` or `aggregate_jsonb_field`:\n\n"
+                    f"`{', '.join(sample)}` (+{len(available_fields)-50:,} more)\n"
                 )
 
-                if len(available_fields) <= 50:
-                    context_parts.append(f"`{', '.join(available_fields)}`\n")
-                else:
-                    sample = available_fields[:50]
-                    context_parts.append(
-                        f"`{', '.join(sample)}` (+{len(available_fields)-50:,} more)\n"
-                    )
-
-                context_parts.append(
-                    "\n**IMPORTANT**: Use exact field names from above. Common prefixes:\n"
-                )
-                context_parts.append(
-                    "- `event_data.*` - Event-specific data (e.g., `event_data.TargetUserName`)\n"
-                )
-                context_parts.append("- `system.*` - System metadata (e.g., `system.Computer`)\n")
+            context_parts.append(
+                "\n**IMPORTANT**: Use exact field names from above. Common prefixes:\n"
+            )
+            context_parts.append(
+                "- `event_data.*` - Event-specific data (e.g., `event_data.TargetUserName`)\n"
+            )
+            context_parts.append("- `system.*` - System metadata (e.g., `system.Computer`)\n")
     except Exception as e:
         logger.error(f"Failed to load available fields: {e}", exc_info=True)
 

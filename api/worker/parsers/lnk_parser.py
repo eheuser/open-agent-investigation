@@ -87,7 +87,7 @@ class LnkParser(BaseParser):
 
         # Skip LNK files without valid timestamp (forensically invalid)
         if event_ts is None:
-            logger.warning(f"Skipping LNK file {file_path} without valid timestamp")
+            logger.debug(f"Skipping LNK file {file_path} without valid timestamp")
             return 0
 
         # Use the full parsed data as payload and flatten it

@@ -107,7 +107,7 @@ async def parse_artifact(
                 )
                 break
         except Exception as e:
-            logger.warning(
+            logger.debug(
                 f"{parser_class.__name__}.identify() failed for {artifact.filename}: {e}"
             )
             continue
@@ -125,7 +125,7 @@ async def parse_artifact(
     except Exception as e:
         # Only fall back to FileMetadataParser if the selected parser was NOT already FileMetadataParser
         if not isinstance(selected_parser, FileMetadataParser):
-            logger.warning(
+            logger.debug(
                 f"{selected_parser.__class__.__name__} failed to parse artifact {artifact_id} "
                 f"({artifact.filename}): {e}. Falling back to FileMetadataParser."
             )

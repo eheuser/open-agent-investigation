@@ -52,7 +52,7 @@ def _calculate_hashes(file_path: Path) -> Dict[str, str]:
             'sha256': sha256_hash.hexdigest(),
         }
     except Exception as e:
-        logger.warning(f"Failed to calculate hashes for {file_path}: {e}")
+        logger.debug(f"Failed to calculate hashes for {file_path}: {e}")
         return {
             'md5': "",
             'sha1': "",
@@ -159,7 +159,7 @@ def _extract_strings(file_path: Path, max_size: int = MAX_STRINGS_SIZE) -> Dict[
         }
     
     except Exception as e:
-        logger.warning(f"Failed to extract strings from {file_path}: {e}")
+        logger.debug(f"Failed to extract strings from {file_path}: {e}")
         return {
             'ascii_strings': [],
             'unicode_strings': [],
@@ -227,7 +227,7 @@ def _detect_file_type(file_path: Path) -> Dict[str, Any]:
             }
     
     except Exception as e:
-        logger.warning(f"Failed to detect file type for {file_path}: {e}")
+        logger.debug(f"Failed to detect file type for {file_path}: {e}")
         return {
             'magic_bytes': None,
             'file_type': 'ERROR',
@@ -355,7 +355,7 @@ class FileMetadataParser(BaseParser):
             
             # Check file size limit
             if file_size > MAX_FILE_SIZE_FOR_ANALYSIS:
-                logger.warning(
+                logger.debug(
                     f"File {file_path.name} ({file_size:,} bytes) exceeds analysis limit "
                     f"({MAX_FILE_SIZE_FOR_ANALYSIS:,} bytes). Extracting basic metadata only."
                 )
@@ -384,7 +384,7 @@ class FileMetadataParser(BaseParser):
                         sample_data = f.read(65536)  # 64 KB sample
                         entropy = _calculate_entropy(sample_data)
                 except Exception as e:
-                    logger.warning(f"Failed to calculate entropy for {file_path}: {e}")
+                    logger.debug(f"Failed to calculate entropy for {file_path}: {e}")
                 
                 # Extract strings
                 strings_data = _extract_strings(file_path)

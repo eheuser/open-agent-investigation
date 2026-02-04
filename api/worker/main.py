@@ -23,7 +23,6 @@ from app.schemas.investigation_choice import InvestigationChoiceCreate
 from worker.parsers import parse_artifact
 from worker.agents.assistant_agent import AssistantAgent
 from worker.core.llm_client import LLMClient
-from worker.agents.field_dictionary_finalizer import finalize_field_dictionary
 
 from app.utils.log_setup import get_logger
 from app.utils.http_log_handler import setup_worker_logging
@@ -33,124 +32,6 @@ logger = get_logger(__name__)
 MAIN_WORKER_ID = uuid_pkg.uuid4()
 
 NUM_WORKERS = min(mp.cpu_count(), 4)
-
-
-async def generate_field_dictionary_background(investigation_id: uuid_pkg.UUID):
-    """
-    Generate a field-dictionary for an investigation in the background.
-
-    This coroutine is invoked after parsing has finished for a given
-    investigation. It retrieves the investigation’s owner, obtains the
-    owner’s active LLM provider configuration, creates an `LLMClient`,
-    and calls :func:`worker.agents.field_dictionary_finalizer.finalize_field_dictionary`
-    to generate LLM descriptions for pending fields discovered during parsing.
-    A rough count of processed fields is logged and a WebSocket notification
-    is sent to inform connected clients that the dictionary is ready.
-
-    Args:
-        investigation_id: The UUID of the investigation whose field dictionary
-            should be generated.
-
-    Returns:
-        `None`.  All results are persisted to the database and communicated via
-        logging and WebSocket messages.
-
-    Raises:
-        Any exception raised during execution is caught internally; the error
-        details are logged with stack trace information, but the coroutine does
-        not propagate the exception to callers.
-    """
-    try:
-        logger.info(
-            f"Starting background field dictionary generation for investigation {investigation_id}"
-        )
-
-        async with AsyncSessionLocal() as db:
-            # Get investigation owner to fetch their LLM config
-            result = await db.execute(
-                select(Investigation).where(Investigation.investigation_id == investigation_id)
-            )
-            investigation = result.scalar_one_or_none()
-
-            if not investigation:
-                logger.warning(
-                    f"Investigation {investigation_id} not found, skipping field dictionary generation"
-                )
-                return
-
-            user_id = getattr(investigation, "owner_user_id", None)
-            if not user_id:
-                logger.warning(
-                    f"Investigation {investigation_id} has no owner, skipping field dictionary generation"
-                )
-                return
-
-            # Get user's active LLM config
-            result = await db.execute(
-                select(LLMProviderConfig)
-                .where(LLMProviderConfig.user_id == user_id)
-                .where(LLMProviderConfig.is_active == True)
-            )
-            llm_config = result.scalar_one_or_none()
-
-            if not llm_config:
-                logger.warning(
-                    f"No active LLM config for user {user_id}, skipping field dictionary generation. "
-                    f"Dictionary will be generated on first agent run."
-                )
-                return
-
-            # Create LLM client
-            llm_endpoint = cast(str, llm_config.api_endpoint)
-            llm_model = cast(str, llm_config.model_name)
-            api_key_raw = llm_config.api_key
-            llm_api_key = cast(str, api_key_raw) if api_key_raw is not None else None
-            llm_max_context = cast(int, llm_config.max_context_length)
-
-            llm_client = LLMClient(
-                endpoint=llm_endpoint,
-                model=llm_model,
-                api_key=llm_api_key,
-            )
-
-            # OPTIMIZED: Use new finalizer that only processes pending fields
-            logger.info(
-                f"Finalizing field dictionary for investigation {investigation_id} using {llm_model}..."
-            )
-
-            stats = await finalize_field_dictionary(
-                db=db,
-                investigation_id=str(investigation_id),
-                llm_client=llm_client,
-                max_output_tokens=min(16_384, int(llm_max_context * 0.75)),
-            )
-
-            fields_processed = stats.get("fields_processed", 0)
-            event_types = stats.get("event_types_processed", 0)
-
-            logger.info(
-                f"Field dictionary finalization complete for investigation {investigation_id}. "
-                f"Processed {fields_processed:,} fields across {event_types:,} event types."
-            )
-
-            # Notify WebSocket clients that field dictionary is ready
-            await notify_websocket_clients(
-                investigation_id=investigation_id,
-                message={
-                    "type": "field_dictionary_ready",
-                    "investigation_id": str(investigation_id),
-                    "field_count": fields_processed,
-                    "event_types": event_types,
-                },
-            )
-
-    except Exception as e:
-        logger.error(
-            f"Background field dictionary generation failed for investigation {investigation_id}: {e}",
-            exc_info=True,
-        )
-        # Don't fail - this is a background optimization task
-        # Field dictionary will be generated on first agent run if this fails
 
 
 # Database engine for main process
@@ -169,7 +50,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def check_and_clear_parsing_lock(db: AsyncSession, investigation_id: uuid_pkg.UUID):
     """
-    Check for remaining parsing jobs associated with an investigation and, if none are found, release the investigation's parsing lock while notifying clients and initiating background field-dictionary generation.
+    Check for remaining parsing jobs associated with an investigation and, if none are found, release the investigation's parsing lock while notifying clients.
 
     Args:
         db: An active asynchronous SQLAlchemy session used to query `ParsingJob` records.
@@ -199,10 +80,6 @@ async def check_and_clear_parsing_lock(db: AsyncSession, investigation_id: uuid_
                 "investigation_id": str(investigation_id),
             },
         )
-
-        # Trigger field dictionary generation in background
-        # This will pre-populate the field_dictionary table for faster agent startup
-        asyncio.create_task(generate_field_dictionary_background(investigation_id))
     else:
         logger.debug(
             f"Investigation {investigation_id} still has {len(remaining_jobs):,} parsing job(s) pending/running"
@@ -657,13 +534,19 @@ async def process_agent_job(
 
             logger.info(f"Agent job {job_id} completed successfully")
 
-            # Check if investigation was incomplete and generate continuation choices
-            if investigation_incomplete:
-                logger.info(
-                    f"Investigation incomplete - generating continuation choices for job {job_id}"
-                )
+            # Note: agent_completed message was already sent by the agent during run()
+            # No need to send job_completed - it would create a duplicate message
 
-                try:
+        # SEPARATE TRANSACTION: Generate continuation choices AFTER job is marked complete
+        # This prevents transaction errors if choice creation fails
+        if investigation_incomplete and not agent_error:
+            logger.info(
+                f"Investigation incomplete - generating continuation choices for job {job_id}"
+            )
+
+            try:
+                # Open a NEW session for choice creation (separate transaction)
+                async with AsyncSessionLocal() as choice_db:
                     # Generate 3 continuation choices with different effort levels
                     turns_executed = agent_stats.get("turns_executed", 0)
                     tools_executed = agent_stats.get("tool_executions", 0)
@@ -720,8 +603,8 @@ async def process_agent_job(
                         ),
                     ]
 
-                    # Create choices in database
-                    created_choices = await create_investigation_choices_bulk(db, choices_to_create)
+                    # Create choices in database (separate transaction)
+                    created_choices = await create_investigation_choices_bulk(choice_db, choices_to_create)
 
                     logger.info(
                         f"Created {len(created_choices):,} continuation choices for job {job_id} "
@@ -748,15 +631,12 @@ async def process_agent_job(
                         },
                     )
 
-                except Exception as choice_error:
-                    logger.error(
-                        f"Failed to create investigation choices for job {job_id}: {choice_error}",
-                        exc_info=True,
-                    )
-                    # Don't fail the job if choice creation fails
-
-            # Note: agent_completed message was already sent by the agent during run()
-            # No need to send job_completed - it would create a duplicate message
+            except Exception as choice_error:
+                logger.error(
+                    f"Failed to create investigation choices for job {job_id}: {choice_error}",
+                    exc_info=True,
+                )
+                # Don't fail the job if choice creation fails - job is already marked complete
 
     except Exception as e:
         logger.error(f"Agent job {job_id} failed: {e}", exc_info=True)

@@ -14,7 +14,7 @@ playbook: |
   
   1. **Directory Service Replication (Event ID 4662)**
      - Primary DCSync detection event
-     - Fields: EventData.SubjectUserName, EventData.ObjectName, EventData.Properties
+     - Fields: event_data.SubjectUserName, event_data.ObjectName, event_data.Properties
      - Query: event_type='evtx_security_4662'
      - Critical GUIDs in Properties field:
        - **1131f6aa-9c07-11d1-f79f-00c04fc2dcd2**: DS-Replication-Get-Changes
@@ -24,8 +24,8 @@ playbook: |
   
   2. **Unusual Replication Source (Event ID 4662)**
      - DCSync from workstations or member servers
-     - Fields: EventData.SubjectUserName, EventData.SubjectLogonId
-     - Query: `query_jsonb_field` with jsonb_path='EventData.Properties', operator='ILIKE', value='%1131f6aa%'
+     - Fields: event_data.SubjectUserName, event_data.SubjectLogonId
+     - Query: `query_jsonb_field` with jsonb_path='event_data.Properties', operator='ILIKE', value='%1131f6aa%'
      - Cross-reference: Check SubjectUserName - should only be domain controllers
      - Red flags: 
        - Replication from WORKSTATION* or SERVER* (not DC)
@@ -43,33 +43,33 @@ playbook: |
   4. **Network Replication Traffic (Sysmon 3)**
      - DCSync generates RPC traffic to domain controllers
      - Destination port: 135 (RPC), then dynamic high port
-     - Fields: EventData.DestinationPort, EventData.DestinationIp, EventData.Image
-     - Query: `query_jsonb_field` with jsonb_path='EventData.DestinationPort', value='135'
+     - Fields: event_data.DestinationPort, event_data.DestinationIp, event_data.Image
+     - Query: `query_jsonb_field` with jsonb_path='event_data.DestinationPort', value='135'
      - Cross-reference: Check if source is a workstation connecting to DC
      - Red flags: Workstations making RPC connections to DCs
   
   5. **Privileged Account Usage (Event ID 4672)**
      - DCSync requires special privileges
      - Required rights: DS-Replication-Get-Changes permissions
-     - Fields: EventData.SubjectUserName, EventData.PrivilegeList
+     - Fields: event_data.SubjectUserName, event_data.PrivilegeList
      - Query: event_type='evtx_security_4672'
      - Red flags: Non-admin accounts with replication privileges
   
   6. **Explicit Credential Usage (Event ID 4648)**
      - Attacker may use stolen credentials for DCSync
-     - Fields: EventData.TargetUserName, EventData.TargetServerName
+     - Fields: event_data.TargetUserName, event_data.TargetServerName
      - Query: event_type='evtx_security_4648'
      - Red flags: Credentials used for replication from non-DC
   
   7. **Account Enumeration (Event ID 4662)**
      - Attackers may enumerate accounts before DCSync
-     - Fields: EventData.ObjectName (user accounts)
+     - Fields: event_data.ObjectName (user accounts)
      - Query: Aggregate by SubjectUserName to find bulk enumeration
      - Red flags: Rapid access to multiple user objects
   
   8. **Kerberos Ticket Requests (Event ID 4769)**
      - DCSync requires Kerberos ticket to DC
-     - Fields: EventData.ServiceName (LDAP or cifs), EventData.TargetUserName
+     - Fields: event_data.ServiceName (LDAP or cifs), event_data.TargetUserName
      - Query: event_type='evtx_security_4769' with ServiceName='ldap'
      - Red flags: LDAP service tickets from unusual accounts
   
@@ -140,13 +140,13 @@ playbook: |
   
   ```
   # Find all DCSync events (Event 4662 with replication GUIDs)
-  query_jsonb_field(jsonb_path='EventData.Properties', operator='ILIKE', value='%1131f6aa%',
+  query_jsonb_field(jsonb_path='event_data.Properties', operator='ILIKE', value='%1131f6aa%',
                     event_type='evtx_security_4662', description='DCSync Get-Changes')
-  query_jsonb_field(jsonb_path='EventData.Properties', operator='ILIKE', value='%1131f6ad%',
+  query_jsonb_field(jsonb_path='event_data.Properties', operator='ILIKE', value='%1131f6ad%',
                     event_type='evtx_security_4662', description='DCSync Get-Changes-All')
   
   # Identify DCSync source accounts
-  aggregate_jsonb_field(jsonb_path='EventData.SubjectUserName', aggregation='top_values',
+  aggregate_jsonb_field(jsonb_path='event_data.SubjectUserName', aggregation='top_values',
                         event_type='evtx_security_4662', description='Replication accounts')
   
   # Find Mimikatz DCSync commands
@@ -154,7 +154,7 @@ playbook: |
   search_events_by_content(value='dcsync', description='DCSync tool usage')
   
   # Find RPC connections to DCs (Sysmon 3)
-  query_jsonb_field(jsonb_path='EventData.DestinationPort', operator='=', value='135',
+  query_jsonb_field(jsonb_path='event_data.DestinationPort', operator='=', value='135',
                     event_type='evtx_sysmon_3', description='RPC connections to DCs')
   ```
   

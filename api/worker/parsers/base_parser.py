@@ -137,7 +137,7 @@ class BaseParser(ABC):
             logger.debug(f"{parser_name} inserted {events_inserted} events from {file_path}")
             return events_inserted
         except Exception as e:
-            logger.error(f"{parser_name} failed to parse {file_path}: {e}")
+            logger.info(f"{parser_name} failed to parse {file_path}: {e}")
             logger.debug(f"{parser_name} failed to parse {file_path}: {e}", exc_info=True)
             raise RuntimeError(f"{parser_name} parsing failed: {e}")
     
@@ -179,7 +179,7 @@ class BaseParser(ABC):
                     payload_obj = json.loads(event["payload"])
                     event["payload"] = safe_json_dumps(payload_obj)
                 except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"Failed to sanitize payload, using as-is: {e}")
+                    logger.debug(f"Failed to sanitize payload, using as-is: {e}")
         
         # Use unified events table
         insert_query = text(

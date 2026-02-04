@@ -55,83 +55,91 @@ async def search_events_by_type(
     * The function logs informational messages about the search parameters, result size, and pagination details.
     * If `stats` is provided, its `events_analyzed` entry is incremented by the number of events returned.
     """
-    # Ensure limit and offset are integers (LLM may pass strings)
-    limit = int(limit) if limit else 10
-    offset = int(offset) if offset else 0
-    limit = min(limit, 50)  # Cap at 50
+    try:
+        # Ensure limit and offset are integers (LLM may pass strings)
+        limit = int(limit) if limit else 10
+        offset = int(offset) if offset else 0
+        limit = min(limit, 50)  # Cap at 50
 
-    # Convert wildcard to SQL LIKE pattern
-    pattern = event_type.replace("*", "%")
+        # Convert wildcard to SQL LIKE pattern
+        pattern = event_type.replace("*", "%")
 
-    logger.info(f"Searching events by type: pattern='{pattern}', limit={limit}, offset={offset}")
+        logger.info(f"Searching events by type: pattern='{pattern}', limit={limit}, offset={offset}")
 
-    result = await db.execute(
-        text(
+        result = await db.execute(
+            text(
+                """
+                SELECT event_id, event_ts, event_type, artifact_id, payload
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND event_type LIKE :pattern
+                ORDER BY event_ts DESC
+                LIMIT :limit OFFSET :offset
             """
-            SELECT event_id, event_ts, event_type, artifact_id, payload
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND event_type LIKE :pattern
-            ORDER BY event_ts DESC
-            LIMIT :limit OFFSET :offset
-        """
-        ),
-        {
-            "investigation_id": investigation_id,
-            "pattern": pattern,
+            ),
+            {
+                "investigation_id": investigation_id,
+                "pattern": pattern,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+
+        rows = result.fetchall()
+        events = [
+            {
+                "event_id": row[0],
+                "event_ts": row[1].isoformat() if row[1] else None,
+                "event_type": row[2],
+                "artifact_id": row[3],
+                "payload": row[4],
+            }
+            for row in rows
+        ]
+
+        if stats is not None:
+            stats["events_analyzed"] = stats.get("events_analyzed", 0) + len(events)
+
+        # Get total count for pagination info
+        count_result = await db.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND event_type LIKE :pattern
+            """
+            ),
+            {"investigation_id": investigation_id, "pattern": pattern},
+        )
+        total_count = count_result.scalar() or 0
+
+        # Calculate pagination info
+        current_page = (offset // limit) + 1 if limit > 0 else 1
+        total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+
+        logger.info(
+            f"search_events_by_type returned {len(events)} events (pattern='{pattern}'), "
+            f"page {current_page}/{total_pages}, total={total_count}"
+        )
+
+        return {
+            "count": len(events),
+            "total_count": total_count,
+            "current_page": current_page,
+            "total_pages": total_pages,
+            "events": events,
+            "has_more": len(events) == limit,
             "limit": limit,
             "offset": offset,
-        },
-    )
-
-    rows = result.fetchall()
-    events = [
-        {
-            "event_id": row[0],
-            "event_ts": row[1].isoformat() if row[1] else None,
-            "event_type": row[2],
-            "artifact_id": row[3],
-            "payload": row[4],
         }
-        for row in rows
-    ]
-
-    if stats is not None:
-        stats["events_analyzed"] = stats.get("events_analyzed", 0) + len(events)
-
-    # Get total count for pagination info
-    count_result = await db.execute(
-        text(
-            """
-            SELECT COUNT(*)
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND event_type LIKE :pattern
-        """
-        ),
-        {"investigation_id": investigation_id, "pattern": pattern},
-    )
-    total_count = count_result.scalar() or 0
-
-    # Calculate pagination info
-    current_page = (offset // limit) + 1 if limit > 0 else 1
-    total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
-
-    logger.info(
-        f"search_events_by_type returned {len(events)} events (pattern='{pattern}'), "
-        f"page {current_page}/{total_pages}, total={total_count}"
-    )
-
-    return {
-        "count": len(events),
-        "total_count": total_count,
-        "current_page": current_page,
-        "total_pages": total_pages,
-        "events": events,
-        "has_more": len(events) == limit,
-        "limit": limit,
-        "offset": offset,
-    }
+    except Exception as e:
+        logger.error(f"search_events_by_type failed: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        return {"error": f"Failed to search events by type: {str(e)}"}
 
 
 async def search_events_by_timerange(
@@ -184,103 +192,111 @@ async def search_events_by_timerange(
     ------------
     Logs informational messages about the search parameters, result counts, and pagination details. May modify the *stats* dictionary if provided.
     """
-    # Ensure limit and offset are integers
-    limit = int(limit) if limit else 10
-    offset = int(offset) if offset else 0
-    limit = min(limit, 50)
+    try:
+        # Ensure limit and offset are integers
+        limit = int(limit) if limit else 10
+        offset = int(offset) if offset else 0
+        limit = min(limit, 50)
 
-    conditions = []
-    params: Dict[str, Any] = {"limit": limit, "offset": offset}
+        conditions = []
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
 
-    if start_time:
-        conditions.append("event_ts >= :start_time")
-        # Parse ISO timestamp string to datetime object
-        try:
-            params["start_time"] = date_parser.parse(start_time)
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse start_time '{start_time}': {e}")
-            params["start_time"] = start_time  # Let DB handle the error
+        if start_time:
+            conditions.append("event_ts >= :start_time")
+            # Parse ISO timestamp string to datetime object
+            try:
+                params["start_time"] = date_parser.parse(start_time)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse start_time '{start_time}': {e}")
+                params["start_time"] = start_time  # Let DB handle the error
 
-    if end_time:
-        conditions.append("event_ts <= :end_time")
-        # Parse ISO timestamp string to datetime object
-        try:
-            params["end_time"] = date_parser.parse(end_time)
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse end_time '{end_time}': {e}")
-            params["end_time"] = end_time  # Let DB handle the error
+        if end_time:
+            conditions.append("event_ts <= :end_time")
+            # Parse ISO timestamp string to datetime object
+            try:
+                params["end_time"] = date_parser.parse(end_time)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse end_time '{end_time}': {e}")
+                params["end_time"] = end_time  # Let DB handle the error
 
-    if event_type:
-        pattern = event_type.replace("*", "%")
-        conditions.append("event_type LIKE :pattern")
-        params["pattern"] = pattern
+        if event_type:
+            pattern = event_type.replace("*", "%")
+            conditions.append("event_type LIKE :pattern")
+            params["pattern"] = pattern
 
-    where_clause = " AND ".join(conditions) if conditions else "TRUE"
+        where_clause = " AND ".join(conditions) if conditions else "TRUE"
 
-    logger.info(f"Searching events by timerange: {params}")
+        logger.info(f"Searching events by timerange: {params}")
 
-    result = await db.execute(
-        text(
-            f"""
-            SELECT event_id, event_ts, event_type, artifact_id, payload
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND {where_clause}
-            ORDER BY event_ts DESC
-            LIMIT :limit OFFSET :offset
-        """
-        ),
-        {"investigation_id": investigation_id, **params},
-    )
+        result = await db.execute(
+            text(
+                f"""
+                SELECT event_id, event_ts, event_type, artifact_id, payload
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND {where_clause}
+                ORDER BY event_ts DESC
+                LIMIT :limit OFFSET :offset
+            """
+            ),
+            {"investigation_id": investigation_id, **params},
+        )
 
-    rows = result.fetchall()
-    events = [
-        {
-            "event_id": row[0],
-            "event_ts": row[1].isoformat() if row[1] else None,
-            "event_type": row[2],
-            "artifact_id": row[3],
-            "payload": row[4],
+        rows = result.fetchall()
+        events = [
+            {
+                "event_id": row[0],
+                "event_ts": row[1].isoformat() if row[1] else None,
+                "event_type": row[2],
+                "artifact_id": row[3],
+                "payload": row[4],
+            }
+            for row in rows
+        ]
+
+        if stats is not None:
+            stats["events_analyzed"] = stats.get("events_analyzed", 0) + len(events)
+
+        # Get total count for pagination info
+        count_result = await db.execute(
+            text(
+                f"""
+                SELECT COUNT(*)
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND {where_clause}
+            """
+            ),
+            {"investigation_id": investigation_id, **params},
+        )
+        total_count = count_result.scalar() or 0
+
+        # Calculate pagination info
+        current_page = (offset // limit) + 1 if limit > 0 else 1
+        total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+
+        logger.info(
+            f"search_events_by_timerange returned {len(events)} events, "
+            f"page {current_page}/{total_pages}, total={total_count}"
+        )
+
+        return {
+            "count": len(events),
+            "total_count": total_count,
+            "current_page": current_page,
+            "total_pages": total_pages,
+            "events": events,
+            "has_more": len(events) == limit,
+            "limit": limit,
+            "offset": offset,
         }
-        for row in rows
-    ]
-
-    if stats is not None:
-        stats["events_analyzed"] = stats.get("events_analyzed", 0) + len(events)
-
-    # Get total count for pagination info
-    count_result = await db.execute(
-        text(
-            f"""
-            SELECT COUNT(*)
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND {where_clause}
-        """
-        ),
-        {"investigation_id": investigation_id, **params},
-    )
-    total_count = count_result.scalar() or 0
-
-    # Calculate pagination info
-    current_page = (offset // limit) + 1 if limit > 0 else 1
-    total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
-
-    logger.info(
-        f"search_events_by_timerange returned {len(events)} events, "
-        f"page {current_page}/{total_pages}, total={total_count}"
-    )
-
-    return {
-        "count": len(events),
-        "total_count": total_count,
-        "current_page": current_page,
-        "total_pages": total_pages,
-        "events": events,
-        "has_more": len(events) == limit,
-        "limit": limit,
-        "offset": offset,
-    }
+    except Exception as e:
+        logger.error(f"search_events_by_timerange failed: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        return {"error": f"Failed to search events by timerange: {str(e)}"}
 
 
 async def search_events_by_content(
@@ -340,92 +356,100 @@ async def search_events_by_content(
     if not search_value:
         return {"error": "Missing required parameter: search_text"}
 
-    # Ensure limit and offset are integers
-    limit = int(limit) if limit else 10
-    offset = int(offset) if offset else 0
-    limit = min(limit, 50)
+    try:
+        # Ensure limit and offset are integers
+        limit = int(limit) if limit else 10
+        offset = int(offset) if offset else 0
+        limit = min(limit, 50)
 
-    conditions = ["payload::text ILIKE :search_pattern"]
-    params: Dict[str, Any] = {
-        "search_pattern": f"%{search_value}%",
-        "limit": limit,
-        "offset": offset,
-    }
-
-    if event_type:
-        pattern = event_type.replace("*", "%")
-        conditions.append("event_type LIKE :event_pattern")
-        params["event_pattern"] = pattern
-
-    where_clause = " AND ".join(conditions)
-
-    logger.info(
-        f"Searching events by content: search_text='{search_value}', event_type={event_type}"
-    )
-
-    result = await db.execute(
-        text(
-            f"""
-            SELECT event_id, event_ts, event_type, artifact_id, payload
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND {where_clause}
-            ORDER BY event_ts DESC
-            LIMIT :limit OFFSET :offset
-        """
-        ),
-        {"investigation_id": investigation_id, **params},
-    )
-
-    rows = result.fetchall()
-    events = [
-        {
-            "event_id": row[0],
-            "event_ts": row[1].isoformat() if row[1] else None,
-            "event_type": row[2],
-            "artifact_id": row[3],
-            "payload": row[4],
+        conditions = ["payload::text ILIKE :search_pattern"]
+        params: Dict[str, Any] = {
+            "search_pattern": f"%{search_value}%",
+            "limit": limit,
+            "offset": offset,
         }
-        for row in rows
-    ]
 
-    if stats is not None:
-        stats["events_analyzed"] = stats.get("events_analyzed", 0) + len(events)
+        if event_type:
+            pattern = event_type.replace("*", "%")
+            conditions.append("event_type LIKE :event_pattern")
+            params["event_pattern"] = pattern
 
-    # Get total count for pagination info
-    count_result = await db.execute(
-        text(
-            f"""
-            SELECT COUNT(*)
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND {where_clause}
-        """
-        ),
-        {"investigation_id": investigation_id, **params},
-    )
-    total_count = count_result.scalar() or 0
+        where_clause = " AND ".join(conditions)
 
-    # Calculate pagination info
-    current_page = (offset // limit) + 1 if limit > 0 else 1
-    total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+        logger.info(
+            f"Searching events by content: search_text='{search_value}', event_type={event_type}"
+        )
 
-    logger.info(
-        f"search_events_by_content returned {len(events)} events (search_text='{search_value}'), "
-        f"page {current_page}/{total_pages}, total={total_count}"
-    )
+        result = await db.execute(
+            text(
+                f"""
+                SELECT event_id, event_ts, event_type, artifact_id, payload
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND {where_clause}
+                ORDER BY event_ts DESC
+                LIMIT :limit OFFSET :offset
+            """
+            ),
+            {"investigation_id": investigation_id, **params},
+        )
 
-    return {
-        "count": len(events),
-        "total_count": total_count,
-        "current_page": current_page,
-        "total_pages": total_pages,
-        "search_text": search_value,
-        "events": events,
-        "has_more": len(events) == limit,
-        "limit": limit,
-        "offset": offset,
-    }
+        rows = result.fetchall()
+        events = [
+            {
+                "event_id": row[0],
+                "event_ts": row[1].isoformat() if row[1] else None,
+                "event_type": row[2],
+                "artifact_id": row[3],
+                "payload": row[4],
+            }
+            for row in rows
+        ]
+
+        if stats is not None:
+            stats["events_analyzed"] = stats.get("events_analyzed", 0) + len(events)
+
+        # Get total count for pagination info
+        count_result = await db.execute(
+            text(
+                f"""
+                SELECT COUNT(*)
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND {where_clause}
+            """
+            ),
+            {"investigation_id": investigation_id, **params},
+        )
+        total_count = count_result.scalar() or 0
+
+        # Calculate pagination info
+        current_page = (offset // limit) + 1 if limit > 0 else 1
+        total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+
+        logger.info(
+            f"search_events_by_content returned {len(events)} events (search_text='{search_value}'), "
+            f"page {current_page}/{total_pages}, total={total_count}"
+        )
+
+        return {
+            "count": len(events),
+            "total_count": total_count,
+            "current_page": current_page,
+            "total_pages": total_pages,
+            "search_text": search_value,
+            "events": events,
+            "has_more": len(events) == limit,
+            "limit": limit,
+            "offset": offset,
+        }
+    except Exception as e:
+        logger.error(f"search_events_by_content failed: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        return {"error": f"Failed to search events by content: {str(e)}"}
 
 
 async def get_event_by_id(
@@ -461,33 +485,41 @@ async def get_event_by_id(
 
         If no matching row is found, returns a dictionary with a single key `error` describing the missing event.
     """
-    result = await db.execute(
-        text(
+    try:
+        result = await db.execute(
+            text(
+                """
+                SELECT event_id, event_ts, event_type, artifact_id, payload
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND event_id = :event_id
             """
-            SELECT event_id, event_ts, event_type, artifact_id, payload
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND event_id = :event_id
-        """
-        ),
-        {"investigation_id": investigation_id, "event_id": event_id},
-    )
+            ),
+            {"investigation_id": investigation_id, "event_id": event_id},
+        )
 
-    row = result.fetchone()
+        row = result.fetchone()
 
-    if not row:
-        return {"error": f"Event {event_id} not found"}
+        if not row:
+            return {"error": f"Event {event_id} not found"}
 
-    if stats is not None:
-        stats["events_analyzed"] = stats.get("events_analyzed", 0) + 1
+        if stats is not None:
+            stats["events_analyzed"] = stats.get("events_analyzed", 0) + 1
 
-    return {
-        "event_id": row[0],
-        "event_ts": row[1].isoformat() if row[1] else None,
-        "event_type": row[2],
-        "artifact_id": row[3],
-        "payload": row[4],
-    }
+        return {
+            "event_id": row[0],
+            "event_ts": row[1].isoformat() if row[1] else None,
+            "event_type": row[2],
+            "artifact_id": row[3],
+            "payload": row[4],
+        }
+    except Exception as e:
+        logger.error(f"get_event_by_id failed: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        return {"error": f"Failed to get event by ID: {str(e)}"}
 
 
 async def query_jsonb_field(
@@ -574,31 +606,33 @@ async def query_jsonb_field(
     # Build JSONB query condition
     if value is not None:
         # Handle different operator types
+        # Note: ->> operator returns text, so all values must be converted to strings
         if operator.upper() in ["LIKE", "ILIKE"]:
             # Convert user-friendly * wildcards to SQL % wildcards
-            sql_value = value.replace("*", "%")
+            sql_value = str(value).replace("*", "%")
             conditions.append(f"payload->>:jsonb_path {operator.upper()} :value")
             params["value"] = sql_value
             params["jsonb_path"] = jsonb_path
         elif operator.upper() == "CONTAINS":
             # Contains: case-insensitive substring match
             conditions.append("payload->>:jsonb_path ILIKE :value")
-            params["value"] = f"%{value}%"
+            params["value"] = f"%{str(value)}%"
             params["jsonb_path"] = jsonb_path
         elif operator.upper() == "STARTS_WITH":
             # Starts with: case-insensitive prefix match
             conditions.append("payload->>:jsonb_path ILIKE :value")
-            params["value"] = f"{value}%"
+            params["value"] = f"{str(value)}%"
             params["jsonb_path"] = jsonb_path
         elif operator.upper() == "ENDS_WITH":
             # Ends with: case-insensitive suffix match
             conditions.append("payload->>:jsonb_path ILIKE :value")
-            params["value"] = f"%{value}"
+            params["value"] = f"%{str(value)}"
             params["jsonb_path"] = jsonb_path
         else:
             # For other operators, use ->> for text comparison
+            # IMPORTANT: Convert value to string because ->> returns text
             conditions.append(f"payload->>:jsonb_path {operator} :value")
-            params["value"] = value
+            params["value"] = str(value)
             params["jsonb_path"] = jsonb_path
     else:
         # Check if field exists (use ? operator with parameterized key)
@@ -848,59 +882,67 @@ async def get_available_jsonb_fields(
     Returns:
         A list of unique field names sorted alphabetically. The list may be empty if no events match the criteria or payloads contain no extractable keys.
     """
-    # Build query to get sample_size events per event_type
-    # Using a window function to get top N per partition
-    query = f"""
-        SELECT event_type, payload
-        FROM (
-            SELECT event_type, payload,
-                   ROW_NUMBER() OVER (PARTITION BY event_type ORDER BY event_ts DESC) as rn
-            FROM events
-            WHERE investigation_id = :investigation_id
-    """
-    params: Dict[str, Any] = {"investigation_id": investigation_id, "sample_size": sample_size}
+    try:
+        # Build query to get sample_size events per event_type
+        # Using a window function to get top N per partition
+        query = f"""
+            SELECT event_type, payload
+            FROM (
+                SELECT event_type, payload,
+                       ROW_NUMBER() OVER (PARTITION BY event_type ORDER BY event_ts DESC) as rn
+                FROM events
+                WHERE investigation_id = :investigation_id
+        """
+        params: Dict[str, Any] = {"investigation_id": investigation_id, "sample_size": sample_size}
 
-    if event_type:
-        pattern = event_type.replace("*", "%")
-        query += " AND event_type LIKE :pattern"
-        params["pattern"] = pattern
+        if event_type:
+            pattern = event_type.replace("*", "%")
+            query += " AND event_type LIKE :pattern"
+            params["pattern"] = pattern
 
-    query += f"""
-        ) AS ranked
-        WHERE rn <= :sample_size
-        ORDER BY event_type, rn
-    """
+        query += f"""
+            ) AS ranked
+            WHERE rn <= :sample_size
+            ORDER BY event_type, rn
+        """
 
-    result = await db.execute(text(query), params)
-    rows = result.fetchall()
+        result = await db.execute(text(query), params)
+        rows = result.fetchall()
 
-    # Extract all unique field names from payloads
-    field_set = set()
+        # Extract all unique field names from payloads
+        field_set = set()
 
-    for row in rows:
-        payload = row[1]  # payload is the second column
+        for row in rows:
+            payload = row[1]  # payload is the second column
 
-        if isinstance(payload, dict):
-            # Payload is already a dict (JSONB)
-            field_set.update(payload.keys())
-        elif isinstance(payload, str):
-            # Payload might be a JSON string
-            try:
-                payload_dict = json.loads(payload)
-                if isinstance(payload_dict, dict):
-                    field_set.update(payload_dict.keys())
-            except (json.JSONDecodeError, TypeError):
-                pass
+            if isinstance(payload, dict):
+                # Payload is already a dict (JSONB)
+                field_set.update(payload.keys())
+            elif isinstance(payload, str):
+                # Payload might be a JSON string
+                try:
+                    payload_dict = json.loads(payload)
+                    if isinstance(payload_dict, dict):
+                        field_set.update(payload_dict.keys())
+                except (json.JSONDecodeError, TypeError):
+                    pass
 
-    # Return sorted list of field names
-    fields = sorted(list(field_set))
+        # Return sorted list of field names
+        fields = sorted(list(field_set))
 
-    logger.info(
-        f"Extracted {len(fields)} unique JSONB fields from {len(rows)} sampled events "
-        f"(~{sample_size} per event type) in investigation {investigation_id}"
-    )
+        logger.info(
+            f"Extracted {len(fields)} unique JSONB fields from {len(rows)} sampled events "
+            f"(~{sample_size} per event type) in investigation {investigation_id}"
+        )
 
-    return fields
+        return fields
+    except Exception as e:
+        logger.error(f"get_available_jsonb_fields failed: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        return []
 
 
 async def count_events(
@@ -935,50 +977,58 @@ async def count_events(
     ------
     Any exception raised by the underlying database driver or SQLAlchemy during query execution will propagate to the caller. Invalid timestamp strings may also cause database-level errors if they cannot be interpreted.
     """
-    conditions = []
-    params: Dict[str, Any] = {}
+    try:
+        conditions = []
+        params: Dict[str, Any] = {}
 
-    if event_type:
-        pattern = event_type.replace("*", "%")
-        conditions.append("event_type LIKE :pattern")
-        params["pattern"] = pattern
+        if event_type:
+            pattern = event_type.replace("*", "%")
+            conditions.append("event_type LIKE :pattern")
+            params["pattern"] = pattern
 
-    if start_time:
-        conditions.append("event_ts >= :start_time")
-        # Parse ISO timestamp string to datetime object
+        if start_time:
+            conditions.append("event_ts >= :start_time")
+            # Parse ISO timestamp string to datetime object
+            try:
+                params["start_time"] = date_parser.parse(start_time)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse start_time '{start_time}': {e}")
+                params["start_time"] = start_time  # Let DB handle the error
+
+        if end_time:
+            conditions.append("event_ts <= :end_time")
+            # Parse ISO timestamp string to datetime object
+            try:
+                params["end_time"] = date_parser.parse(end_time)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse end_time '{end_time}': {e}")
+                params["end_time"] = end_time  # Let DB handle the error
+
+        where_clause = " AND ".join(conditions) if conditions else "TRUE"
+
+        logger.info(f"Counting events: {params}")
+
+        result = await db.execute(
+            text(
+                f"""
+                SELECT COUNT(*) 
+                FROM events
+                WHERE investigation_id = :investigation_id
+                  AND {where_clause}
+            """
+            ),
+            {"investigation_id": investigation_id, **params},
+        )
+
+        count = result.scalar()
+
+        logger.info(f"count_events returned {count} events")
+
+        return {"count": count}
+    except Exception as e:
+        logger.error(f"count_events failed: {e}", exc_info=True)
         try:
-            params["start_time"] = date_parser.parse(start_time)
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse start_time '{start_time}': {e}")
-            params["start_time"] = start_time  # Let DB handle the error
-
-    if end_time:
-        conditions.append("event_ts <= :end_time")
-        # Parse ISO timestamp string to datetime object
-        try:
-            params["end_time"] = date_parser.parse(end_time)
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse end_time '{end_time}': {e}")
-            params["end_time"] = end_time  # Let DB handle the error
-
-    where_clause = " AND ".join(conditions) if conditions else "TRUE"
-
-    logger.info(f"Counting events: {params}")
-
-    result = await db.execute(
-        text(
-            f"""
-            SELECT COUNT(*) 
-            FROM events
-            WHERE investigation_id = :investigation_id
-              AND {where_clause}
-        """
-        ),
-        {"investigation_id": investigation_id, **params},
-    )
-
-    count = result.scalar()
-
-    logger.info(f"count_events returned {count} events")
-
-    return {"count": count}
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        return {"error": f"Failed to count events: {str(e)}"}

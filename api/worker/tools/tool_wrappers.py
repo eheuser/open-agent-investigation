@@ -898,7 +898,7 @@ def register_all_tools():
                 "properties": {
                     "jsonb_path": {
                         "type": "string",
-                        "description": "Dotted path to field (e.g., 'event_data.TargetUserName', 'event_data.LogonType'). Use exact field names from field dictionary.",
+                        "description": "Dotted path to field (e.g., 'event_data.TargetUserName', 'event_data.LogonType'). Use exact field names from available JSONB fields.",
                     },
                     "operator": {
                         "type": "string",
@@ -934,7 +934,7 @@ def register_all_tools():
                 "properties": {
                     "jsonb_path": {
                         "type": "string",
-                        "description": "Dotted path to field to aggregate (e.g., 'EventData.TargetUserName', 'EventData.IpAddress')",
+                        "description": "Dotted path to field to aggregate (e.g., 'event_data.TargetUserName', 'event_data.IpAddress')",
                     },
                     "aggregation": {
                         "type": "string",

@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { ChatMessage, ToolExecution } from '../../hooks/useInvestigationChat';
 import { ChevronDownIcon, ChevronRightIcon, MagnifyingGlassIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
+import EventCard from './EventCard';
 
 interface ToolExecutionCardProps {
   message?: ChatMessage;
@@ -263,11 +264,30 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({ message, toolExec
                     )}
                   </button>
                 </div>
-                <div className="bg-white dark:bg-gray-900 rounded p-2 text-xs font-mono overflow-x-auto max-h-96">
-                  <pre className="text-gray-800 dark:text-gray-200">
-                    {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-                  </pre>
-                </div>
+                
+                {/* Check if result contains events array */}
+                {typeof result === 'object' && result.events && Array.isArray(result.events) ? (
+                  <div className="space-y-2">
+                    <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                      {result.count || result.events.length} event{(result.count || result.events.length) !== 1 ? 's' : ''} found
+                    </div>
+                    {result.events.slice(0, 5).map((event: any, idx: number) => (
+                      <EventCard key={`event-${idx}`} event={event} isQueryResult={true} />
+                    ))}
+                    {result.events.length > 5 && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+                        ... and {result.events.length - 5} more events
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Fallback to JSON display */
+                  <div className="bg-white dark:bg-gray-900 rounded p-2 text-xs font-mono overflow-x-auto max-h-96">
+                    <pre className="text-gray-800 dark:text-gray-200">
+                      {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
           </div>

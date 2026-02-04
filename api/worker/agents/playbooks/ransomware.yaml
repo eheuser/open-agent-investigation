@@ -1,0 +1,355 @@
+name: ransomware
+display_name: Ransomware Detection
+description: Investigation strategies for detecting ransomware attacks - identifying encryption activity, shadow copy deletion, backup tampering, and ransom note delivery
+
+playbook: |
+  ## RANSOMWARE INVESTIGATION PLAYBOOK
+  
+  ### What is Ransomware?
+  Malware that encrypts files and demands payment for decryption. Modern ransomware often includes data exfiltration (double extortion) and targets backups to prevent recovery.
+  
+  ### Key Indicators to Investigate:
+  
+  1. **Shadow Copy Deletion (Event ID 4688, Sysmon 1)**
+     - Primary ransomware indicator - prevents file recovery
+     - Commands:
+       - `vssadmin.exe delete shadows /all /quiet`
+       - `wmic shadowcopy delete`
+       - `bcdedit.exe /set {default} recoveryenabled no`
+       - `bcdedit.exe /set {default} bootstatuspolicy ignoreallfailures`
+       - `wbadmin delete catalog -quiet`
+     - Fields: EventData.CommandLine, EventData.NewProcessName
+     - Query: `search_events_by_content` for 'vssadmin delete', 'shadowcopy delete', 'bcdedit'
+     - Red flags: ANY shadow copy deletion is highly suspicious
+  
+  2. **Mass File Encryption (Sysmon 11, Event ID 4663)**
+     - Rapid file creation with encrypted extensions
+     - Common ransomware extensions: .locked, .encrypted, .crypt, .crypted, .enc, specific family extensions (.ryuk, .conti, .lockbit)
+     - Fields: EventData.TargetFilename, EventData.ProcessName
+     - Query: `search_events_by_content` for ransomware extensions
+     - Patterns:
+       - 100s-1000s of file modifications in minutes
+       - Files renamed with encryption extension
+       - High entropy files (encrypted data appears random)
+     - Red flags: Bulk file modifications by single process
+  
+  3. **Backup Service Tampering (Event ID 4688, 7045, 4697)**
+     - Stopping/disabling backup services
+     - Target services:
+       - Windows Backup (wbengine)
+       - SQL Server backup services
+       - Veeam, Acronis, Veritas backup agents
+       - Volume Shadow Copy Service (VSS)
+     - Commands:
+       - `net stop "Backup Service"`
+       - `sc config wbengine start= disabled`
+       - `taskkill /IM backup.exe /F`
+     - Query: `search_events_by_content` for 'net stop', 'sc config', backup service names
+     - Red flags: Backup services stopped before encryption
+  
+  4. **Ransom Note Creation (Sysmon 11)**
+     - Text files dropped in multiple directories
+     - Common names: README.txt, HOW_TO_DECRYPT.txt, DECRYPT_INSTRUCTIONS.html, ransom.txt
+     - Locations: Desktop, Documents, every encrypted folder
+     - Fields: EventData.TargetFilename
+     - Query: `search_events_by_content` for 'README', 'DECRYPT', 'RANSOM'
+     - Red flags: Identical files created in many directories
+  
+  5. **Process Execution from Unusual Locations (Event ID 4688, Sysmon 1)**
+     - Ransomware often executes from temp/downloads
+     - Suspicious paths:
+       - %TEMP%, %APPDATA%, %PROGRAMDATA%
+       - C:\Users\Public\, Downloads\
+       - Recycle Bin, hidden directories
+     - Fields: EventData.NewProcessName, EventData.CommandLine
+     - Query: `search_events_by_content` for temp paths, downloads
+     - Red flags: Executable running from non-standard location
+  
+  6. **Network Share Encryption (Event ID 5140, 5145)**
+     - Ransomware spreading via network shares
+     - Event 5140: Network share accessed
+     - Event 5145: Network share object accessed
+     - Fields: EventData.ShareName, EventData.RelativeTargetName
+     - Query: event_type='evtx_security_5140' or 'evtx_security_5145'
+     - Patterns: Rapid access to many files on network shares
+     - Red flags: Single account accessing 100s of network files
+  
+  7. **Credential Theft Before Encryption (Sysmon 10)**
+     - Many ransomware variants steal credentials first
+     - LSASS memory access for credential dumping
+     - Fields: EventData.TargetImage (lsass.exe), EventData.SourceImage
+     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetImage', operator='ILIKE', value='%lsass.exe%'
+     - Red flags: LSASS access before encryption activity
+  
+  8. **Service Creation/Modification (Event ID 7045, 4697)**
+     - Ransomware creating services for persistence or execution
+     - Fields: EventData.ServiceName, EventData.ImagePath
+     - Query: event_type='evtx_system_7045' or 'evtx_security_4697'
+     - Red flags: New service with random name, suspicious path
+  
+  9. **Registry Modifications (Sysmon 13)**
+     - Persistence mechanisms, safe mode changes
+     - Common keys:
+       - Run keys: HKLM\Software\Microsoft\Windows\CurrentVersion\Run
+       - Safe mode: HKLM\System\CurrentControlSet\Control\SafeBoot
+       - Boot configuration: HKLM\BCD00000000
+     - Query: event_type='evtx_sysmon_13'
+     - Red flags: Boot configuration changes, safe mode modifications
+  
+  10. **Scheduled Task Creation (Event ID 4698)**
+     - Ransomware using scheduled tasks for delayed execution
+     - Fields: EventData.TaskName, EventData.TaskContent
+     - Query: event_type='evtx_security_4698'
+     - Red flags: Tasks with random names, suspicious execution paths
+  
+  11. **PowerShell/WMI Execution (Event ID 4688, Sysmon 1)**
+     - Ransomware using PowerShell for fileless execution
+     - Commands:
+       - Encoded PowerShell: `-EncodedCommand`, `-Enc`
+       - Download cradles: `IEX(New-Object Net.WebClient).DownloadString`
+       - WMI execution: `wmic process call create`
+     - Query: `search_events_by_content` for 'EncodedCommand', 'DownloadString', 'wmic process'
+     - Red flags: Encoded commands, remote script execution
+  
+  12. **Network Communication to C2 (Sysmon 3)**
+     - Ransomware contacting command and control
+     - Purpose: Receive encryption key, send victim info, exfiltrate data
+     - Fields: EventData.DestinationIp, EventData.DestinationPort
+     - Query: event_type='evtx_sysmon_3'
+     - Red flags: Outbound connections to unusual IPs/ports before encryption
+  
+  ### Investigation Strategy:
+  
+  **Phase 1 - Identify Patient Zero**
+  - Which system was encrypted first?
+  - When did encryption start? (Timeline of file modifications)
+  - What process performed the encryption? (Sysmon 11 ProcessName)
+  - Where did the ransomware execute from? (Process path)
+  
+  **Phase 2 - Assess Scope**
+  - How many systems affected? (Check for lateral spread)
+  - What data was encrypted? (File types, locations)
+  - Were backups compromised? (Shadow copies deleted, backup services stopped)
+  - Were network shares encrypted? (Event 5140/5145)
+  
+  **Phase 3 - Identify Ransomware Family**
+  - What encryption extension? (.ryuk, .conti, .lockbit, etc.)
+  - Ransom note content? (Contact info, payment instructions)
+  - Known indicators? (Hash, file names, C2 domains)
+  - Decryption available? (Check ID Ransomware, No More Ransom)
+  
+  **Phase 4 - Determine Entry Point**
+  - How did ransomware arrive?
+    - Phishing email attachment?
+    - RDP brute force? (Event 4625 failures → 4624 success)
+    - Exploited vulnerability?
+    - Compromised credentials?
+  - Timeline: Entry point → Lateral movement → Encryption
+  
+  **Phase 5 - Check for Data Exfiltration**
+  - Did attacker steal data before encryption? (Double extortion)
+  - Large outbound transfers? (Sysmon 3 network connections)
+  - Exfiltration tools? (rclone, WinSCP, curl, wget)
+  - Cloud uploads? (Mega.nz, Dropbox, OneDrive)
+  
+  ### Ransomware Attack Chain:
+  
+  ```
+  1. Initial Access
+     - Phishing email with malicious attachment
+     - RDP brute force (Event 4625 → 4624)
+     - Exploited vulnerability (web server, VPN)
+     - Compromised credentials
+  
+  2. Execution
+     - Payload executed (Event 4688, Sysmon 1)
+     - Often from temp/downloads directory
+     - May use PowerShell, WMI for fileless execution
+  
+  3. Credential Theft (Optional)
+     - Dump LSASS memory (Sysmon 10)
+     - Steal credentials for lateral movement
+  
+  4. Lateral Movement (Optional)
+     - Spread to other systems via RDP, SMB, WMI
+     - Event 4624 Type 3 (network logon)
+     - Event 5140 (network share access)
+  
+  5. Data Exfiltration (Double Extortion)
+     - Steal sensitive data before encryption
+     - Large outbound transfers (Sysmon 3)
+     - Exfiltration tools (rclone, WinSCP)
+  
+  6. Defense Evasion
+     - Delete shadow copies (vssadmin delete)
+     - Stop backup services (net stop, sc config)
+     - Disable antivirus (Event 5001)
+     - Clear event logs (Event 1102)
+  
+  7. Encryption
+     - Mass file encryption (Sysmon 11)
+     - Files renamed with encryption extension
+     - Ransom notes dropped in every folder
+  
+  8. Impact
+     - Systems unusable
+     - Backups destroyed
+     - Ransom demand delivered
+     - Data leak threatened (double extortion)
+  ```
+  
+  ### Detection Queries:
+  
+  ```
+  # Find shadow copy deletion
+  search_events_by_content(value='vssadmin delete shadows', description='Shadow copy deletion')
+  search_events_by_content(value='shadowcopy delete', description='WMIC shadow copy deletion')
+  search_events_by_content(value='bcdedit', description='Boot configuration changes')
+  
+  # Find backup service tampering
+  search_events_by_content(value='net stop', description='Service stopping')
+  search_events_by_content(value='sc config', description='Service configuration changes')
+  
+  # Find mass file encryption
+  aggregate_jsonb_field(jsonb_path='event_data.Image', aggregation='count',
+                        event_type='evtx_sysmon_11', description='File creation by process')
+  
+  # Find ransom notes
+  search_events_by_content(value='README.txt', description='Ransom note creation')
+  search_events_by_content(value='DECRYPT', description='Decryption instructions')
+  
+  # Find network share encryption
+  aggregate_jsonb_field(jsonb_path='event_data.SubjectUserName', aggregation='count',
+                        event_type='evtx_security_5140', description='Network share access by user')
+  
+  # Find LSASS access
+  query_jsonb_field(jsonb_path='event_data.TargetImage', operator='ILIKE', value='%lsass.exe%',
+                    event_type='evtx_sysmon_10', description='LSASS memory access')
+  ```
+  
+  ### Common Ransomware Families & Indicators:
+  
+  **LockBit**:
+  - Extension: .lockbit, .abcd
+  - Ransom note: Restore-My-Files.txt
+  - Deletes shadow copies, stops services
+  - Fast encryption (multi-threaded)
+  
+  **Conti**:
+  - Extension: .conti, .CONTI
+  - Ransom note: readme.txt
+  - Targets backups aggressively
+  - Often paired with TrickBot/Emotet
+  
+  **Ryuk**:
+  - Extension: .RYK, .ryk
+  - Ransom note: RyukReadMe.txt
+  - High ransom demands (enterprise targets)
+  - Manual deployment after reconnaissance
+  
+  **BlackCat/ALPHV**:
+  - Extension: random 7-character
+  - Ransom note: RECOVER-[ID]-FILES.txt
+  - Rust-based (cross-platform)
+  - Double/triple extortion
+  
+  **Hive**:
+  - Extension: .hive
+  - Ransom note: HOW_TO_DECRYPT.txt
+  - Targets healthcare, critical infrastructure
+  - Exfiltrates data before encryption
+  
+  ### Key Questions to Answer:
+  
+  1. When did encryption start? (First file modification timestamp)
+  2. What process encrypted files? (Sysmon 11 Image field)
+  3. Where did ransomware execute from? (Process path)
+  4. Were shadow copies deleted? (vssadmin/wmic commands)
+  5. Were backups compromised? (Backup services stopped)
+  6. How many systems affected? (Scope of encryption)
+  7. What ransomware family? (Extension, ransom note, indicators)
+  8. How did attacker gain access? (Entry point)
+  9. Was data exfiltrated? (Network transfers before encryption)
+  10. Are decryption tools available? (Check No More Ransom Project)
+  
+  ### Critical Timestamps to Establish:
+  
+  1. **Initial Access**: When did attacker first enter environment?
+  2. **Credential Theft**: When were credentials stolen? (LSASS access)
+  3. **Lateral Movement**: When did attacker spread to other systems?
+  4. **Data Exfiltration**: When was data stolen? (If double extortion)
+  5. **Backup Destruction**: When were backups deleted/stopped?
+  6. **Encryption Start**: When did file encryption begin?
+  7. **Encryption Complete**: When did encryption finish?
+  8. **Discovery**: When was ransomware discovered?
+  
+  ### Recovery Assessment:
+  
+  **Backup Availability**:
+  - Were shadow copies deleted? (Check vssadmin list shadows)
+  - Were backup services stopped? (Check service status)
+  - Are offline backups available? (Tape, disconnected drives)
+  - When was last successful backup? (Before or after infection?)
+  
+  **Decryption Options**:
+  - Is decryptor available? (Check ID Ransomware, No More Ransom)
+  - Can files be recovered from shadow copies? (If not deleted)
+  - Can files be restored from backups? (If available and clean)
+  - Is paying ransom viable? (Last resort, no guarantee)
+  
+  **System Recovery**:
+  - Can systems be rebuilt from clean images?
+  - Are all attacker accounts/tools removed?
+  - Are vulnerabilities patched?
+  - Are credentials reset?
+  
+  ### Remediation:
+  
+  1. **Immediate Containment**:
+     - Isolate infected systems (disconnect network)
+     - Disable compromised accounts
+     - Block C2 domains/IPs at firewall
+     - Preserve forensic evidence (memory dumps, disk images)
+  
+  2. **Investigation**:
+     - Identify patient zero and entry point
+     - Map lateral movement and scope
+     - Check for data exfiltration
+     - Identify all compromised systems
+  
+  3. **Eradication**:
+     - Remove ransomware from all systems
+     - Delete attacker tools, backdoors, accounts
+     - Patch vulnerabilities
+     - Reset all credentials
+  
+  4. **Recovery**:
+     - Restore from clean backups (verify backup integrity first)
+     - Use decryption tools if available
+     - Rebuild systems from clean images
+     - Restore data incrementally, verify integrity
+  
+  5. **Prevention**:
+     - Implement offline/immutable backups
+     - Enable MFA on all remote access (RDP, VPN)
+     - Segment network (prevent lateral movement)
+     - Deploy EDR/XDR solutions
+     - User security awareness training (phishing)
+     - Patch management (close vulnerabilities)
+     - Principle of least privilege (limit service accounts)
+  
+  ### Advanced Detection:
+  
+  - **File Entropy Monitoring**: Alert on high-entropy file creation (encrypted data)
+  - **Volume Threshold**: Alert on 100+ file modifications in 5 minutes
+  - **Shadow Copy Monitoring**: Alert on ANY vssadmin delete command
+  - **Backup Service Monitoring**: Alert if backup services stopped unexpectedly
+  - **Honeypot Files**: Create decoy files, alert if accessed/encrypted
+  - **Behavioral Analysis**: Baseline normal file activity, alert on anomalies
+  
+  ### External Resources:
+  
+  - **ID Ransomware**: https://id-ransomware.malwarehunterteam.com/ (Identify ransomware family)
+  - **No More Ransom**: https://www.nomoreransom.org/ (Free decryption tools)
+  - **CISA Ransomware Guide**: https://www.cisa.gov/stopransomware
+  - **Ransomware Tracker**: Track active ransomware campaigns

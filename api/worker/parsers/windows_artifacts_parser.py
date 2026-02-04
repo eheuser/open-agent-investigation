@@ -248,7 +248,7 @@ class WindowsArtifactsParser(BaseParser):
                 break
 
         if not events:
-            logger.warning(f"No valid entries found in Windows artifact: {file_path}")
+            logger.debug(f"No valid entries found in Windows artifact: {file_path}")
             return 0
         
         # Prepare events for insertion
@@ -347,7 +347,7 @@ class WindowsArtifactsParser(BaseParser):
             })
         
         except Exception as e:
-            logger.warning(f"Error parsing PCA file: {e}")
+            logger.debug(f"Error parsing PCA file: {e}")
         
         return events
     

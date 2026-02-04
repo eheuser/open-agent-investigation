@@ -141,17 +141,17 @@ playbook: |
   ```
   # Find all certutil downloads
   search_events_by_content(value='certutil', description='certutil usage')
-  query_jsonb_field(jsonb_path='EventData.CommandLine', operator='ILIKE', value='%certutil%urlcache%')
+  query_jsonb_field(jsonb_path='event_data.CommandLine', operator='ILIKE', value='%certutil%urlcache%')
   
   # Find PowerShell download cradles
   search_events_by_content(value='DownloadString', description='PowerShell download cradles')
   search_events_by_content(value='IEX(New-Object', description='PowerShell IEX execution')
   
   # Find mshta with URLs
-  query_jsonb_field(jsonb_path='EventData.CommandLine', operator='ILIKE', value='%mshta%http%')
+  query_jsonb_field(jsonb_path='event_data.CommandLine', operator='ILIKE', value='%mshta%http%')
   
   # Find rundll32 with JavaScript
-  query_jsonb_field(jsonb_path='EventData.CommandLine', operator='ILIKE', value='%rundll32%javascript%')
+  query_jsonb_field(jsonb_path='event_data.CommandLine', operator='ILIKE', value='%rundll32%javascript%')
   ```
   
   ### Key Questions to Answer:

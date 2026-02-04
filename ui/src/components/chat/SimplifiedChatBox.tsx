@@ -73,8 +73,11 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
     if (!container) return;
 
     const handleScroll = () => {
-      const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-      setShouldAutoScroll(isAtBottom);
+      // Consider user at bottom if within 150px of bottom
+      // This gives them more freedom to scroll up without being yanked back
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      const isNearBottom = distanceFromBottom < 150;
+      setShouldAutoScroll(isNearBottom);
     };
 
     container.addEventListener('scroll', handleScroll);
@@ -85,8 +88,9 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
   useEffect(() => {
     if (!messagesEndRef.current || !messagesContainerRef.current) return;
     
-    // Always auto-scroll if agent is running or if user hasn't scrolled up
-    if (shouldAutoScroll || investigationState === 'running') {
+    // Only auto-scroll if user is near the bottom
+    // Don't force scroll if user has scrolled up to read previous messages
+    if (shouldAutoScroll) {
       // Use requestAnimationFrame to ensure DOM has updated
       requestAnimationFrame(() => {
         // Double RAF to ensure layout is complete
@@ -95,7 +99,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
         });
       });
     }
-  }, [messages, shouldAutoScroll, investigationState]);
+  }, [messages, shouldAutoScroll]);
 
   const handleSend = async () => {
     if (!input.trim() || investigationState === 'running' || !isConnected || parsingLocked) return;

@@ -12,35 +12,35 @@ playbook: |
   
   1. **Phishing / Malicious Email Artifacts**
      - Look for: Email client process spawning unusual children
-     - Fields: EventData.ParentProcessName, EventData.NewProcessName, EventData.CommandLine
-     - Query: `query_jsonb_field` with jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%outlook%'
+     - Fields: event_data.ParentProcessName, event_data.NewProcessName, event_data.CommandLine
+     - Query: `query_jsonb_field` with jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%outlook%'
      - Red flags: outlook.exe → powershell.exe, cmd.exe, wscript.exe
      - Follow-up: Check CommandLine for encoded commands, suspicious URLs
   
   2. **Suspicious Logons (Event ID 4624, 4625)**
      - Successful logons (4624): Unusual times, locations, accounts
      - Failed logons (4625): Brute force patterns, password spraying
-     - Fields: EventData.TargetUserName, EventData.IpAddress, EventData.LogonType, EventData.WorkstationName
+     - Fields: event_data.TargetUserName, event_data.IpAddress, event_data.LogonType, event_data.WorkstationName
      - Query: Aggregate by IpAddress to find multiple failed attempts
      - Look for: Geographic anomalies, service accounts logging on interactively
   
   3. **Web Application Exploitation**
      - IIS/Apache logs showing exploitation attempts
      - Sysmon 1: Web server processes spawning cmd.exe, powershell.exe
-     - Fields: EventData.ParentProcessName, EventData.CommandLine
+     - Fields: event_data.ParentProcessName, event_data.CommandLine
      - Query: event_type='evtx_sysmon_1' with ParentProcessName='w3wp.exe' or 'httpd.exe'
      - Red flags: Web shells, reverse shells, unusual child processes
   
   4. **External Remote Services (RDP, VPN)**
      - Event ID 4624 LogonType 10 (RDP)
      - Event ID 4778/4779 (Session connect/disconnect)
-     - Fields: EventData.IpAddress, EventData.TargetUserName
+     - Fields: event_data.IpAddress, event_data.TargetUserName
      - Query: `search_events_by_timerange` for RDP logons from external IPs
      - Look for: First-time IPs, unusual hours, dormant accounts
   
   5. **Drive-by Compromise / Browser Exploitation**
      - Browser processes spawning unusual children
-     - Fields: EventData.ParentProcessName (chrome.exe, firefox.exe, iexplore.exe)
+     - Fields: event_data.ParentProcessName (chrome.exe, firefox.exe, iexplore.exe)
      - Query: `query_jsonb_field` for browser parent processes
      - Red flags: Browsers spawning powershell, cmd, regsvr32, rundll32
   

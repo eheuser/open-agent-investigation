@@ -197,7 +197,7 @@ class JumplistParser(BaseParser):
             ole.close()
         
         except Exception as e:
-            logger.warning(f"Error parsing automatic destinations: {e}")
+            logger.debug(f"Error parsing automatic destinations: {e}")
         
         return events
     
@@ -295,7 +295,7 @@ class JumplistParser(BaseParser):
                     break
         
         except Exception as e:
-            logger.warning(f"Error parsing custom destinations: {e}")
+            logger.debug(f"Error parsing custom destinations: {e}")
         
         return events
 

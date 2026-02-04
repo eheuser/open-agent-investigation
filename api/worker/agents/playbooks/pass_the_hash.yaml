@@ -12,7 +12,7 @@ playbook: |
   
   1. **NTLM Logons (Event ID 4624)**
      - Pass-the-hash uses NTLM authentication
-     - Fields: EventData.LogonType, EventData.AuthenticationPackageName, EventData.TargetUserName
+     - Fields: event_data.LogonType, event_data.AuthenticationPackageName, event_data.TargetUserName
      - Query: event_type='evtx_security_4624'
      - Filter: AuthenticationPackageName='NTLM' AND LogonType=3 (network logon)
      - Red flags:
@@ -22,8 +22,8 @@ playbook: |
   
   2. **Network Logon Type 3 (Event ID 4624)**
      - Pass-the-hash typically uses network logons
-     - Fields: EventData.LogonType, EventData.IpAddress, EventData.WorkstationName
-     - Query: `query_jsonb_field` with jsonb_path='EventData.LogonType', value='3'
+     - Fields: event_data.LogonType, event_data.IpAddress, event_data.WorkstationName
+     - Query: `query_jsonb_field` with jsonb_path='event_data.LogonType', value='3'
      - Red flags:
        - Multiple systems logged into from single source
        - Logons to systems the account doesn't normally access
@@ -31,7 +31,7 @@ playbook: |
   
   3. **Explicit Credential Usage (Event ID 4648)**
      - Pass-the-hash often uses explicit credentials
-     - Fields: EventData.TargetUserName, EventData.TargetServerName, EventData.SubjectUserName
+     - Fields: event_data.TargetUserName, event_data.TargetServerName, event_data.SubjectUserName
      - Query: event_type='evtx_security_4648'
      - Red flags:
        - Different user credentials than logged-on user
@@ -48,8 +48,8 @@ playbook: |
   
   5. **LSASS Memory Access (Sysmon 10)**
      - Pass-the-hash requires dumping LSASS for hashes
-     - Fields: EventData.TargetImage, EventData.SourceImage, EventData.GrantedAccess
-     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetImage', operator='ILIKE', value='%lsass.exe%'
+     - Fields: event_data.TargetImage, event_data.SourceImage, event_data.GrantedAccess
+     - Query: `query_jsonb_field` with jsonb_path='event_data.TargetImage', operator='ILIKE', value='%lsass.exe%'
      - Red flags: Non-system processes accessing LSASS memory
      - Precursor to pass-the-hash attack
   
@@ -63,20 +63,20 @@ playbook: |
   
   7. **Admin Share Access (Event ID 5140)**
      - Pass-the-hash often used to access admin shares (C$, ADMIN$)
-     - Fields: EventData.ShareName, EventData.IpAddress, EventData.SubjectUserName
-     - Query: `query_jsonb_field` with jsonb_path='EventData.ShareName', operator='ILIKE', value='%$%'
+     - Fields: event_data.ShareName, event_data.IpAddress, event_data.SubjectUserName
+     - Query: `query_jsonb_field` with jsonb_path='event_data.ShareName', operator='ILIKE', value='%$%'
      - Red flags: Admin share access from unusual IPs, bulk share access
   
   8. **Remote Service Creation (Event ID 7045, 4697)**
      - Pass-the-hash used to create services remotely (PsExec pattern)
-     - Fields: EventData.ServiceName, EventData.ImagePath
+     - Fields: event_data.ServiceName, event_data.ImagePath
      - Query: event_type='evtx_system_7045' or 'evtx_security_4697'
      - Red flags: Services created remotely, PSEXESVC service
   
   9. **WMI Remote Execution (Event ID 4688, Sysmon 1)**
      - Pass-the-hash enables WMI remote execution
      - Parent process: wmiprvse.exe on remote system
-     - Query: `query_jsonb_field` with jsonb_path='EventData.ParentProcessName', value='wmiprvse.exe'
+     - Query: `query_jsonb_field` with jsonb_path='event_data.ParentProcessName', value='wmiprvse.exe'
      - Red flags: wmiprvse spawning unusual processes (cmd.exe, powershell.exe)
   
   10. **Credential Dumping Tools (Event ID 4688, Sysmon 1)**
@@ -144,27 +144,27 @@ playbook: |
   
   ```
   # Find NTLM network logons
-  query_jsonb_field(jsonb_path='EventData.AuthenticationPackageName', operator='=', value='NTLM',
+  query_jsonb_field(jsonb_path='event_data.AuthenticationPackageName', operator='=', value='NTLM',
                     event_type='evtx_security_4624', description='NTLM authentication')
-  query_jsonb_field(jsonb_path='EventData.LogonType', operator='=', value='3',
+  query_jsonb_field(jsonb_path='event_data.LogonType', operator='=', value='3',
                     event_type='evtx_security_4624', description='Network logons')
   
   # Find bulk logons from single source
-  aggregate_jsonb_field(jsonb_path='EventData.IpAddress', aggregation='top_values',
+  aggregate_jsonb_field(jsonb_path='event_data.IpAddress', aggregation='top_values',
                         event_type='evtx_security_4624', description='Logon source IPs')
   
   # Find explicit credential usage
   search_events_by_type(event_type='evtx_security_4648', description='Explicit credentials')
   
   # Find LSASS memory access
-  query_jsonb_field(jsonb_path='EventData.TargetImage', operator='ILIKE', value='%lsass.exe%',
+  query_jsonb_field(jsonb_path='event_data.TargetImage', operator='ILIKE', value='%lsass.exe%',
                     event_type='evtx_sysmon_10', description='LSASS memory access')
   
   # Find Mimikatz pass-the-hash
   search_events_by_content(value='sekurlsa::pth', description='Mimikatz pass-the-hash')
   
   # Find admin share access
-  query_jsonb_field(jsonb_path='EventData.ShareName', operator='ILIKE', value='%$%',
+  query_jsonb_field(jsonb_path='event_data.ShareName', operator='ILIKE', value='%$%',
                     event_type='evtx_security_5140', description='Admin share access')
   ```
   

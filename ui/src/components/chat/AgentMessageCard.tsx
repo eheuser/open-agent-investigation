@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm';
 import { ClipboardDocumentIcon, CheckIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import ToolExecutionCard from './ToolExecutionCard';
 import RoutingBadge from './RoutingBadge';
+import AgentExecutionContainer from './AgentExecutionContainer';
 
 interface AgentMessageCardProps {
   message: ChatMessage;
@@ -207,7 +208,6 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
   const isCompleted = message.metadata?.agent_completed;
   const isIncomplete = message.metadata?.investigation_incomplete;
   const isContinuing = message.metadata?.is_continuing;
-  const canContinue = message.metadata?.can_continue;
   const jobId = message.metadata?.job_id;
   const stats = message.metadata?.stats;
   
@@ -516,8 +516,17 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
           />
         )}
 
-        {/* Chronological event stream - interleaves thinking and tool executions */}
-        {/* Always show if we have events, even when completed or starting */}
+        {/* Agent Execution Container - shows tool executions in collapsible container */}
+        {toolExecutions.length > 0 && (
+          <AgentExecutionContainer
+            toolExecutions={toolExecutions}
+            isStreaming={isStreaming}
+            onReplicateQuery={onReplicateQuery}
+            stats={stats}
+          />
+        )}
+
+        {/* Chronological text stream - agent thinking/analysis */}
         {eventStream.length > 0 && (
           <div className="space-y-3">
             {eventStream.map((event) => {
@@ -571,39 +580,18 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
                     )}
                   </div>
                 );
-              } else {
-                const tool = event.tool;
-                return (
-                  <ToolExecutionCard
-                    key={`tool-${event.sequence}-${tool.execution_id}`}
-                    toolExecution={tool}
-                    onReplicateQuery={onReplicateQuery}
-                  />
-                );
               }
+              // Skip tool events - they're now in the container
+              return null;
             })}
           </div>
         )}
 
-        {/* Show stats when investigation is complete or incomplete */}
-        {(isCompleted || isIncomplete) && stats && (
-          <div className="mt-4 pt-3 border-t border-gray-300 dark:border-gray-600">
-            <small className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
-              <span>
-                <span className="font-medium">{stats.events_analyzed ?? 0}</span> events analyzed
-              </span>
-              <span>
-                <span className="font-medium">{stats.timeline_entries_created ?? 0}</span> timeline entries
-              </span>
-              <span>
-                <span className="font-medium">{stats.turns_executed ?? 0}</span> turns
-              </span>
-            </small>
-          </div>
-        )}
+        {/* Stats are now shown in AgentExecutionContainer - removed duplicate footer */}
 
         {/* Show continuation option when investigation is incomplete and not currently continuing */}
-        {isIncomplete && !isContinuing && canContinue && jobId && onContinue && (
+        {/* Note: can_continue is disabled in new system, so we check for investigation_incomplete instead */}
+        {isIncomplete && !isContinuing && jobId && onContinue && (
           <div className="mt-4 pt-3 border-t border-yellow-300 dark:border-yellow-600">
             <div className="flex items-center gap-3">
               <div className="flex-1">
@@ -620,9 +608,9 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
                   onChange={(e) => setSelectedEffort(e.target.value)}
                   className="text-sm px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
-                                    <option value="low">Quick (+3 turns)</option>
-                    <option value="medium">Standard (+6 turns)</option>
-                    <option value="high">Thorough (+9 turns)</option>
+                  <option value="low">Quick (+3 turns)</option>
+                  <option value="medium">Standard (+6 turns)</option>
+                  <option value="high">Thorough (+9 turns)</option>
                 </select>
                 <button
                   onClick={() => onContinue(jobId, selectedEffort)}

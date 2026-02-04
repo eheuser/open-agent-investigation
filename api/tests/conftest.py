@@ -61,36 +61,6 @@ async def test_engine():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-        
-        # Create field_dictionary table (not in ORM models)
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS field_dictionary (
-                field_id BIGSERIAL PRIMARY KEY,
-                investigation_id UUID NOT NULL,
-                event_type TEXT NOT NULL,
-                field_name TEXT NOT NULL,
-                description TEXT,
-                sample_values TEXT[],
-                cached_markdown TEXT,
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE(investigation_id, event_type, field_name)
-            )
-        """))
-        
-        # Create indexes for field_dictionary
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_field_dict_investigation 
-            ON field_dictionary(investigation_id)
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_field_dict_event_type 
-            ON field_dictionary(investigation_id, event_type)
-        """))
-        await conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_field_dict_pending 
-            ON field_dictionary(investigation_id) WHERE description IS NULL
-        """))
 
     yield engine
 

@@ -9,7 +9,7 @@ playbook: |
 
   1. **Special Privilege Assignment (Event ID 4672)**
      - Token elevation events
-     - Fields: EventData.SubjectUserName, EventData.PrivilegeList
+     - Fields: event_data.SubjectUserName, event_data.PrivilegeList
 
   2. **UAC Bypass Indicators**
      - Unusual process elevation

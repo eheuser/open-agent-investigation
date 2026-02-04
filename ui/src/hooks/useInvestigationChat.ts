@@ -427,9 +427,9 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
         case 'llm_chunk':
         case 'agent_message':
         case 'turn_complete':
-          // Agent is running, these are handled by message_updated
+          // Agent is running, these are handled by periodic refresh
           setInvestigationState('running');
-          // Don't refresh on every event - message_updated will handle it
+          // Don't refresh on every event - periodic polling will handle it
           break;
 
         case 'agent_completed':
@@ -525,14 +525,15 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
   }, [investigationId, subscribe, fetchMessage, refreshMessages]);
 
   /**
-   * Periodic refresh while agent is running (fallback).
+   * Periodic refresh while agent is running.
+   * Faster polling (1 second) for live updates during execution.
    */
   useEffect(() => {
     if (investigationState !== 'running') return;
 
     const interval = setInterval(() => {
       refreshMessages();
-    }, 3000); // Refresh every 3 seconds while running
+    }, 1000); // Refresh every 1 second while running for live updates
 
     return () => clearInterval(interval);
   }, [investigationState, refreshMessages]);

@@ -131,6 +131,10 @@ async def execute_sql(
     except Exception as e:
         error_msg = str(e)
         logger.error(f"SQL query failed: {error_msg}")
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
 
         # Sanitize error message (don't leak schema details)
         if "timeout" in error_msg.lower():

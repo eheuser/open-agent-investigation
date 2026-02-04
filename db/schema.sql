@@ -370,35 +370,6 @@ CREATE INDEX idx_chat_summaries_investigation ON chat_log_summaries(investigatio
 CREATE INDEX idx_chat_summaries_job ON chat_log_summaries(job_id) WHERE job_id IS NOT NULL;
 
 -- ============================================================================
--- FIELD DICTIONARY TABLE
--- ============================================================================
-
--- Field dictionary table (permanent storage of JSONB field descriptions)
--- Stores LLM-generated descriptions for forensic JSONB fields, organized by event type
-CREATE TABLE IF NOT EXISTS field_dictionary (
-    field_id BIGSERIAL PRIMARY KEY,
-    investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
-    event_type TEXT NOT NULL,
-    field_name TEXT NOT NULL,
-    description TEXT,  -- Nullable until LLM generates it
-    sample_values TEXT[],  -- Example values to help with context
-    cached_markdown TEXT,  -- Pre-formatted markdown for this field
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_field_dict_investigation_event_field UNIQUE (investigation_id, event_type, field_name)
-);
-
-CREATE INDEX idx_field_dict_investigation ON field_dictionary(investigation_id);
-CREATE INDEX idx_field_dict_event_type ON field_dictionary(investigation_id, event_type);
-CREATE INDEX idx_field_dict_field_name ON field_dictionary(field_name);
-CREATE INDEX idx_field_dict_updated ON field_dictionary(updated_at DESC);
-CREATE INDEX idx_field_dict_pending ON field_dictionary(investigation_id) WHERE description IS NULL;
--- Covering index for common field dictionary context loading queries
-CREATE INDEX idx_field_dict_inv_type_coverage 
-  ON field_dictionary(investigation_id, event_type) 
-  INCLUDE (field_name, description, cached_markdown);
-
--- ============================================================================
 -- RAG & EMBEDDING TABLES
 -- ============================================================================
 
@@ -605,16 +576,6 @@ CREATE TRIGGER update_filter_config_updated_at
     BEFORE UPDATE ON filter_config
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
-
--- Trigger for field_dictionary (must be after function definition)
-CREATE TRIGGER update_field_dictionary_updated_at
-    BEFORE UPDATE ON field_dictionary
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
--- NOTE: No trigger on events table - field discovery happens in batch after parsing
--- This avoids massive performance degradation during bulk event inserts
--- See: field_dictionary_finalizer.discover_and_populate_fields()
 
 -- Trigger to update updated_at timestamp on playbooks
 CREATE TRIGGER update_playbooks_updated_at

@@ -169,7 +169,7 @@ class TestAssistantAgentToolLogging:
             ToolCall(
                 id="call_1",
                 type="function",
-                function={"name": "query_jsonb_field", "arguments": '{"jsonb_path": "EventData.TargetUserName", "value": "admin"}'}
+                function={"name": "query_jsonb_field", "arguments": '{"jsonb_path": "event_data.TargetUserName", "value": "admin"}'}
             )
         ]
 

@@ -97,11 +97,11 @@ class BrowserHistoryParser(BaseParser):
             # Legacy Edge ESE database
             events = await self._parse_legacy_edge_history(file_path)
         else:
-            logger.warning(f"Unknown browser history format: {file_path.name}")
+            logger.debug(f"Unknown browser history format: {file_path.name}")
             return 0
         
         if not events:
-            logger.warning(f"No valid entries found in browser history: {file_path}")
+            logger.debug(f"No valid entries found in browser history: {file_path}")
             return 0
         
         # Prepare events for insertion
@@ -195,7 +195,7 @@ class BrowserHistoryParser(BaseParser):
             conn.close()
         
         except Exception as e:
-            logger.warning(f"Error parsing Chromium history: {e}")
+            logger.debug(f"Error parsing Chromium history: {e}")
         
         return events
     
@@ -258,7 +258,7 @@ class BrowserHistoryParser(BaseParser):
             conn.close()
         
         except Exception as e:
-            logger.warning(f"Error parsing Firefox history: {e}")
+            logger.debug(f"Error parsing Firefox history: {e}")
         
         return events
     
@@ -346,7 +346,7 @@ class BrowserHistoryParser(BaseParser):
             esedb_file.close()
         
         except Exception as e:
-            logger.warning(f"Error parsing legacy Edge history: {e}")
+            logger.debug(f"Error parsing legacy Edge history: {e}")
         
         return events
 

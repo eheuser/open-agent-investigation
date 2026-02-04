@@ -179,7 +179,7 @@ def _extract_event_id(data: Dict[str, Any]) -> Optional[int]:
             # Handle {"#text": "4624"} format
             return int(event_id_field["#text"])
     except Exception as e:
-        logger.warning(f"Failed to extract event ID: {e}")
+        logger.debug(f"Failed to extract event ID: {e}")
         return None
 
 
@@ -232,11 +232,11 @@ def _extract_timestamp(record: Dict[str, Any], data: Dict[str, Any]) -> datetime
                 try:
                     return datetime.strptime(ts_str_clean, "%Y-%m-%d %H:%M:%S")
                 except Exception as e:
-                    logger.warning(f"Failed to parse timestamp '{ts_str}': {e}")
+                    logger.debug(f"Failed to parse timestamp '{ts_str}': {e}")
 
     # No valid timestamp found - this is a critical error for forensic validity
     # Return None to allow caller to skip invalid events
-    logger.warning(f"No valid timestamp found in EVTX record - event will be skipped")
+    logger.debug(f"No valid timestamp found in EVTX record - event will be skipped")
     return None
 
 
@@ -354,7 +354,7 @@ class EvtxParser(BaseParser):
             try:
                 # Check if we have data field
                 if "data" not in record:
-                    logger.warning("EVTX record missing 'data' field")
+                    logger.debug("EVTX record missing 'data' field")
                     continue
 
                 # Parse the JSON data
@@ -363,7 +363,7 @@ class EvtxParser(BaseParser):
                 # Extract event ID and channel
                 event_id = _extract_event_id(data)
                 if event_id is None:
-                    logger.warning(f"Could not extract event ID from record")
+                    logger.debug(f"Could not extract event ID from record")
                     continue
 
                 channel = _extract_channel(data)
@@ -373,7 +373,7 @@ class EvtxParser(BaseParser):
 
                 # Skip events without valid timestamp (forensically invalid)
                 if event_ts is None:
-                    logger.warning(f"Skipping EVTX event {event_id} without valid timestamp")
+                    logger.debug(f"Skipping EVTX event {event_id} without valid timestamp")
                     continue
 
                 # Get original timestamp string for payload
@@ -425,7 +425,7 @@ class EvtxParser(BaseParser):
                     event_batch = []
 
             except Exception as e:
-                logger.warning(f"Failed to parse EVTX record: {e}")
+                logger.debug(f"Failed to parse EVTX record: {e}")
                 continue
 
         # Insert remaining events

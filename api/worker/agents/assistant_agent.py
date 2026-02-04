@@ -84,7 +84,6 @@ class _ContextBuilder:
             db=self.db,
             investigation_id=self.investigation_id,
             llm_client=self.llm_client,
-            use_field_dictionary=True,
             llm_max_context=self.max_context,
         )
         return get_system_prompt(base_ctx)
@@ -95,7 +94,6 @@ class _ContextBuilder:
                 db=self.db,
                 investigation_id=self.investigation_id,
                 llm_client=self.llm_client,
-                use_field_dictionary=True,
                 llm_max_context=self.max_context,
             )
             prompt = get_tool_execution_prompt(self.question, self.iteration)

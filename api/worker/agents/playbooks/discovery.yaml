@@ -12,7 +12,7 @@ playbook: |
   
   1. **Network Discovery Commands (Event ID 4688, Sysmon 1)**
      - Commands to map network topology
-     - Fields: EventData.CommandLine, EventData.NewProcessName
+     - Fields: event_data.CommandLine, event_data.NewProcessName
      - Query: `search_events_by_content` for discovery commands
      - Common commands:
        - `net view` - List network shares and computers
@@ -49,7 +49,7 @@ playbook: |
   4. **File/Share Discovery (Event ID 4688, 5140)**
      - Event 5140: Network share access
      - Commands: `net share`, `dir \\computer\share`
-     - Fields: EventData.ShareName, EventData.IpAddress (Event 5140)
+     - Fields: event_data.ShareName, event_data.IpAddress (Event 5140)
      - Query: event_type='evtx_security_5140'
      - Look for: Access to admin shares (C$, ADMIN$, IPC$)
      - Red flags: Enumeration of multiple shares, access to sensitive shares

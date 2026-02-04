@@ -116,7 +116,12 @@ class ToolExecutor:
         self.stats.setdefault("tools_called", {})
         self.stats["tools_called"][tool_name] = self.stats["tools_called"].get(tool_name, 0) + 1
 
+        # Use savepoint to isolate each tool execution
+        savepoint = None
         try:
+            # Create a nested transaction (savepoint) for this tool
+            savepoint = await self.db.begin_nested()
+            
             # Execute tool implementation
             logger.info(f"Executing tool: {tool_name} with args: {arguments}")
 
@@ -131,10 +136,23 @@ class ToolExecutor:
             # Check if result indicates error
             if isinstance(result, dict) and "error" in result:
                 logger.warning(f"Tool {tool_name} returned error: {result['error']}")
+                # Rollback savepoint on tool-level error
+                await savepoint.rollback()
                 return ToolResult(status="error", error_msg=result["error"])
 
+            # Success - commit the savepoint
+            await savepoint.commit()
             return ToolResult(status="ok", result=result)
 
         except Exception as e:
             logger.error(f"Tool {tool_name} failed: {e}", exc_info=True)
+            
+            # Rollback the savepoint to prevent poisoning subsequent tool executions
+            if savepoint is not None:
+                try:
+                    await savepoint.rollback()
+                    logger.debug(f"Rolled back savepoint after tool {tool_name} failure")
+                except Exception as rollback_error:
+                    logger.error(f"Failed to rollback savepoint: {rollback_error}")
+            
             return ToolResult(status="error", error_msg=str(e))

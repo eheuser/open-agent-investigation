@@ -12,7 +12,7 @@ playbook: |
   
   1. **Network Beaconing (Sysmon 3)**
      - Periodic connections to external IPs (C2 check-ins)
-     - Fields: EventData.DestinationIp, EventData.DestinationPort, EventData.Image
+     - Fields: event_data.DestinationIp, event_data.DestinationPort, event_data.Image
      - Query: Aggregate Sysmon 3 by DestinationIp and timestamp intervals
      - Patterns to detect:
        - Regular intervals (every 60s, 5min, 15min)
@@ -22,7 +22,7 @@ playbook: |
   
   2. **Unusual Network Connections (Sysmon 3)**
      - Unexpected processes making network connections
-     - Fields: EventData.Image, EventData.DestinationIp, EventData.DestinationPort
+     - Fields: event_data.Image, event_data.DestinationIp, event_data.DestinationPort
      - Query: event_type='evtx_sysmon_3'
      - Suspicious source processes:
        - powershell.exe, cmd.exe, rundll32.exe
@@ -32,7 +32,7 @@ playbook: |
   
   3. **DNS Tunneling (Sysmon 22, DNS logs)**
      - Sysmon 22: DNS query events
-     - Fields: EventData.QueryName, EventData.QueryResults
+     - Fields: event_data.QueryName, event_data.QueryResults
      - Query: event_type='evtx_sysmon_22'
      - Indicators:
        - Long subdomain names (>50 chars)

@@ -23,14 +23,14 @@ from app.utils.log_setup import get_logger
 
 logger = get_logger(__name__)
 
-# Suppress verbose regipy logging (but allow WARNING and above)
-logging.getLogger("regipy").setLevel(logging.WARNING)
-logging.getLogger("regipy.utils").setLevel(logging.WARNING)
-logging.getLogger("regipy.registry").setLevel(logging.WARNING)
-logging.getLogger("regipy.plugins").setLevel(logging.WARNING)
-logging.getLogger("regipy.plugins.system.bam").setLevel(logging.WARNING)
-logging.getLogger("regipy.plugins.amcache.amcache").setLevel(logging.WARNING)
-logging.getLogger("regipy.plugins.ntuser.shellbags_ntuser").setLevel(logging.WARNING)
+# Suppress verbose regipy logging
+logging.getLogger("regipy").setLevel(logging.CRITICAL)
+logging.getLogger("regipy.utils").setLevel(logging.CRITICAL)
+logging.getLogger("regipy.registry").setLevel(logging.CRITICAL)
+logging.getLogger("regipy.plugins").setLevel(logging.CRITICAL)
+logging.getLogger("regipy.plugins.system.bam").setLevel(logging.CRITICAL)
+logging.getLogger("regipy.plugins.amcache.amcache").setLevel(logging.CRITICAL)
+logging.getLogger("regipy.plugins.ntuser.shellbags_ntuser").setLevel(logging.CRITICAL)
 
 
 class RegistryParser(BaseParser):
@@ -211,11 +211,11 @@ class RegistryParser(BaseParser):
                                 event_batch = []
 
                         except Exception as e:
-                            logger.warning(f"Failed to parse registry value: {e}")
+                            logger.debug(f"Failed to parse registry value: {e}")
                             continue
 
                 except Exception as e:
-                    logger.warning(f"Failed to process registry key: {e}")
+                    logger.debug(f"Failed to process registry key: {e}")
                     continue
 
             # Insert remaining events
@@ -233,11 +233,11 @@ class RegistryParser(BaseParser):
             return events_inserted
 
         except RegistryParsingException as e:
-            logger.error(f"Failed to parse registry hive {file_path}: {e}")
+            #logger.error(f"Failed to parse registry hive {file_path}: {e}")
             logger.debug(f"Failed to parse registry hive {file_path}: {e}", exc_info=True)
             raise RuntimeError(f"Registry parsing failed: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error parsing registry hive {file_path}: {e}")
+            #logger.error(f"Unexpected error parsing registry hive {file_path}: {e}")
             logger.debug(f"Unexpected error parsing registry hive {file_path}: {e}", exc_info=True)
             raise RuntimeError(f"Registry parsing failed: {e}")
 
@@ -358,7 +358,7 @@ class RegistryParser(BaseParser):
                 try:
                     plugin_data = json.loads(plugin_data)
                 except json.JSONDecodeError:
-                    logger.warning(
+                    logger.debug(
                         f"Plugin {plugin_name} returned non-JSON string: {plugin_data[:200]}"
                     )
                     return events
@@ -379,7 +379,7 @@ class RegistryParser(BaseParser):
             elif isinstance(plugin_data, list):
                 entries = plugin_data
             else:
-                logger.warning(f"Plugin {plugin_name} returned unexpected type: {type(plugin_data)}")
+                logger.debug(f"Plugin {plugin_name} returned unexpected type: {type(plugin_data)}")
                 return events
 
             if not entries:

@@ -242,6 +242,10 @@ async def query_analysis_module(
         
     except Exception as e:
         logger.error(f"Analysis module query failed for {module_id}: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
         return {
             "status": "error",
             "error_msg": f"Analysis module query failed: {str(e)}",
@@ -319,6 +323,10 @@ async def list_analysis_modules(
         
     except Exception as e:
         logger.error(f"Failed to list analysis modules: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
         return {
             "status": "error",
             "error_msg": f"Failed to list analysis modules: {str(e)}",

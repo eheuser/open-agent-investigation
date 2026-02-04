@@ -11,11 +11,11 @@ docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit
 
 The test suite uses a three-tier strategy:
 
-1. **Unit Tests** (783+ tests) - Fast, isolated tests for individual functions
-2. **Integration Tests** (331+ tests) - Database and API endpoint tests
+1. **Unit Tests** (~770 tests) - Fast, isolated tests for individual functions
+2. **Integration Tests** (~956 tests) - Database and API endpoint tests
 3. **End-to-End Tests** (planned) - Full workflow tests
 
-**Current Status:** 1745 tests, 71.93% coverage (targeting 80%)
+**Current Status:** 1726 tests, 71.96% coverage (targeting 80%)
 
 ## Structure
 
@@ -270,8 +270,8 @@ Tests are organized using pytest markers:
 
 | Marker | Description | Count | Example |
 |--------|-------------|-------|---------|
-| `unit` | Unit tests (no external dependencies) | ~730 | `@pytest.mark.unit` |
-| `integration` | Integration tests (require database) | ~200 | `@pytest.mark.integration` |
+| `unit` | Unit tests (no external dependencies) | ~770 | `@pytest.mark.unit` |
+| `integration` | Integration tests (require database) | ~956 | `@pytest.mark.integration` |
 
 | `e2e` | End-to-end tests (full stack) | 0 | `@pytest.mark.e2e` |
 | `slow` | Tests that take > 1 second | 0 | `@pytest.mark.slow` |
@@ -491,10 +491,10 @@ GitHub Actions workflow (`.github/workflows/tests.yml`):
 ## Performance
 
 Test execution times (approximate):
-- **Unit tests**: ~20 seconds (783+ tests)
-- **Integration tests**: ~60 seconds (331+ tests)
+- **Unit tests**: ~20 seconds (~770 tests)
+- **Integration tests**: ~60 seconds (~956 tests)
 - **E2E tests**: ~2 minutes (planned)
-- **Full suite**: ~80 seconds (1745 tests total)
+- **Full suite**: ~82 seconds (1726 tests total)
 
 ## Contributing
 

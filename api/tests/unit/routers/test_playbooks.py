@@ -966,7 +966,7 @@ This is a test playbook.
 
 ### Code Example
 ```python
-query_jsonb_field(path='EventData.LogonType', value='10')
+query_jsonb_field(path='event_data.LogonType', value='10')
 ```
 
 ### Notes

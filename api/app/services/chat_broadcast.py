@@ -600,6 +600,10 @@ async def _handle_tool_result(
             logger.debug(f"No agent message found for tool_result (streaming_id={streaming_id})")
     except Exception as e:
         logger.error(f"Failed to update tool_result: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 async def _handle_agent_message(
@@ -729,6 +733,10 @@ async def _handle_agent_completed(
             )
     except Exception as e:
         logger.error(f"[AGENT_COMPLETED] Failed to mark completed: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 async def _handle_job_completed(
@@ -1004,6 +1012,10 @@ async def _handle_tool_executing(
             logger.debug(f"No agent message found for tool_executing (streaming_id={streaming_id})")
     except Exception as e:
         logger.error(f"Failed to create tool_executing: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 async def _handle_llm_waiting(
@@ -1064,6 +1076,10 @@ async def _handle_llm_waiting(
             logger.debug(f"No agent message found for llm_waiting (streaming_id={streaming_id})")
     except Exception as e:
         logger.error(f"Failed to update llm_waiting: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 async def _handle_llm_chunk(
@@ -1108,6 +1124,10 @@ async def _handle_llm_chunk(
             logger.debug(f"No agent message found for llm_chunk (streaming_id={streaming_id})")
     except Exception as e:
         logger.error(f"Failed to update llm_chunk: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 async def _handle_agent_thinking(
@@ -1187,6 +1207,10 @@ async def _handle_agent_thinking(
             logger.debug(f"No agent message found for agent_thinking (streaming_id={streaming_id})")
     except Exception as e:
         logger.error(f"Failed to update agent_thinking: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 async def _handle_user_stopped(
@@ -1352,6 +1376,10 @@ async def _handle_agent_cancelled(
             )
     except Exception as e:
         logger.error(f"[AGENT_CANCELLED] Failed to mark cancelled: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 async def _handle_agent_error(
@@ -1438,6 +1466,10 @@ async def _handle_agent_error(
             logger.warning(f"[AGENT_ERROR] No agent message found (streaming_id={streaming_id})")
     except Exception as e:
         logger.error(f"[AGENT_ERROR] Failed to mark error: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 async def _handle_turn_error(
@@ -1568,3 +1600,7 @@ async def _handle_investigation_incomplete(
             )
     except Exception as e:
         logger.error(f"[INVESTIGATION_INCOMPLETE] Failed to mark incomplete: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass

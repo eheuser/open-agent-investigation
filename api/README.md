@@ -530,8 +530,8 @@ playbook: |
   ### Key Indicators to Investigate:
   
   1. **Network Logons (Event ID 4624 Type 10)**
-     - Fields: EventData.TargetUserName, EventData.IpAddress
-     - Query: `query_jsonb_field` with jsonb_path='EventData.LogonType', value='10'
+     - Fields: event_data.TargetUserName, event_data.IpAddress
+     - Query: `query_jsonb_field` with jsonb_path='event_data.LogonType', value='10'
   
   2. **Explicit Credential Usage (Event ID 4648)**
      - Indicates "Run As" or explicit credential use
@@ -659,6 +659,8 @@ The system supports separate models for embedding generation and reranking:
 - **Fallback Behavior**: If `reranker_model_name` is not configured or is the same as `embedding_model_name`, reranking is skipped and the system uses vector similarity scores only.
 
 This two-tier approach balances speed (fast embeddings on all data) with accuracy (powerful reranking on top results).
+
+The concurrent setting applies to embedding generation (RAG), providing significant speedups for high-capacity APIs.
 
 ### How Playbooks Work with Agents
 
@@ -926,7 +928,7 @@ docker compose logs api | grep "\[GENERAL_CHAT\]"
 
 2. **Specific Tool Recommendations**:
    - Reference exact tool names: `query_jsonb_field`, `search_events_by_type`
-   - Provide example JSONB paths: `EventData.LogonType`, `system.Computer`
+   - Provide example JSONB paths: `event_data.LogonType`, `system.Computer`
    - Include expected values: `LogonType='10'`, `ServiceName LIKE '%PSEXE%'`
 
 3. **Progressive Investigation Flow**:
@@ -953,7 +955,7 @@ playbook: |
   ### Key Indicators:
   
   1. **TGS Requests (Event ID 4769)**
-     - Fields: EventData.ServiceName, EventData.TicketEncryptionType
+     - Fields: event_data.ServiceName, event_data.TicketEncryptionType
      - Query: `search_events_by_type` with event_type='evtx_security_4769'
      - Red flags: RC4 encryption (0x17), unusual service accounts
      - Follow-up: `aggregate_field` on ServiceName to find targeted accounts
