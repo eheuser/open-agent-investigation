@@ -223,17 +223,19 @@ When the agent executes a query tool, you can replicate it in the Events tab:
 ```
 User: "Find failed logon attempts"
   → API queues agent job
-  → WebSocket streams agent reasoning:
-    - Agent: "I'll count failed logons, find patterns, and register significant events"
-    - Tool: "Counting evtx_security_4625 events..."
-    - Result: "Found 42 events"
-    - Agent: "Found 42 failed logon events. Now analyzing patterns..."
-    - Tool: "Analyzing TargetUserName patterns..."
-    - Result: "Top value: admin (18 occurrences)"
-    - Agent: "User 'admin' was targeted 18 times from IP 10.50.30.15. Registering to timeline..."
-    - Tool: "Adding to timeline: Failed logon: admin from 10.50.30.15"
-    - Result: "Timeline entry created (entry 123)"
-  → Agent completes with summary
+  → Agent Execution Container appears (collapsed by default)
+    - Shows: "Agent Investigation - Running..."
+    - Stats: "Turn 1/6 | Tools 2/5 | Events 42 | Timeline +3"
+  → Click to expand container
+    - Shows scrollable tool execution cards:
+      1. "Count Security Events" - Result: 42 events
+      2. "Query Failed Logons" - Shows 5 EventCards with preview
+      3. "Analyze Patterns" - Result: admin (18 occurrences)
+      4. "Register Timeline Entry" - Added: "Failed logon: admin from 10.50.30.15"
+  → Agent thinking text appears below container
+    - "Found 42 failed logon events targeting user 'admin'..."
+  → Agent completes
+    - Container turns gray, shows "Completed 4 tool executions"
   → Response displayed with markdown formatting and statistics
 ```
 
@@ -599,11 +601,39 @@ Agent message display:
 />
 ```
 
+#### AgentExecutionContainer.tsx
+
+Collapsible container for agent investigations:
+- **Professional banner** - Matches event parsing banner style
+- **Investigation stats** - Turn counter, tools executed, events seen, timeline entries
+- **Fixed height** - Shows ~5 tool execution cards with scroll
+- **Expandable/collapsible** - Click to view tool executions
+- **Real-time updates** - Updates during agent execution
+
+```tsx
+<AgentExecutionContainer
+  toolExecutions={toolExecutions}
+  isStreaming={isStreaming}
+  onReplicateQuery={(params) => replicateQuery(params)}
+  stats={{
+    events_analyzed: 42,
+    timeline_entries_created: 5,
+    turns_executed: 3
+  }}
+/>
+```
+
+**Banner Display**:
+- **Collapsed**: Shows agent icon, status, turn progress, tool count, events seen, timeline entries
+- **Expanded**: Shows scrollable container with tool execution cards (fixed 400px height)
+- **Color coding**: Blue when streaming, gray when complete
+
 #### ToolExecutionCard.tsx
 
 Tool execution display:
 - Compact header with tool name and status
 - Expandable arguments and results
+- **Event cards** - Query results display as EventCard components (max 5 shown)
 - **Copy buttons** for arguments and results (JSON)
 - **"Query" button** for JSONB and event search tools
 - Timeline registration indicators
@@ -616,6 +646,36 @@ Tool execution display:
   onReplicateQuery={(params) => replicateQuery(params)}
 />
 ```
+
+#### EventCard.tsx
+
+Forensic event display for chat:
+- **Expandable event metadata** - Event ID, type, timestamp, artifact ID
+- **Color-coded badges** - Event type badges with contextual colors
+- **Preview fields** - Shows 3 key fields when collapsed
+- **Full payload** - Expandable JSON view with syntax highlighting
+- **Copy button** - Copy event data to clipboard
+- **Query result mode** - Blue border for query results
+
+```tsx
+<EventCard
+  event={{
+    event_id: 123,
+    event_type: 'evtx_security_4624',
+    timestamp: '2024-01-15T10:30:00Z',
+    payload: { /* event data */ }
+  }}
+  isQueryResult={true}
+/>
+```
+
+**Event Type Colors**:
+- Security events (4624, 4625): Red
+- Sysmon/Process events: Blue
+- File system events (MFT): Green
+- Registry events: Purple
+- Browser events: Orange
+- Default: Gray
 
 ### Events & Timeline Components
 

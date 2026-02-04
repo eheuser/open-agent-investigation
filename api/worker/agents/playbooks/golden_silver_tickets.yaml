@@ -15,7 +15,7 @@ playbook: |
   
   1. **Kerberos TGT Requests (Event ID 4768)**
      - Golden tickets show unusual TGT requests
-     - Fields: EventData.TargetUserName, EventData.IpAddress, EventData.TicketEncryptionType
+     - Fields: event_data.TargetUserName, event_data.IpAddress, event_data.TicketEncryptionType
      - Query: event_type='evtx_security_4768'
      - Red flags:
        - TGT requests from unusual IPs (not domain controllers)
@@ -25,7 +25,7 @@ playbook: |
   
   2. **Kerberos Service Ticket Requests (Event ID 4769)**
      - Silver tickets show unusual service ticket requests
-     - Fields: EventData.ServiceName, EventData.TargetUserName, EventData.TicketEncryptionType
+     - Fields: event_data.ServiceName, event_data.TargetUserName, event_data.TicketEncryptionType
      - Query: event_type='evtx_security_4769'
      - Red flags:
        - Service tickets without corresponding TGT (4768)
@@ -35,7 +35,7 @@ playbook: |
   
   3. **Unusual Account Logons (Event ID 4624)**
      - Golden/silver tickets used for logons
-     - Fields: EventData.TargetUserName, EventData.LogonType, EventData.AuthenticationPackageName
+     - Fields: event_data.TargetUserName, event_data.LogonType, event_data.AuthenticationPackageName
      - Query: event_type='evtx_security_4624' with LogonType 3 (network logon)
      - Red flags:
        - High-privilege accounts logging on from unusual systems
@@ -44,27 +44,27 @@ playbook: |
   
   4. **Kerberos Pre-Authentication Failures (Event ID 4771)**
      - Golden tickets bypass pre-authentication
-     - Fields: EventData.TargetUserName, EventData.FailureCode
+     - Fields: event_data.TargetUserName, event_data.FailureCode
      - Query: event_type='evtx_security_4771'
      - Look for: Absence of 4771 events for accounts using golden tickets
      - Red flags: Successful logons (4624) without pre-auth attempts (4771)
   
   5. **Account Enumeration for krbtgt (Event ID 4662)**
      - Attackers may enumerate krbtgt account before creating golden ticket
-     - Fields: EventData.ObjectName, EventData.Properties
+     - Fields: event_data.ObjectName, event_data.Properties
      - Query: `search_events_by_content` for 'krbtgt'
      - Red flags: Non-DC systems accessing krbtgt account properties
   
   6. **NTDS.dit Access (Event ID 4688, Sysmon 11)**
      - Golden tickets require krbtgt hash from NTDS.dit
      - Commands: ntdsutil, VSS shadow copy, DCSync
-     - Fields: EventData.CommandLine, EventData.TargetFilename
+     - Fields: event_data.CommandLine, event_data.TargetFilename
      - Query: `search_events_by_content` for 'ntds.dit', 'ntdsutil'
      - Red flags: NTDS.dit copied outside domain controller
   
   7. **DCSync Attack (Event ID 4662)**
      - Replicating krbtgt hash for golden ticket creation
-     - Fields: EventData.Properties (GUID 1131f6aa, 1131f6ad)
+     - Fields: event_data.Properties (GUID 1131f6aa, 1131f6ad)
      - Query: `query_jsonb_field` for replication GUIDs
      - Red flags: Non-DC computers performing directory replication
   
@@ -79,8 +79,8 @@ playbook: |
   9. **Encryption Type Anomalies**
      - Golden/silver tickets often use RC4 (easier to forge)
      - Modern domains use AES128/AES256
-     - Fields: EventData.TicketEncryptionType (4768, 4769)
-     - Query: `query_jsonb_field` with jsonb_path='EventData.TicketEncryptionType', value='0x17' (RC4)
+     - Fields: event_data.TicketEncryptionType (4768, 4769)
+     - Query: `query_jsonb_field` with jsonb_path='event_data.TicketEncryptionType', value='0x17' (RC4)
      - Red flags: RC4 tickets in AES-only environments
   
   10. **Ticket Lifetime Anomalies**
@@ -171,12 +171,12 @@ playbook: |
   
   ```
   # Find TGT requests with RC4 encryption
-  query_jsonb_field(jsonb_path='EventData.TicketEncryptionType', operator='=', value='0x17', 
+  query_jsonb_field(jsonb_path='event_data.TicketEncryptionType', operator='=', value='0x17', 
                     event_type='evtx_security_4768', description='RC4 TGT requests')
   
   # Find service tickets without TGTs (silver ticket indicator)
   # 1. Get all service ticket usernames (4769)
-  aggregate_jsonb_field(jsonb_path='EventData.TargetUserName', aggregation='top_values',
+  aggregate_jsonb_field(jsonb_path='event_data.TargetUserName', aggregation='top_values',
                         event_type='evtx_security_4769', description='Service ticket accounts')
   # 2. Compare with TGT requests (4768) - missing TGTs are suspicious
   
@@ -184,7 +184,7 @@ playbook: |
   search_events_by_content(value='krbtgt', description='krbtgt account access')
   
   # Find DCSync attempts
-  query_jsonb_field(jsonb_path='EventData.Properties', operator='ILIKE', value='%1131f6aa%',
+  query_jsonb_field(jsonb_path='event_data.Properties', operator='ILIKE', value='%1131f6aa%',
                     event_type='evtx_security_4662', description='DCSync replication')
   
   # Find Mimikatz kerberos module

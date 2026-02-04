@@ -30,25 +30,25 @@ class TestLoadPhase1Context:
         # Mock LLM client for field dictionary
         mock_llm_client = MagicMock()
 
+        # Field dictionary has been removed - context now uses simple field lists
         with patch(
-            "worker.agents.field_dictionary_finalizer.get_cached_field_dictionary_markdown",
-            return_value="\n### Field Dictionary\n- `process.exe`: Process executable\n- `network.destination`: Network destination\n",
+            "worker.tools.event_tools.get_available_jsonb_fields",
+            return_value=["process.exe", "network.destination"],
         ):
             context = await load_execution_phase_context(
                 db=db,
-                investigation_id=investigation_id,
-                llm_client=mock_llm_client,
-                use_field_dictionary=True,
-                llm_max_context=32768,
-            )
+                        investigation_id=investigation_id,
+        llm_client=mock_llm_client,
+        llm_max_context=32768,
+    )
 
         assert isinstance(context, str)
         assert len(context) > 0
         assert "Event Types" in context or "event" in context.lower()
 
-    async def test_load_phase1_context_no_field_dictionary(self):
+    async def test_load_phase1_context_simple_fields(self):
         """
-        Test that load_phase1_context works without field dictionary.
+        Test that load_phase1_context works with simple field list.
         """
         db = AsyncMock()
         investigation_id = str(uuid4())
@@ -66,11 +66,10 @@ class TestLoadPhase1Context:
         ):
             context = await load_execution_phase_context(
                 db=db,
-                investigation_id=investigation_id,
-                llm_client=None,
-                use_field_dictionary=False,
-                llm_max_context=32768,
-            )
+                        investigation_id=investigation_id,
+        llm_client=None,
+        llm_max_context=32768,
+    )
 
         assert isinstance(context, str)
         assert len(context) > 0
@@ -95,11 +94,10 @@ class TestLoadPhase1Context:
         ):
             context = await load_execution_phase_context(
                 db=db,
-                investigation_id=investigation_id,
-                llm_client=None,
-                use_field_dictionary=False,
-                llm_max_context=32768,
-            )
+                        investigation_id=investigation_id,
+        llm_client=None,
+        llm_max_context=32768,
+    )
 
         # Should still return a string (even if minimal)
         assert isinstance(context, str)

@@ -32,7 +32,7 @@ Just execute tool calls directly. Your analysis will happen in Phase 2.
 
 **INVESTIGATIVE STRATEGY - BE FOCUSED**:
 - Start with the MOST SPECIFIC queries related to the user's question
-- Use the field_dictionary to identify relevant JSONB fields
+- Use the available JSONB fields list to identify relevant fields
 - Prefer query_jsonb_field over broad searches
 - Query for HIGH-VALUE data, not everything
 - Think: "What specific evidence would answer this question?"
@@ -61,11 +61,11 @@ Just execute tool calls directly. Your analysis will happen in Phase 2.
 - Use limit parameter to control result size
 - Combine multiple field conditions for precision
 
-**FIELD DICTIONARY USAGE**:
-- Review the field_dictionary provided in context
+**AVAILABLE FIELDS USAGE**:
+- Review the available JSONB fields provided in context
 - Identify which fields contain the data you need
 - Use exact field paths in query_jsonb_field
-- Example: EventData.TargetUserName, EventData.IpAddress, etc.
+- Example: event_data.TargetUserName, event_data.IpAddress, etc.
 
 **REQUIREMENTS**:
 - Each tool MUST have a 'description' argument (shown in UI)

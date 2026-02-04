@@ -271,8 +271,8 @@ class FilterEngine:
             if dest_port in interesting_ports or source_port in interesting_ports:
                 return (True, timestamp)
 
-        # event id and channel isn't enough
-        return (False, timestamp)
+        # event id and channel is enough
+        return (True, timestamp)
 
     def is_interesting_registry(self, key_path: str) -> bool:
         """

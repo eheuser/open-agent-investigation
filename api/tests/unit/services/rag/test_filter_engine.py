@@ -72,7 +72,7 @@ class TestEVTXFiltering:
 
         is_interesting, timestamp = engine.is_interesting_evtx(event)
 
-        assert is_interesting is False  # Changed: stricter filtering
+        assert is_interesting is True
 
     def test_security_logon_failure(self):
         """
@@ -90,7 +90,7 @@ class TestEVTXFiltering:
 
         is_interesting, timestamp = engine.is_interesting_evtx(event)
 
-        assert is_interesting is False  # Changed: stricter filtering
+        assert is_interesting is True
 
     def test_powershell_scriptblock_logging(self):
         """
@@ -109,7 +109,7 @@ class TestEVTXFiltering:
 
         is_interesting, timestamp = engine.is_interesting_evtx(event)
 
-        assert is_interesting is False  # Changed: stricter filtering
+        assert is_interesting is True
 
     def test_lolbin_powershell_in_image(self):
         """
@@ -435,8 +435,9 @@ class TestStricterFiltering:
 
         event = {
             "system.Channel": "Security",
-            "system.EventID": 4624,  # Configured event ID
-            "event_data.LogonType": "3",  # No LOLBins or ports
+            "system.EventID": 4624,
+            "event_data.LogonType": "3",
+            "event_data.IpAddress": "-"
         }
 
         is_interesting, _ = engine.is_interesting_evtx(event)
@@ -667,8 +668,7 @@ class TestCustomConfiguration:
 
         is_interesting, _ = engine.is_interesting_evtx(event)
 
-        # With stricter logic: channel+event_id match is not enough
-        assert is_interesting is False
+        assert is_interesting is True
 
     def test_disable_lolbin_detection(self):
         """
@@ -754,8 +754,7 @@ class TestCustomConfiguration:
 
         is_interesting, _ = engine.is_interesting_evtx(event)
 
-        # Should not crash, should return False
-        assert is_interesting is False
+        assert is_interesting is True
 
     def test_timestamp_parsing_error(self):
         """
@@ -873,8 +872,7 @@ class TestCustomConfiguration:
 
         is_interesting, _ = engine.is_interesting_evtx(event)
 
-        # Should not crash, should return False
-        assert is_interesting is False
+        assert is_interesting is True
 
     def test_timestamp_malformed_iso_format(self):
         """

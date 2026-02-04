@@ -519,12 +519,12 @@ class TestGetInvestigationStrategyPrompt:
         tool_log = [
             {
                 "tool_name": "query_jsonb_field",
-                "arguments": {"jsonb_path": "EventData.TargetUserName", "value": "admin"},
+                "arguments": {"jsonb_path": "event_data.TargetUserName", "value": "admin"},
                 "iteration": 1,
             },
             {
                 "tool_name": "aggregate_jsonb_field",
-                "arguments": {"jsonb_path": "EventData.LogonType"},
+                "arguments": {"jsonb_path": "event_data.LogonType"},
                 "iteration": 1,
             }
         ]

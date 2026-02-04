@@ -13,8 +13,8 @@ playbook: |
   1. **Web Server Process Spawning Commands (Sysmon 1, Event ID 4688)**
      - Web servers should NOT spawn cmd.exe, powershell.exe
      - Parent processes: w3wp.exe (IIS), httpd.exe (Apache), nginx.exe, java.exe (Tomcat)
-     - Fields: EventData.ParentProcessName, EventData.NewProcessName, EventData.CommandLine
-     - Query: `query_jsonb_field` with jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%w3wp%'
+     - Fields: event_data.ParentProcessName, event_data.NewProcessName, event_data.CommandLine
+     - Query: `query_jsonb_field` with jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%w3wp%'
      - Red flags: w3wp.exe → cmd.exe, powershell.exe, net.exe, whoami.exe
   
   2. **Suspicious File Creation in Web Roots (Sysmon 11)**
@@ -23,15 +23,15 @@ playbook: |
        - IIS: C:\inetpub\wwwroot\
        - Apache: /var/www/html/, C:\Apache\htdocs\
        - Tomcat: C:\Program Files\Apache Software Foundation\Tomcat\webapps\
-     - Fields: EventData.TargetFilename, EventData.Image
+     - Fields: event_data.TargetFilename, event_data.Image
      - Query: `search_events_by_content` for 'inetpub\\wwwroot', 'wwwroot'
      - File types: .aspx, .php, .jsp, .asp, .cfm
      - Red flags: Unexpected files in web roots, suspicious filenames (shell.aspx, cmd.php)
   
   3. **Web Server Network Connections (Sysmon 3)**
      - Web shells making outbound connections (reverse shells, C2)
-     - Fields: EventData.Image, EventData.DestinationIp, EventData.DestinationPort
-     - Query: `query_jsonb_field` with jsonb_path='EventData.Image', operator='ILIKE', value='%w3wp%'
+     - Fields: event_data.Image, event_data.DestinationIp, event_data.DestinationPort
+     - Query: `query_jsonb_field` with jsonb_path='event_data.Image', operator='ILIKE', value='%w3wp%'
      - Filter: DestinationPort NOT 80/443 (unusual ports)
      - Red flags: Web server connecting to external IPs on non-HTTP ports
   
@@ -52,14 +52,14 @@ playbook: |
   6. **Web Server File Modifications (Sysmon 11)**
      - Modifying existing web files to include backdoors
      - Target files: index.aspx, default.aspx, login.php
-     - Fields: EventData.TargetFilename, EventData.Image
+     - Fields: event_data.TargetFilename, event_data.Image
      - Query: `search_events_by_content` for web root paths
      - Red flags: Unexpected modifications to core web files
   
   7. **Authentication Bypass (Event ID 4624, 4625)**
      - Web shells may bypass normal authentication
      - Look for: Web server process accessing resources without user logon
-     - Fields: EventData.LogonType, EventData.ProcessName
+     - Fields: event_data.LogonType, event_data.ProcessName
      - Query: event_type='evtx_security_4624' with ProcessName='w3wp.exe'
      - Red flags: Web server accessing files with SYSTEM or unusual accounts
   
@@ -117,9 +117,9 @@ playbook: |
   
   ```
   # Find web server processes spawning commands
-  query_jsonb_field(jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%w3wp%',
+  query_jsonb_field(jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%w3wp%',
                     event_type='evtx_sysmon_1', description='IIS spawning processes')
-  query_jsonb_field(jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%httpd%',
+  query_jsonb_field(jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%httpd%',
                     event_type='evtx_sysmon_1', description='Apache spawning processes')
   
   # Find files created in web roots
@@ -127,7 +127,7 @@ playbook: |
   search_events_by_content(value='wwwroot', description='Web root file creation')
   
   # Find web server outbound connections
-  query_jsonb_field(jsonb_path='EventData.Image', operator='ILIKE', value='%w3wp%',
+  query_jsonb_field(jsonb_path='event_data.Image', operator='ILIKE', value='%w3wp%',
                     event_type='evtx_sysmon_3', description='IIS network connections')
   
   # Find common web shell filenames

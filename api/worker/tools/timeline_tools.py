@@ -333,28 +333,36 @@ async def register_finding(
     )
 
     # Insert finding directly (findings don't have a single source event_id)
-    result = await db.execute(
-        text(
+    try:
+        result = await db.execute(
+            text(
+                """
+                INSERT INTO timeline_entries
+                (investigation_id, event_id, timestamp, entry_type, title, description, data, tags, is_visible)
+                VALUES (:investigation_id, NULL, :timestamp, 'finding', :title, :description,
+                        CAST(:data AS jsonb), CAST(:tags AS TEXT[]), true)
+                RETURNING entry_id
             """
-            INSERT INTO timeline_entries
-            (investigation_id, event_id, timestamp, entry_type, title, description, data, tags, is_visible)
-            VALUES (:investigation_id, NULL, :timestamp, 'finding', :title, :description,
-                    CAST(:data AS jsonb), CAST(:tags AS TEXT[]), true)
-            RETURNING entry_id
-        """
-        ),
-        {
-            "investigation_id": investigation_id,
-            "timestamp": parsed_timestamp,
-            "title": title,
-            "description": description,
-            "data": json.dumps(finding_data),
-            "tags": parsed_tags,
-        },
-    )
+            ),
+            {
+                "investigation_id": investigation_id,
+                "timestamp": parsed_timestamp,
+                "title": title,
+                "description": description,
+                "data": json.dumps(finding_data),
+                "tags": parsed_tags,
+            },
+        )
 
-    entry_id = result.scalar()
-    await db.commit()
+        entry_id = result.scalar()
+        await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to register finding: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        return {"error": f"Failed to register finding: {str(e)}"}
 
     # Update stats if provided
     if stats is not None:
@@ -445,6 +453,10 @@ async def batch_generate_embeddings(
 
     except Exception as e:
         logger.error(f"Failed to batch generate embeddings: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
         return 0
 
 
@@ -480,34 +492,42 @@ async def link_to_event(
     """
     logger.info(f"Linking timeline entry {entry_id} to event {event_id}")
 
-    # Update the entry to reference the event
-    result = await db.execute(
-        text(
+    try:
+        # Update the entry to reference the event
+        result = await db.execute(
+            text(
+                """
+                UPDATE timeline_entries
+                SET event_id = :event_id,
+                    data = jsonb_set(
+                        COALESCE(data, '{}'::jsonb),
+                        '{source_event_id}',
+                        to_jsonb(:event_id::bigint)
+                    )
+                WHERE entry_id = :entry_id
+                RETURNING entry_id
             """
-            UPDATE timeline_entries
-            SET event_id = :event_id,
-                data = jsonb_set(
-                    COALESCE(data, '{}'::jsonb),
-                    '{source_event_id}',
-                    to_jsonb(:event_id::bigint)
-                )
-            WHERE entry_id = :entry_id
-            RETURNING entry_id
-        """
-        ),
-        {
-            "entry_id": entry_id,
-            "event_id": event_id,
-        },
-    )
+            ),
+            {
+                "entry_id": entry_id,
+                "event_id": event_id,
+            },
+        )
 
-    updated_row = result.fetchone()
-    await db.commit()
+        updated_row = result.fetchone()
+        await db.commit()
 
-    if not updated_row:
-        logger.error(f"Failed to link entry {entry_id} to event {event_id}")
-        return {"error": "Timeline entry not found"}
+        if not updated_row:
+            logger.error(f"Failed to link entry {entry_id} to event {event_id}")
+            return {"error": "Timeline entry not found"}
 
-    logger.info(f"✓ Linked timeline entry {entry_id} to event {event_id}")
+        logger.info(f"✓ Linked timeline entry {entry_id} to event {event_id}")
 
-    return {"entry_id": entry_id, "event_id": event_id, "status": "linked"}
+        return {"entry_id": entry_id, "event_id": event_id, "status": "linked"}
+    except Exception as e:
+        logger.error(f"Failed to link timeline entry: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        return {"error": f"Failed to link timeline entry: {str(e)}"}

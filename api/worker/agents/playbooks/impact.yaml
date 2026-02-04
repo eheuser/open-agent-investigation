@@ -16,7 +16,7 @@ playbook: |
        - Sysmon 11: Rapid file creation (encrypted copies)
        - File extensions: .encrypted, .locked, .crypt, .enc
        - Ransom notes: README.txt, HOW_TO_DECRYPT.html
-     - Fields: EventData.TargetFilename, EventData.NewProcessName
+     - Fields: event_data.TargetFilename, event_data.NewProcessName
      - Query: `search_events_by_content` for ransom extensions
      - Patterns:
        - Single process modifying hundreds/thousands of files
@@ -27,7 +27,7 @@ playbook: |
   2. **Data Destruction (Sysmon 23, Event ID 4663)**
      - Sysmon 23: File deletion (requires ArchiveDirectory config)
      - Event 4663: Object access (delete operations)
-     - Fields: EventData.TargetFilename, EventData.Image
+     - Fields: event_data.TargetFilename, event_data.Image
      - Query: event_type='evtx_sysmon_23'
      - Patterns:
        - Mass file deletions
@@ -48,7 +48,7 @@ playbook: |
   4. **Service Disruption (Event ID 7036, 7040)**
      - Event 7036: Service state change (stopped)
      - Event 7040: Service start type changed (disabled)
-     - Fields: EventData.param1 (service name), EventData.param2 (state)
+     - Fields: event_data.param1 (service name), event_data.param2 (state)
      - Query: event_type='evtx_system_7036'
      - Target services:
        - Backup services (Veeam, Backup Exec)
@@ -93,7 +93,7 @@ playbook: |
   9. **Account Lockout (Event ID 4740, 4767)**
      - Event 4740: Account locked out
      - Event 4767: Account unlocked
-     - Fields: EventData.TargetUserName
+     - Fields: event_data.TargetUserName
      - Query: event_type='evtx_security_4740'
      - Patterns:
        - Mass account lockouts (password spray aftermath)

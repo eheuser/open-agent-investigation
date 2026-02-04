@@ -5,7 +5,6 @@ import {
   ExclamationCircleIcon,
   CogIcon,
   DocumentTextIcon,
-  BookOpenIcon,
 } from '@heroicons/react/24/outline';
 import api from '../../services/api';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
@@ -33,14 +32,6 @@ interface StatusCounts {
   total: number;
 }
 
-interface FieldDictionaryStatus {
-  total_fields: number;
-  pending_fields: number;
-  completed_fields: number;
-  event_types: number;
-  is_complete: boolean;
-}
-
 const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
   investigationId,
   onParsingComplete,
@@ -55,7 +46,6 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
     total: 0,
   });
   const [totalEvents, setTotalEvents] = useState<number>(0);
-  const [fieldDictStatus, setFieldDictStatus] = useState<FieldDictionaryStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [parsingStartTime, setParsingStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
@@ -131,18 +121,6 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
     }
   };
 
-  // Fetch field dictionary status
-  const fetchFieldDictStatus = async () => {
-    try {
-      const response = await api.get(
-        `/api/v1/investigations/${investigationId}/field-dictionary/status`
-      );
-      setFieldDictStatus(response.data);
-    } catch (error) {
-      console.error('Failed to fetch field dictionary status:', error);
-    }
-  };
-
   // Initial fetch
   useEffect(() => {
     const initialize = async () => {
@@ -159,12 +137,10 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
     
     if (parsingActive && parsingStartTime === null && !isLoading) {
       // Parsing just started (and initial load is complete)
-      //console.log('[ParsingStatusBanner] Starting timer - parsing active');
       setParsingStartTime(Date.now());
       setElapsedSeconds(0);
     } else if (!parsingActive && parsingStartTime !== null) {
       // Parsing finished - reset sticky flags for next parsing session
-      //console.log('[ParsingStatusBanner] Stopping timer - parsing complete');
       setParsingStartTime(null);
       setElapsedSeconds(0);
       setEverHadQueued(false);
@@ -205,13 +181,6 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
           if (elapsedSeconds >= 15) {
             fetchEventCount();
           }
-          // Only fetch field dict status after 15 seconds
-          if (elapsedSeconds >= 15) {
-            fetchFieldDictStatus();
-          }
-        } else if (data.type === 'field_dictionary_ready') {
-          // Field dictionary generation complete
-          fetchFieldDictStatus();
         }
       } catch (error) {
         // Ignore parse errors
@@ -222,33 +191,30 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
     return () => ws.removeEventListener('message', handleMessage);
   }, [ws, isConnected, elapsedSeconds]);
 
-  // Poll for updates every 2 seconds while parsing or field dictionary building is active
+  // Poll for updates every 2 seconds while parsing is active
   useEffect(() => {
     const parsingActive = statusCounts.queued > 0 || statusCounts.running > 0;
-    const fieldDictActive = fieldDictStatus && !fieldDictStatus.is_complete && fieldDictStatus.total_fields > 0;
 
-    if (parsingActive || fieldDictActive) {
+    if (parsingActive) {
       const interval = setInterval(() => {
         fetchJobs();
         
         // Progressive reveal: only fetch additional data after 15 seconds
         if (elapsedSeconds >= 15) {
           fetchEventCount();
-          fetchFieldDictStatus();
         }
       }, 2000);
 
       return () => clearInterval(interval);
     }
-  }, [statusCounts.queued, statusCounts.running, fieldDictStatus, elapsedSeconds]);
+  }, [statusCounts.queued, statusCounts.running, elapsedSeconds]);
 
   const parsingActive = statusCounts.queued > 0 || statusCounts.running > 0;
-  const fieldDictActive = fieldDictStatus && !fieldDictStatus.is_complete && fieldDictStatus.total_fields > 0;
 
   // Don't show banner if:
   // 1. Still loading initial data
-  // 2. No parsing jobs and field dictionary is complete (or doesn't exist)
-  if (isLoading || (!parsingActive && !fieldDictActive)) {
+  // 2. No parsing jobs active
+  if (isLoading || !parsingActive) {
     return null;
   }
 
@@ -256,14 +222,6 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
   const parsingProgress = statusCounts.total > 0
     ? ((statusCounts.completed + statusCounts.failed) / statusCounts.total) * 100
     : 0;
-
-  const fieldDictProgress = fieldDictStatus && fieldDictStatus.total_fields > 0
-    ? (fieldDictStatus.completed_fields / fieldDictStatus.total_fields) * 100
-    : 0;
-
-  // Determine which phase we're in
-  const showParsing = parsingActive;
-  const showFieldDict = !parsingActive && fieldDictActive;
   
   // Progressive reveal: only show detailed stats after 15 seconds
   const showDetailedStats = elapsedSeconds >= 15;
@@ -274,45 +232,28 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            {showParsing && (
-              <CogIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
-            )}
-            {showFieldDict && (
-              <BookOpenIcon className="w-5 h-5 text-purple-600 dark:text-purple-400 animate-pulse" />
-            )}
+            <CogIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
             <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-              {showParsing && 'Processing Artifacts'}
-              {showFieldDict && 'Building Field Index'}
+              Processing Artifacts
             </h3>
           </div>
           <div className="text-right">
-            {showParsing && (
-              <div className="text-xs text-blue-700 dark:text-blue-300 font-mono">
-                {statusCounts.completed + statusCounts.failed} / {totalJobs}
-              </div>
-            )}
-            {showFieldDict && fieldDictStatus && (
-              <div className="text-xs text-purple-700 dark:text-purple-300 font-mono">
-                {fieldDictStatus.completed_fields} / {fieldDictStatus.total_fields}
-              </div>
-            )}
+            <div className="text-xs text-blue-700 dark:text-blue-300 font-mono">
+              {statusCounts.completed + statusCounts.failed} / {totalJobs}
+            </div>
           </div>
         </div>
 
         {/* Progress Bar */}
         <div className="w-full bg-blue-200 dark:bg-blue-900 rounded-full h-2 mb-3">
           <div
-            className={
-              showParsing
-                ? 'bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300'
-                : 'bg-purple-600 dark:bg-purple-500 h-2 rounded-full transition-all duration-300'
-            }
-            style={{ width: `${showParsing ? parsingProgress : fieldDictProgress}%` }}
+            className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${parsingProgress}%` }}
           />
         </div>
 
-        {/* Status Grid - Only show during parsing phase AND after 15 seconds */}
-        {showParsing && showDetailedStats && (
+        {/* Status Grid - Only show after 15 seconds */}
+        {showDetailedStats && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
           {/* Queued - sticky once shown */}
           {everHadQueued && (
@@ -368,8 +309,8 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
         </div>
         )}
 
-        {/* Event Count - Show during parsing after 15 seconds */}
-        {showParsing && showDetailedStats && totalEvents > 0 && (
+        {/* Event Count - Show after 15 seconds */}
+        {showDetailedStats && totalEvents > 0 && (
           <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300 mb-2">
             <DocumentTextIcon className="w-4 h-4" />
             <span>
@@ -378,21 +319,10 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
           </div>
         )}
 
-        {/* Field Dictionary Info - Show during indexing */}
-        {showFieldDict && fieldDictStatus && (
-          <div className="flex items-center gap-2 text-xs text-purple-700 dark:text-purple-300 mb-2">
-            <BookOpenIcon className="w-4 h-4" />
-            <span>
-              Building field index for <strong>{fieldDictStatus.event_types}</strong> event types ({fieldDictStatus.total_fields.toLocaleString()} fields)
-            </span>
-          </div>
-        )}
-
         {/* Info Message */}
         <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-          {showParsing && !showDetailedStats && `⏳ Processing artifacts... (${elapsedSeconds}s)`}
-          {showParsing && showDetailedStats && '⏳ You can\'t send new questions until all artifacts finish parsing.'}
-          {showFieldDict && '📚 Building a searchable index of all forensic fields. This helps the AI agent understand your data structure.'}
+          {!showDetailedStats && `⏳ Processing artifacts... (${elapsedSeconds}s)`}
+          {showDetailedStats && '⏳ You can\'t send new questions until all artifacts finish parsing.'}
         </p>
       </div>
     </div>

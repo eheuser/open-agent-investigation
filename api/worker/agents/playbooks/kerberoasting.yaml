@@ -12,7 +12,7 @@ playbook: |
   
   1. **Bulk Service Ticket Requests (Event ID 4769)**
      - Primary Kerberoasting indicator
-     - Fields: EventData.ServiceName, EventData.TargetUserName, EventData.TicketEncryptionType
+     - Fields: event_data.ServiceName, event_data.TargetUserName, event_data.TicketEncryptionType
      - Query: event_type='evtx_security_4769'
      - Patterns to detect:
        - Multiple service ticket requests in short time (>10 in 10 minutes)
@@ -23,8 +23,8 @@ playbook: |
   2. **RC4 Encryption Downgrade (Event ID 4769)**
      - Kerberoasting tools often request RC4 tickets
      - Modern domains use AES, but RC4 is faster to crack
-     - Fields: EventData.TicketEncryptionType
-     - Query: `query_jsonb_field` with jsonb_path='EventData.TicketEncryptionType', value='0x17'
+     - Fields: event_data.TicketEncryptionType
+     - Query: `query_jsonb_field` with jsonb_path='event_data.TicketEncryptionType', value='0x17'
      - Red flags: RC4 tickets in AES-only environments
   
   3. **Service Account Enumeration (LDAP Queries)**
@@ -45,19 +45,19 @@ playbook: |
   
   5. **Service Ticket Requests for High-Value Accounts (Event ID 4769)**
      - Targeting privileged service accounts
-     - Fields: EventData.ServiceName (look for admin, sql, backup accounts)
+     - Fields: event_data.ServiceName (look for admin, sql, backup accounts)
      - Query: Aggregate by ServiceName to identify targets
      - Red flags: Requests for service accounts with elevated privileges
   
   6. **Unusual User Requesting Service Tickets (Event ID 4769)**
      - Normal users don't request many service tickets
-     - Fields: EventData.TargetUserName (requester)
+     - Fields: event_data.TargetUserName (requester)
      - Query: Aggregate by TargetUserName to find bulk requesters
      - Red flags: Single user requesting 10+ service tickets
   
   7. **Failed Kerberos Pre-Authentication (Event ID 4771)**
      - Some Kerberoasting attempts may fail
-     - Fields: EventData.TargetUserName, EventData.FailureCode
+     - Fields: event_data.TargetUserName, event_data.FailureCode
      - Query: event_type='evtx_security_4771'
      - Red flags: Multiple pre-auth failures for service accounts
   
@@ -131,11 +131,11 @@ playbook: |
   
   ```
   # Find bulk service ticket requests
-  aggregate_jsonb_field(jsonb_path='EventData.TargetUserName', aggregation='count',
+  aggregate_jsonb_field(jsonb_path='event_data.TargetUserName', aggregation='count',
                         event_type='evtx_security_4769', description='Service ticket requesters')
   
   # Find RC4 service tickets
-  query_jsonb_field(jsonb_path='EventData.TicketEncryptionType', operator='=', value='0x17',
+  query_jsonb_field(jsonb_path='event_data.TicketEncryptionType', operator='=', value='0x17',
                     event_type='evtx_security_4769', description='RC4 service tickets')
   
   # Find Kerberoasting tools
@@ -144,7 +144,7 @@ playbook: |
   search_events_by_content(value='GetUserSPNs', description='Impacket Kerberoasting')
   
   # Find targeted service accounts
-  aggregate_jsonb_field(jsonb_path='EventData.ServiceName', aggregation='top_values',
+  aggregate_jsonb_field(jsonb_path='event_data.ServiceName', aggregation='top_values',
                         event_type='evtx_security_4769', description='Targeted service accounts')
   ```
   

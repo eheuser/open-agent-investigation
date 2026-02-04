@@ -168,7 +168,7 @@ playbook: |
   
   1. **Primary Indicator (Event ID XXXX)**
      - What to look for
-     - Fields: EventData.FieldName
+     - Fields: event_data.FieldName
      - Query: `search_events_by_content` for 'pattern'
      - Red flags: Suspicious characteristics
   
@@ -229,8 +229,8 @@ Make playbooks:
 **Specific**: Include exact event IDs, field names, query examples
 ```markdown
 ### Event ID 4769 - Service Ticket Requests
-- Fields: EventData.ServiceName, EventData.TicketEncryptionType
-- Query: `query_jsonb_field` with jsonb_path='EventData.TicketEncryptionType', value='0x17'
+- Fields: event_data.ServiceName, event_data.TicketEncryptionType
+- Query: `query_jsonb_field` with jsonb_path='event_data.TicketEncryptionType', value='0x17'
 ```
 
 **Actionable**: Tell the agent what to do

@@ -17,7 +17,7 @@ playbook: |
        - `zip.exe`, `rar.exe`, `tar.exe`
        - PowerShell: `Compress-Archive`
        - `makecab.exe` - Built-in Windows compression
-     - Fields: EventData.CommandLine, EventData.TargetFilename
+     - Fields: event_data.CommandLine, event_data.TargetFilename
      - Query: `search_events_by_content` for '7z', 'zip', 'rar', 'Compress-Archive'
      - Red flags: Large archives, compression of entire directories
   
@@ -75,7 +75,7 @@ playbook: |
   8. **Network Share Collection (Event ID 5140, 5145)**
      - Event 5140: Network share accessed
      - Event 5145: Network share object accessed
-     - Fields: EventData.ShareName, EventData.RelativeTargetName, EventData.IpAddress
+     - Fields: event_data.ShareName, event_data.RelativeTargetName, event_data.IpAddress
      - Query: event_type='evtx_security_5140'
      - Look for: Bulk access to shares, unusual accounts
      - Red flags: Accessing multiple shares, copying entire directories

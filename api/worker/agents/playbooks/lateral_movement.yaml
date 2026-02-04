@@ -12,19 +12,19 @@ playbook: |
 
   1. **Network Logons (Event ID 4624 Type 10)**
      - Look for: Remote Logons
-     - Fields: EventData.TargetUserName, EventData.IpAddress, EventData.LogonType
-     - Query: `query_jsonb_field` with jsonb_path='EventData.LogonType', value='10', event_type='evtx_security_4624'
+     - Fields: event_data.TargetUserName, event_data.IpAddress, event_data.LogonType
+     - Query: `query_jsonb_field` with jsonb_path='event_data.LogonType', value='10', event_type='evtx_security_4624'
      - Follow-up: Aggregate by TargetUserName to find accounts used across systems
 
   2. **Explicit Credential Usage (Event ID 4648)**
      - Indicates "Run As" or explicit credential use for remote access
-     - Fields: EventData.TargetUserName, EventData.TargetServerName
+     - Fields: event_data.TargetUserName, event_data.TargetServerName
      - Query: Search for event_type='evtx_security_4648'
      - Look for: Admin accounts, unusual target servers
 
   3. **Remote Service Creation (Event ID 7045, Sysmon 13)**
      - Attackers often create services to execute code remotely
-     - Fields: EventData.ServiceName, EventData.ImagePath
+     - Fields: event_data.ServiceName, event_data.ImagePath
      - Query: event_type='evtx_system_7045' or 'evtx_sysmon_13'
      - Red flags: Unusual service names, suspicious paths
 
@@ -37,5 +37,5 @@ playbook: |
 
   5. **Admin Share Access (Event ID 5140)**
      - Access to C$, ADMIN$, IPC$ shares indicates remote admin activity
-     - Fields: EventData.ShareName, EventData.IpAddress
-     - Query: `query_jsonb_field` with jsonb_path='EventData.ShareName', operator='ILIKE', value='%$'
+     - Fields: event_data.ShareName, event_data.IpAddress
+     - Query: `query_jsonb_field` with jsonb_path='event_data.ShareName', operator='ILIKE', value='%$'

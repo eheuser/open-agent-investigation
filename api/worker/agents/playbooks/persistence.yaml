@@ -12,8 +12,8 @@ playbook: |
   
   1. **Registry Run Keys (Sysmon 13)**
      - Most common persistence mechanism
-     - Fields: EventData.TargetObject, EventData.Details
-     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetObject', operator='ILIKE', value='%\\Run%'
+     - Fields: event_data.TargetObject, event_data.Details
+     - Query: `query_jsonb_field` with jsonb_path='event_data.TargetObject', operator='ILIKE', value='%\\Run%'
      - Key paths to check:
        - HKLM\Software\Microsoft\Windows\CurrentVersion\Run
        - HKCU\Software\Microsoft\Windows\CurrentVersion\Run
@@ -23,14 +23,14 @@ playbook: |
   
   2. **Scheduled Tasks (Event ID 4698)**
      - Powerful persistence with flexible scheduling
-     - Fields: EventData.TaskName, EventData.TaskContent
+     - Fields: event_data.TaskName, event_data.TaskContent
      - Query: event_type='evtx_security_4698'
      - Look for: Unusual task names, suspicious executables, frequent execution
      - Follow-up: Aggregate by SubjectUserName to find who created tasks
   
   3. **Service Creation (Event ID 7045, 4697)**
      - Services run with SYSTEM privileges and auto-start
-     - Fields: EventData.ServiceName, EventData.ImagePath, EventData.ServiceType
+     - Fields: event_data.ServiceName, event_data.ImagePath, event_data.ServiceType
      - Query: event_type='evtx_system_7045' or 'evtx_security_4697'
      - Red flags: Unusual service names, suspicious ImagePath, manual start type
      - Common malware: Services with random names, paths in Temp/AppData
@@ -38,7 +38,7 @@ playbook: |
   4. **WMI Event Subscriptions (Sysmon 19, 20, 21)**
      - Stealthy persistence, rarely used by legitimate software
      - Event IDs: 19 (WmiEventFilter), 20 (WmiEventConsumer), 21 (WmiEventConsumerToFilter)
-     - Fields: EventData.EventNamespace, EventData.Query, EventData.Destination
+     - Fields: event_data.EventNamespace, event_data.Query, event_data.Destination
      - Query: event_type='evtx_sysmon_19' or 'evtx_sysmon_20' or 'evtx_sysmon_21'
      - Red flags: ANY WMI event subscription is suspicious
   
@@ -50,19 +50,19 @@ playbook: |
   
   6. **DLL Hijacking / Image File Execution Options**
      - Registry modifications to hijack legitimate processes
-     - Fields: EventData.TargetObject (Sysmon 13)
+     - Fields: event_data.TargetObject (Sysmon 13)
      - Query: `query_jsonb_field` for 'Image File Execution Options' or 'AppInit_DLLs'
      - Red flags: Debugger values, unusual DLL paths
   
   7. **Accessibility Features Hijacking**
      - Replacing sethc.exe, utilman.exe with cmd.exe
-     - Fields: EventData.TargetFilename (Sysmon 11)
+     - Fields: event_data.TargetFilename (Sysmon 11)
      - Query: `search_events_by_content` for 'sethc.exe' or 'utilman.exe'
      - Red flags: File modifications in System32 for accessibility tools
   
   8. **User Account Creation (Event ID 4720)**
      - Attackers create backdoor accounts
-     - Fields: EventData.TargetUserName, EventData.SubjectUserName
+     - Fields: event_data.TargetUserName, event_data.SubjectUserName
      - Query: event_type='evtx_security_4720'
      - Look for: Unusual account names, creation times, privilege escalation
      - Follow-up: Check Event ID 4732 (user added to privileged group)

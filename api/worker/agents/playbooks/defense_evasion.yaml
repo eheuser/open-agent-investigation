@@ -12,7 +12,7 @@ playbook: |
   
   1. **Security Tool Tampering (Event ID 4688, Sysmon 1)**
      - Disabling antivirus, firewall, logging
-     - Fields: EventData.CommandLine, EventData.NewProcessName
+     - Fields: event_data.CommandLine, event_data.NewProcessName
      - Query: `search_events_by_content` for 'Set-MpPreference', 'netsh advfirewall', 'sc stop'
      - Red flags: Commands disabling Windows Defender, stopping security services
      - Example patterns:
@@ -24,20 +24,20 @@ playbook: |
      - Attackers clear logs to hide activity
      - Event ID 1102: Security log cleared
      - Event ID 104: System log cleared
-     - Fields: EventData.SubjectUserName
+     - Fields: event_data.SubjectUserName
      - Query: event_type='evtx_security_1102' or 'evtx_system_104'
      - Look for: When logs were cleared (gap in timeline), who cleared them
   
   3. **File Deletion / Timestomping (Sysmon 23, 2)**
      - Sysmon 23: File deletions (requires ArchiveDirectory config)
      - Sysmon 2: File creation time changes
-     - Fields: EventData.TargetFilename, EventData.CreationUtcTime
+     - Fields: event_data.TargetFilename, event_data.CreationUtcTime
      - Query: event_type='evtx_sysmon_23' or 'evtx_sysmon_2'
      - Red flags: Deletion of tools, timestomping to match legitimate files
   
   4. **Obfuscated Commands (Event ID 4688, Sysmon 1)**
      - Base64 encoding, XOR, character substitution
-     - Fields: EventData.CommandLine
+     - Fields: event_data.CommandLine
      - Query: `search_events_by_content` for 'encodedcommand', 'frombase64', '-enc', '^'
      - Patterns to look for:
        - PowerShell: `-EncodedCommand`, `-enc`, `-e`
@@ -47,14 +47,14 @@ playbook: |
   5. **Process Injection (Sysmon 8, 10)**
      - Sysmon 8: CreateRemoteThread
      - Sysmon 10: ProcessAccess (cross-process memory access)
-     - Fields: EventData.SourceImage, EventData.TargetImage, EventData.GrantedAccess
+     - Fields: event_data.SourceImage, event_data.TargetImage, event_data.GrantedAccess
      - Query: event_type='evtx_sysmon_8' or 'evtx_sysmon_10'
      - Red flags: Unusual processes accessing lsass.exe, svchost.exe
      - Look for: GrantedAccess 0x1010 (PROCESS_VM_READ), 0x1F0FFF (PROCESS_ALL_ACCESS)
   
   6. **Masquerading (Sysmon 1, Event ID 4688)**
      - Malware disguised as legitimate processes
-     - Fields: EventData.NewProcessName, EventData.OriginalFileName
+     - Fields: event_data.NewProcessName, event_data.OriginalFileName
      - Query: `search_events_by_content` for 'svchost.exe' NOT in System32
      - Red flags: 
        - svchost.exe running from Temp, Downloads, AppData
@@ -64,21 +64,21 @@ playbook: |
   7. **Indicator Removal (MFT, Prefetch, Registry)**
      - Deletion of prefetch files to hide execution
      - Registry key deletion (Sysmon 12)
-     - Fields: EventData.TargetObject (registry), EventData.TargetFilename (files)
+     - Fields: event_data.TargetObject (registry), event_data.TargetFilename (files)
      - Query: `query_jsonb_field` for 'Prefetch' or check MFT for deleted entries
      - Look for: Gaps in forensic artifacts
   
   8. **Disabling Windows Defender (Registry, Event ID 5001)**
      - Event ID 5001: Windows Defender disabled
      - Registry: DisableAntiSpyware, DisableRealtimeMonitoring
-     - Fields: EventData.TargetObject (Sysmon 13)
-     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetObject', value='%DisableAntiSpyware%'
+     - Fields: event_data.TargetObject (Sysmon 13)
+     - Query: `query_jsonb_field` with jsonb_path='event_data.TargetObject', value='%DisableAntiSpyware%'
      - Red flags: Registry changes to Defender policies
   
   9. **DLL Side-Loading / Hijacking**
      - Placing malicious DLL in application directory
      - Sysmon 7: Image loaded events
-     - Fields: EventData.ImageLoaded, EventData.Signed, EventData.SignatureStatus
+     - Fields: event_data.ImageLoaded, event_data.Signed, event_data.SignatureStatus
      - Query: event_type='evtx_sysmon_7' with Signed='false'
      - Red flags: Unsigned DLLs loaded by legitimate processes
   

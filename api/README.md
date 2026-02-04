@@ -530,8 +530,8 @@ playbook: |
   ### Key Indicators to Investigate:
   
   1. **Network Logons (Event ID 4624 Type 10)**
-     - Fields: EventData.TargetUserName, EventData.IpAddress
-     - Query: `query_jsonb_field` with jsonb_path='EventData.LogonType', value='10'
+     - Fields: event_data.TargetUserName, event_data.IpAddress
+     - Query: `query_jsonb_field` with jsonb_path='event_data.LogonType', value='10'
   
   2. **Explicit Credential Usage (Event ID 4648)**
      - Indicates "Run As" or explicit credential use
@@ -653,7 +653,6 @@ The system supports separate models for embedding generation and reranking:
 - **Concurrent Calls**: Enable `allow_concurrent_embedding_calls` to batch and parallelize requests:
   - **Embedding**: Batches of 50 texts processed in parallel (for 50+ total texts)
   - **Reranking**: Batches of 100 documents processed in parallel (for 100+ total documents)
-  - **Field Dictionary Generation**: Batches of ~400-500 fields processed in parallel (up to 4 concurrent LLM calls)
   - **Use Case**: High-capacity public APIs (OpenAI, Anthropic) can handle many concurrent requests
   - **Disable For**: Local endpoints with limited GPU resources (Ollama, LM Studio)
 
@@ -661,29 +660,7 @@ The system supports separate models for embedding generation and reranking:
 
 This two-tier approach balances speed (fast embeddings on all data) with accuracy (powerful reranking on top results).
 
-**Field Dictionary Generation:**
-
-When artifacts are parsed, the system automatically discovers all JSONB fields and generates forensic descriptions using the LLM. This process can be accelerated with concurrent calls:
-
-- **Sequential Mode** (default): Processes field batches one at a time (~30 seconds per batch for 100-250 fields)
-- **Concurrent Mode** (`allow_concurrent_embedding_calls=true`): Processes up to 4 batches in parallel (4x faster)
-- **Batch Size**: Automatically calculated based on LLM max context length (typically 100-250 fields per batch)
-  - Reduced from previous 400-500 to prevent JSON parsing errors with large responses
-  - Each concurrent batch gets its own database connection to prevent conflicts
-- **Use Case**: Large investigations with many event types (500+ unique JSONB fields)
-- **Example**: 13,330 fields across 552 event types processes in ~2-3 minutes with concurrent mode vs. ~8-12 minutes sequential
-- **Error Handling**: Automatic rollback on failures, detailed logging for debugging
-
-**Performance Comparison:**
-```
-Sequential (default):  [Batch 1] → [Batch 2] → [Batch 3] → [Batch 4] → ...
-                       ~30s       ~30s       ~30s       ~30s
-
-Concurrent (enabled):  [Batch 1, 2, 3, 4] → [Batch 5, 6, 7, 8] → ...
-                       ~30s                  ~30s
-```
-
-The concurrent setting applies to both embedding generation (RAG) and field dictionary generation, providing significant speedups for high-capacity APIs.
+The concurrent setting applies to embedding generation (RAG), providing significant speedups for high-capacity APIs.
 
 ### How Playbooks Work with Agents
 
@@ -951,7 +928,7 @@ docker compose logs api | grep "\[GENERAL_CHAT\]"
 
 2. **Specific Tool Recommendations**:
    - Reference exact tool names: `query_jsonb_field`, `search_events_by_type`
-   - Provide example JSONB paths: `EventData.LogonType`, `system.Computer`
+   - Provide example JSONB paths: `event_data.LogonType`, `system.Computer`
    - Include expected values: `LogonType='10'`, `ServiceName LIKE '%PSEXE%'`
 
 3. **Progressive Investigation Flow**:
@@ -978,7 +955,7 @@ playbook: |
   ### Key Indicators:
   
   1. **TGS Requests (Event ID 4769)**
-     - Fields: EventData.ServiceName, EventData.TicketEncryptionType
+     - Fields: event_data.ServiceName, event_data.TicketEncryptionType
      - Query: `search_events_by_type` with event_type='evtx_security_4769'
      - Red flags: RC4 encryption (0x17), unusual service accounts
      - Follow-up: `aggregate_field` on ServiceName to find targeted accounts

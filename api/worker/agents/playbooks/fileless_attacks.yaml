@@ -17,14 +17,14 @@ playbook: |
        - `Invoke-Expression (Invoke-WebRequest -Uri '...' -UseBasicParsing).Content`
        - `[Reflection.Assembly]::Load([byte[]]...)`
        - `[System.Reflection.Assembly]::LoadWithPartialName()`
-     - Fields: EventData.CommandLine, EventData.ScriptBlockText (Sysmon 4104)
+     - Fields: event_data.CommandLine, event_data.ScriptBlockText (Sysmon 4104)
      - Query: `search_events_by_content` for 'IEX', 'DownloadString', 'Reflection.Assembly'
      - Red flags: Remote script execution, assembly loading, obfuscated commands
   
   2. **WMI Event Subscriptions (Permanent)**
      - Fileless persistence via WMI
      - Event IDs: Sysmon 19 (WmiEventFilter), 20 (WmiEventConsumer), 21 (Binding)
-     - Fields: EventData.EventNamespace, EventData.Query, EventData.Destination
+     - Fields: event_data.EventNamespace, event_data.Query, event_data.Destination
      - Query: event_type='evtx_sysmon_19' or 'evtx_sysmon_20' or 'evtx_sysmon_21'
      - Red flags: ANY WMI event subscription is suspicious (rarely used legitimately)
      - Common pattern: Filter triggers on event → Consumer executes script
@@ -33,7 +33,7 @@ playbook: |
      - Injecting malicious code into legitimate processes
      - Sysmon 8: CreateRemoteThread detected
      - Sysmon 10: ProcessAccess (cross-process memory access)
-     - Fields: EventData.SourceImage, EventData.TargetImage, EventData.GrantedAccess
+     - Fields: event_data.SourceImage, event_data.TargetImage, event_data.GrantedAccess
      - Query: event_type='evtx_sysmon_8' or 'evtx_sysmon_10'
      - Target processes: explorer.exe, svchost.exe, notepad.exe
      - Red flags: Unusual processes accessing legitimate process memory
@@ -52,29 +52,29 @@ playbook: |
      - Common locations:
        - HKCU\Software\Classes\CLSID
        - HKLM\Software\Microsoft\Windows\CurrentVersion\Run (with encoded payload)
-     - Fields: EventData.TargetObject, EventData.Details (Sysmon 13)
+     - Fields: event_data.TargetObject, event_data.Details (Sysmon 13)
      - Query: `query_jsonb_field` for registry keys with large values (>1KB)
      - Red flags: Base64-encoded data in registry, unusual CLSID entries
   
   6. **Scheduled Task with Inline Script**
      - Tasks that execute scripts without file artifacts
      - Event ID 4698: Scheduled task created
-     - Fields: EventData.TaskContent (contains XML with script)
+     - Fields: event_data.TaskContent (contains XML with script)
      - Query: event_type='evtx_security_4698'
      - Red flags: Tasks with PowerShell inline scripts, encoded commands
   
   7. **Office Macro In-Memory Execution**
      - Macros executing PowerShell or scripts without dropping files
      - Process chain: WINWORD.EXE/EXCEL.EXE → powershell.exe
-     - Fields: EventData.ParentProcessName, EventData.CommandLine
-     - Query: `query_jsonb_field` with jsonb_path='EventData.ParentProcessName', value='%WINWORD%' or '%EXCEL%'
+     - Fields: event_data.ParentProcessName, event_data.CommandLine
+     - Query: `query_jsonb_field` with jsonb_path='event_data.ParentProcessName', value='%WINWORD%' or '%EXCEL%'
      - Red flags: Office apps spawning PowerShell, cmd, wscript
   
   8. **LSASS Memory Dumping (Fileless Credential Theft)**
      - Dumping credentials from memory without writing dump files
      - Sysmon 10: ProcessAccess to lsass.exe
-     - Fields: EventData.TargetImage='lsass.exe', EventData.GrantedAccess
-     - Query: `query_jsonb_field` with jsonb_path='EventData.TargetImage', value='lsass.exe'
+     - Fields: event_data.TargetImage='lsass.exe', event_data.GrantedAccess
+     - Query: `query_jsonb_field` with jsonb_path='event_data.TargetImage', value='lsass.exe'
      - Red flags: Non-system processes accessing LSASS memory
   
   9. **JavaScript/VBScript In-Memory Execution**
@@ -137,11 +137,11 @@ playbook: |
   
   # Find process injection
   search_events_by_type(event_type='evtx_sysmon_8', description='CreateRemoteThread injection')
-  query_jsonb_field(jsonb_path='EventData.TargetImage', operator='ILIKE', value='%explorer.exe%')
+  query_jsonb_field(jsonb_path='event_data.TargetImage', operator='ILIKE', value='%explorer.exe%')
   
   # Find Office apps spawning scripts
-  query_jsonb_field(jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%WINWORD%')
-  query_jsonb_field(jsonb_path='EventData.ParentProcessName', operator='ILIKE', value='%EXCEL%')
+  query_jsonb_field(jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%WINWORD%')
+  query_jsonb_field(jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%EXCEL%')
   
   # Find Reflection.Assembly usage
   search_events_by_content(value='Reflection.Assembly', description='In-memory assembly loading')
@@ -166,8 +166,8 @@ playbook: |
   
   # Detection
   Query for ANY Sysmon 19/20/21 events - legitimate use is extremely rare
-  Check EventData.Query (filter condition)
-  Check EventData.Destination or EventData.CommandLineTemplate (consumer action)
+  Check event_data.Query (filter condition)
+  Check event_data.Destination or event_data.CommandLineTemplate (consumer action)
   ```
   
   ### Process Injection Techniques:
