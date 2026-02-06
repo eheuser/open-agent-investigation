@@ -113,7 +113,14 @@ class TimelineContextManager:
         Returns:
             A list of message dictionaries suitable for passing to an LLM API. The first entry is a `system` message containing the timeline assistant prompt; the second entry is a `user` message with the (potentially truncated) query.
         """
-        system_prompt = """You are a timeline assistant. Use the available timeline tools to answer the user's question. After using tools, provide a clear, concise answer based on the results."""
+        system_prompt = """You are a timeline assistant. Use the available timeline tools to answer the user's question.
+
+IMPORTANT: When searching for timeline entries:
+- Use search_text parameter for keyword searches (e.g., "powershell", "suspicious", "malware")
+- Do NOT filter by entry_type unless the user specifically mentions it
+- Most queries should use ONLY search_text, not entry_type
+
+After using tools, provide a clear, concise answer based on the results."""
 
         messages = [
             {"role": "system", "content": system_prompt},

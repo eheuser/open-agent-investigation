@@ -15,6 +15,7 @@ from .handlers.rag_handler import handle_rag_query
 from .query_expander import expand_query
 from .llm_service import LLMService
 from .context_manager import ChatContextManager
+from .embedding_queue import get_embedding_status
 
 from ..utils.log_setup import get_logger
 
@@ -210,6 +211,7 @@ async def classify_intent(
     investigation_id: UUID,
     user_query: str,
     chat_history: Optional[List[Dict[str, str]]] = None,
+    allow_rag: bool = True,
 ) -> ClassificationResult:
     """
     Classify a user query into an intent type using an LLM or heuristic fallback.
@@ -227,6 +229,14 @@ async def classify_intent(
     Raises:
         None. All errors are caught internally; on failure the function falls back to a heuristic classifier and returns its result.
     """
+    # Check if RAG mode should be available
+    if allow_rag:
+        # Check if embeddings are still being generated
+        embedding_status = await get_embedding_status(db, investigation_id)
+        if not embedding_status["is_complete"]:
+            allow_rag = False
+            logger.debug(f"[CHAT_ROUTER] RAG mode disabled - embeddings pending ({embedding_status['total_pending_events']} events)")
+    
     # Fetch chat history if not provided
     if chat_history is None:
         chat_history = await _fetch_recent_chat_history(db, investigation_id, limit=10)
@@ -448,6 +458,17 @@ async def route_chat_message(
                 "message": "Augmented Chat mode requires embedding configuration. Please configure an embedding provider in LLM settings or use 'Auto', 'Agent', or 'Timeline' mode.",
             }
             return
+        
+        # Check if embeddings are still being generated
+        embedding_status = await get_embedding_status(db, investigation_id)
+        if not embedding_status["is_complete"]:
+            pending_events = embedding_status["total_pending_events"]
+            yield {
+                "type": "error",
+                "message": f"Augmented Chat mode is unavailable while embeddings are being generated ({pending_events:,} events pending). Please wait for embedding to complete or use 'Auto', 'Agent', or 'Timeline' mode.",
+            }
+            return
+        
         # The chat handler will persist tool executions after the message is created
         async for chunk in handle_rag_query(db, investigation_id, user_query, user_id):
             yield chunk
@@ -500,6 +521,15 @@ async def route_chat_message(
     # Use expanded query for all downstream processing
     processing_query = expanded_query
 
+    # Check if RAG mode should be available (for auto classification)
+    allow_rag = True
+    if router_mode == "auto":
+        # Check if embeddings are still being generated
+        embedding_status = await get_embedding_status(db, investigation_id)
+        if not embedding_status["is_complete"]:
+            allow_rag = False
+            logger.debug(f"[CHAT_ROUTER] RAG mode disabled for auto classification - embeddings pending ({embedding_status['total_pending_events']} events)")
+
     # Step 3: Classify intent with conversation context
     classification = await classify_intent(
         db=db,
@@ -507,6 +537,7 @@ async def route_chat_message(
         investigation_id=investigation_id,
         user_query=processing_query,
         chat_history=chat_history,
+        allow_rag=allow_rag,
     )
     logger.info(
         f"[CHAT_ROUTER] Classified as: {classification.intent.value} (confidence: {classification.confidence})"

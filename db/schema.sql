@@ -214,6 +214,29 @@ CREATE INDEX idx_jobs_agents_user ON jobs_agents(user_id);
 CREATE INDEX idx_jobs_agents_created ON jobs_agents(created_at DESC);
 CREATE INDEX idx_jobs_agents_policy ON jobs_agents(policy_id);
 
+-- Embedding jobs queue (§4.7)
+-- Background queue for generating embeddings from parsed events
+-- Set fillfactor to 90 for frequently updated job status transitions
+CREATE TABLE IF NOT EXISTS jobs_embedding (
+    job_id BIGSERIAL PRIMARY KEY,
+    investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    event_ids BIGINT[] NOT NULL,  -- Batch of event IDs to embed
+    status job_status NOT NULL DEFAULT 'pending',
+    worker_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    error_message TEXT,
+    events_processed INTEGER DEFAULT 0,  -- Track progress
+    CONSTRAINT event_ids_not_empty CHECK (array_length(event_ids, 1) > 0)
+) WITH (fillfactor = 90);
+
+CREATE INDEX idx_jobs_embedding_status ON jobs_embedding(status) WHERE status = 'pending';
+CREATE INDEX idx_jobs_embedding_investigation ON jobs_embedding(investigation_id, status);
+CREATE INDEX idx_jobs_embedding_user ON jobs_embedding(user_id);
+CREATE INDEX idx_jobs_embedding_created ON jobs_embedding(created_at DESC);
+
 -- Investigation choices table (agent-suggested next steps)
 CREATE TABLE IF NOT EXISTS investigation_choices (
     choice_id BIGSERIAL PRIMARY KEY,

@@ -76,6 +76,7 @@ const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isStreaming,
           onContinue={onContinue}
           onReplicateQuery={onReplicateQuery}
           searchQuery={searchQuery}
+          isTimelineQuery={messageType === 'timeline_query'}
         />
       );
 

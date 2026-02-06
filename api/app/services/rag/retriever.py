@@ -19,6 +19,7 @@ class EmbeddingChunk:
     text: str
     score: float
     metadata: Optional[Dict[str, Any]] = None
+    event_data: Optional[Dict[str, Any]] = None  # Full event object for tool-type sources
 
 
 class Retriever:
@@ -41,7 +42,7 @@ class Retriever:
             logger.info: Emits a log entry indicating that the retriever has been initialized with re-ranking disabled.
         """
         self.db = db
-        logger.info("Retriever initialized (re-ranking disabled)")
+        logger.debug("Retriever initialized (re-ranking disabled)")
 
     async def retrieve(
         self,
@@ -82,7 +83,7 @@ class Retriever:
             return []
 
         # Load text content for candidates
-        chunks_with_text = await self._load_texts(candidates)
+        chunks_with_text = await self._load_texts_with_events(candidates)
 
         return chunks_with_text[:k]
 
@@ -158,12 +159,12 @@ class Retriever:
             # First check if any embeddings exist at all
             count_result = await self.db.execute(text("SELECT COUNT(*) FROM embeddings"))
             total_embeddings = count_result.scalar()
-            logger.info(f"Total embeddings in database: {total_embeddings}")
+            logger.debug(f"Total embeddings in database: {total_embeddings}")
 
             result = await self.db.execute(text(sql), params)
             rows = result.fetchall()
 
-            logger.info(
+            logger.debug(
                 f"Vector search returned {len(rows):,} candidates (out of {total_embeddings} total embeddings)"
             )
 
@@ -181,7 +182,7 @@ class Retriever:
             # Re-raising will propagate the error up to the handler
             raise
 
-    async def _load_texts(
+    async def _load_texts_with_events(
         self, candidates: List[Tuple[int, str, int, float]]
     ) -> List[EmbeddingChunk]:
         """
@@ -230,6 +231,14 @@ class Retriever:
         for i, (emb_id, owner_type, owner_id, distance) in enumerate(candidates):
             try:
                 text = await self._fetch_text(owner_type, owner_id)
+                # For tool-type sources, fetch full event data separately
+                event_data = None
+                if owner_type == 'tool' and text:
+                    event_data = await self._fetch_event_data(owner_id)
+                    if event_data:
+                        logger.debug(f"Fetched event data for event {owner_id}: {event_data.get('event_type')}")
+                    else:
+                        logger.warning(f"Failed to fetch event data for event {owner_id}")
                 if text:
                     chunks.append(
                         EmbeddingChunk(
@@ -238,6 +247,7 @@ class Retriever:
                             owner_id=owner_id,
                             text=text,
                             score=1.0 - distance,  # Convert distance to similarity score
+                            event_data=event_data,  # Include full event object for tool-type sources
                         )
                     )
                     logger.debug(
@@ -259,7 +269,7 @@ class Retriever:
                     )
                     try:
                         await self.db.rollback()
-                        logger.info("Transaction rolled back successfully")
+                        logger.debug("Transaction rolled back successfully")
                     except Exception as rb_error:
                         logger.error(f"Rollback failed: {rb_error}")
                     # Stop processing remaining candidates
@@ -267,8 +277,50 @@ class Retriever:
                 # For other errors, continue to next candidate
                 continue
 
-        logger.info(f"Loaded {len(chunks):,} chunks from {len(candidates):,} candidates")
+        logger.debug(f"Loaded {len(chunks):,} chunks from {len(candidates):,} candidates")
         return chunks
+    
+    async def _fetch_event_data(self, event_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Fetch full event object for UI display.
+        
+        Args:
+            event_id: Event ID
+            
+        Returns:
+            Event object with event_id, event_type, timestamp, artifact_id, payload
+        """
+        try:
+            result = await self.db.execute(
+                text(
+                    """
+                    SELECT event_id, event_type, event_ts, payload, artifact_id
+                    FROM events 
+                    WHERE event_id = :id
+                """
+                ),
+                {"id": event_id},
+            )
+            row = result.fetchone()
+            
+            if not row:
+                return None
+            
+            event_id_val, event_type, event_ts, payload, artifact_id = row
+            
+            event_obj = {
+                "event_id": event_id_val,
+                "event_type": event_type,
+                "timestamp": str(event_ts) if event_ts else "unknown time",
+                "artifact_id": artifact_id,
+                "payload": payload,
+            }
+            
+            logger.debug(f"Built event object for event {event_id_val}: type={event_type}")
+            return event_obj
+        except Exception as e:
+            logger.warning(f"Failed to fetch event data for event {event_id}: {e}")
+            return None
 
     async def _fetch_text(self, owner_type: str, owner_id: int) -> Optional[str]:
         """

@@ -18,6 +18,7 @@ interface AgentMessageCardProps {
   onContinue?: (jobId: number, effort: string) => void;
   onReplicateQuery?: (queryParams: any) => void;
   searchQuery?: string;
+  isTimelineQuery?: boolean;
 }
 
 interface ToolExecutionDisplayProps {
@@ -190,7 +191,7 @@ const ToolExecutionDisplay: React.FC<ToolExecutionDisplayProps> = ({ tool, onRep
 };
 
 
-const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreaming, onDelete, onContinue, onReplicateQuery, searchQuery }) => {
+const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreaming, onDelete, onContinue, onReplicateQuery, searchQuery, isTimelineQuery }) => {
   // Helper to highlight search terms in text with unique IDs
   const highlightSearchText = (text: string) => {
     if (!searchQuery || !text) return text;
@@ -249,6 +250,18 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
     .replace(/\s+:\s*$/gm, '') // Remove trailing colons with whitespace
     .replace(/\n{3,}/g, '\n\n') // Clean up excessive newlines
     .trim();
+  
+  // For timeline queries, extract summary footer if present
+  // Backend adds summary as: "\n\n---\n📊 Timeline: X query"
+  let timelineSummary: string | null = null;
+  if (isTimelineQuery) {
+    const summaryPattern = /\n\n---\n📊\s*(.+)$/;
+    const match = cleanContent.match(summaryPattern);
+    if (match) {
+      cleanContent = cleanContent.replace(summaryPattern, '').trim();
+      timelineSummary = match[1].trim();
+    }
+  }
   
   // If content starts with a JSON block, remove it
   if (cleanContent.startsWith('{')) {
@@ -497,6 +510,12 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
               </div>
             </div>
           )}
+          {/* Show timeline mode indicator for timeline queries */}
+          {isTimelineQuery && !routingMetadata && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium">
+              Timeline Mode
+            </span>
+          )}
         </div>
 
         {/* Routing Badge - show handler type and playbook */}
@@ -588,6 +607,17 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
         )}
 
         {/* Stats are now shown in AgentExecutionContainer - removed duplicate footer */}
+
+        {/* Timeline query summary - show operations performed */}
+        {isTimelineQuery && timelineSummary && (
+          <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium">
+                {timelineSummary}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Show continuation option when investigation is incomplete and not currently continuing */}
         {/* Note: can_continue is disabled in new system, so we check for investigation_incomplete instead */}

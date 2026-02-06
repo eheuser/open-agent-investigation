@@ -20,14 +20,10 @@ TIMELINE_TOOLS = [
         "type": "function",
         "function": {
             "name": "query_timeline_entries",
-            "description": "Search and filter timeline entries. Returns entries matching the criteria.",
+            "description": "Search and filter timeline entries. Returns entries with their linked event data.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "entry_type": {
-                        "type": "string",
-                        "description": "Filter by entry type (e.g., 'event', 'finding', 'observation')",
-                    },
                     "tags": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -43,7 +39,7 @@ TIMELINE_TOOLS = [
                     },
                     "search_text": {
                         "type": "string",
-                        "description": "Search in title and description fields",
+                        "description": "Search in title and description fields. Use this for keyword-based searches (e.g., 'powershell', 'suspicious', 'malware').",
                     },
                     "limit": {
                         "type": "integer",
@@ -655,11 +651,13 @@ async def _tool_query_timeline(
     Raises:
         No exceptions are propagated; any error encountered during query execution is caught, logged, and reported in the returned dictionary.
     """
-    # Build query
+    # Build query - join with events table to get full event data
     query_parts = [
-        "SELECT entry_id, event_id, timestamp, entry_type, title, description, data, tags",
-        "FROM timeline_entries",
-        "WHERE investigation_id = :investigation_id AND is_visible = true",
+        "SELECT te.entry_id, te.event_id, te.timestamp, te.entry_type, te.title, te.description, te.data, te.tags,",
+        "       e.event_type, e.event_ts, e.payload, e.artifact_id",
+        "FROM timeline_entries te",
+        "LEFT JOIN events e ON te.event_id = e.event_id",
+        "WHERE te.investigation_id = :investigation_id AND te.is_visible = true",
     ]
     query_params: Dict[str, Any] = {"investigation_id": str(investigation_id)}
 
@@ -703,21 +701,31 @@ async def _tool_query_timeline(
         result = await db.execute(query, query_params)
         rows = result.fetchall()
 
-        # Format results
+        # Format results with event data
         entries = []
         for row in rows:
-            entries.append(
-                {
-                    "entry_id": row[0],
+            entry = {
+                "entry_id": row[0],
+                "event_id": row[1],
+                "timestamp": row[2].isoformat() if row[2] else None,
+                "entry_type": row[3],
+                "title": row[4],
+                "description": row[5],
+                "data": row[6] or {},
+                "tags": row[7] or [],
+            }
+            
+            # Include full event data if available (from LEFT JOIN)
+            if row[1] and row[8]:  # event_id exists and event_type exists
+                entry["event"] = {
                     "event_id": row[1],
-                    "timestamp": row[2].isoformat() if row[2] else None,
-                    "entry_type": row[3],
-                    "title": row[4],
-                    "description": row[5],
-                    "data": row[6] or {},
-                    "tags": row[7] or [],
+                    "event_type": row[8],
+                    "timestamp": str(row[9]) if row[9] else "unknown time",
+                    "payload": row[10],
+                    "artifact_id": row[11],
                 }
-            )
+            
+            entries.append(entry)
 
         return {
             "success": True,

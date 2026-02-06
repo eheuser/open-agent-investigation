@@ -15,6 +15,7 @@ interface ChatInputProps {
   isAgentRunning: boolean;
   disabled?: boolean;
   parsingLocked?: boolean;
+  embeddingInProgress?: boolean;
   effort?: AgentEffort;
   onEffortChange?: (effort: AgentEffort) => void;
   mode?: RouterMode;
@@ -45,6 +46,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   isAgentRunning,
   disabled = false,
   parsingLocked = false,
+  embeddingInProgress = false,
   effort = 'medium',
   onEffortChange,
   mode = 'auto',
@@ -169,7 +171,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
                     <option value="auto">{modeLabels.auto.label}</option>
                     <option value="agent">{modeLabels.agent.label}</option>
                     <option value="timeline">{modeLabels.timeline.label}</option>
-                    <option value="augmented">{modeLabels.augmented.label}</option>
+                    <option value="augmented" disabled={embeddingInProgress}>
+                      {modeLabels.augmented.label}{embeddingInProgress ? ' (embedding in progress)' : ''}
+                    </option>
                   </select>
                   <ChevronDownIcon className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
                 </div>

@@ -12,6 +12,19 @@ from app.services.chat_router import (
 from app.schemas.chat_message import IntentType, ClassificationResult
 
 
+@pytest.fixture
+def mock_embedding_status():
+    """Mock get_embedding_status to return complete status."""
+    with patch('app.services.chat_router.get_embedding_status') as mock:
+        mock.return_value = {
+            "pending_jobs": 0,
+            "running_jobs": 0,
+            "total_pending_events": 0,
+            "is_complete": True,
+        }
+        yield mock
+
+
 @pytest.mark.unit
 class TestFallbackClassification:
     """Test fallback classification (keyword-based)."""
@@ -481,7 +494,7 @@ class TestClassifyIntent:
     """Test LLM-based intent classification."""
 
     @pytest.mark.asyncio
-    async def test_classify_intent_with_llm_success(self):
+    async def test_classify_intent_with_llm_success(self, mock_embedding_status):
         """
         Test that the intent classification using the LLM service succeeds and returns the expected timeline query intent with high confidence.
 
@@ -519,7 +532,7 @@ class TestClassifyIntent:
         assert result.confidence == 0.9
 
     @pytest.mark.asyncio
-    async def test_classify_intent_no_llm_service(self):
+    async def test_classify_intent_no_llm_service(self, mock_embedding_status):
         """
         Test that intent classification correctly falls back to keyword-based detection when the LLM service cannot be instantiated.
 
@@ -545,7 +558,7 @@ class TestClassifyIntent:
         assert result.intent == IntentType.EXECUTE_POLICY
 
     @pytest.mark.asyncio
-    async def test_classify_intent_with_chat_history(self):
+    async def test_classify_intent_with_chat_history(self, mock_embedding_status):
         """
         Test that intent classification correctly utilizes provided chat history.
 
@@ -575,7 +588,7 @@ class TestClassifyIntent:
         assert result.intent == IntentType.TIMELINE_QUERY
 
     @pytest.mark.asyncio
-    async def test_classify_intent_with_llm_insert_events(self):
+    async def test_classify_intent_with_llm_insert_events(self, mock_embedding_status):
         """
         Test that the LLM-based intent classification correctly identifies an "insert_events" intent.
 
@@ -604,7 +617,7 @@ class TestClassifyIntent:
         assert result.intent == IntentType.INSERT_EVENTS
 
     @pytest.mark.asyncio
-    async def test_classify_intent_with_llm_general_chat(self):
+    async def test_classify_intent_with_llm_general_chat(self, mock_embedding_status):
         """
         Test that the LLM classification service correctly maps a returned \"general_chat\" response to the IntentType.GENERAL_CHAT enum.
 
@@ -636,7 +649,7 @@ class TestClassifyIntent:
         assert result.intent == IntentType.GENERAL_CHAT
 
     @pytest.mark.asyncio
-    async def test_classify_intent_with_llm_execute_policy(self):
+    async def test_classify_intent_with_llm_execute_policy(self, mock_embedding_status):
         """
         Test that LLM-based intent classification returns the `execute_agent_policy` response and maps it to :class:`IntentType.EXECUTE_POLICY`.
 
@@ -661,7 +674,7 @@ class TestClassifyIntent:
         assert result.intent == IntentType.EXECUTE_POLICY
 
     @pytest.mark.asyncio
-    async def test_classify_intent_fetches_history_when_none_provided(self):
+    async def test_classify_intent_fetches_history_when_none_provided(self, mock_embedding_status):
         """
         Test that when no chat history is supplied, the intent classification routine fetches recent conversation history from the database.
 
@@ -694,7 +707,7 @@ class TestClassifyIntent:
         mock_fetch.assert_called_once_with(mock_db, inv_id, limit=10)
 
     @pytest.mark.asyncio
-    async def test_classify_intent_llm_exception_fallback(self):
+    async def test_classify_intent_llm_exception_fallback(self, mock_embedding_status):
         """
         Test that intent classification falls back to keyword-based detection when the LLM service raises an exception.
 
@@ -720,7 +733,7 @@ class TestClassifyIntent:
         assert result.intent == IntentType.EXECUTE_POLICY
 
     @pytest.mark.asyncio
-    async def test_classify_intent_empty_llm_response(self):
+    async def test_classify_intent_empty_llm_response(self, mock_embedding_status):
         """
         Test that when the LLM service returns an empty string, the intent classification falls back to keyword-based detection and correctly identifies a timeline query.
 
@@ -761,7 +774,7 @@ class TestClassifyIntent:
         assert result.intent == IntentType.TIMELINE_QUERY
 
     @pytest.mark.asyncio
-    async def test_classify_intent_unrecognized_llm_response(self):
+    async def test_classify_intent_unrecognized_llm_response(self, mock_embedding_status):
         """
         Test that when the LLM service returns an unrecognized intent string, the classification falls back to keyword-based detection and yields the GENERAL_CHAT intent.
 
@@ -796,7 +809,7 @@ class TestRouteChatMessage:
     """Test main routing function."""
 
     @pytest.mark.asyncio
-    async def test_route_augmented_mode_with_config(self):
+    async def test_route_augmented_mode_with_config(self, mock_embedding_status):
         """
         Test routing in augmented mode with an explicit configuration override.
 
@@ -940,7 +953,7 @@ class TestRouteChatMessage:
         mock_timeline.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_route_auto_mode_insert_events(self):
+    async def test_route_auto_mode_insert_events(self, mock_embedding_status):
         """
         Test that auto routing correctly classifies an INSERT_EVENTS intent and yields both an intent classification chunk and an answer chunk.
 
@@ -977,7 +990,7 @@ class TestRouteChatMessage:
         assert any(c.get("type") == "answer_chunk" for c in chunks)
 
     @pytest.mark.asyncio
-    async def test_route_auto_mode_timeline_query(self):
+    async def test_route_auto_mode_timeline_query(self, mock_embedding_status):
         """
         Test that the automatic routing mode correctly delegates a timeline query to the timeline handler and includes the summary in the returned answer chunk.
 
@@ -1020,7 +1033,7 @@ class TestRouteChatMessage:
         assert "1 entry found" in answer_chunks[0]["content"]
 
     @pytest.mark.asyncio
-    async def test_route_auto_mode_general_chat(self):
+    async def test_route_auto_mode_general_chat(self, mock_embedding_status):
         """
         Test that when the router operates in "auto" mode it correctly routes a general-chat query to the general chat handler and yields at least one answer chunk.
 
@@ -1057,7 +1070,7 @@ class TestRouteChatMessage:
         assert any(c.get("type") == "answer_chunk" for c in chunks)
 
     @pytest.mark.asyncio
-    async def test_route_auto_mode_execute_policy(self):
+    async def test_route_auto_mode_execute_policy(self, mock_embedding_status):
         """
         Test the automatic routing mode when executing a policy intent.
 
@@ -1095,7 +1108,7 @@ class TestRouteChatMessage:
         assert any(c.get("type") == "job_queued" for c in chunks)
 
     @pytest.mark.asyncio
-    async def test_route_query_expansion(self):
+    async def test_route_query_expansion(self, mock_embedding_status):
         """
         Test that query expansion is invoked during routing and yields a `query_expanded` event with the original and expanded queries.
 
@@ -1128,7 +1141,7 @@ class TestRouteChatMessage:
         assert expanded_chunks[0]["expanded"] == "expanded test query"
 
     @pytest.mark.asyncio
-    async def test_route_handler_error(self):
+    async def test_route_handler_error(self, mock_embedding_status):
         """
         Test error handling in routing.\n\nThis asynchronous unit test verifies that the `route_chat_message` coroutine correctly yields an error chunk when an exception occurs inside the `handle_general_chat` handler. The test:\n\n1. Creates a mock asynchronous database client and a random invitation identifier.\n2. Mocks dependent functions:\n   - `_fetch_recent_chat_history` to return an empty history list.\n   - `expand_query` to return a static query string.\n   - `classify_intent` to produce a `ClassificationResult` with the `GENERAL_CHAT` intent.\n   - `handle_general_chat` to raise a generic `Exception` simulating a handler failure.\n3. Invokes `route_chat_message` with `router_mode=\"auto\"` and collects all yielded chunks.\n4. Filters the collected chunks for those of type `\"error\"` and asserts that at least one error chunk is present and that its message contains the word \"error\" (case-insensitive).\n\nThe test ensures that routing errors are propagated to the client in a structured error response.""
         """
@@ -1156,7 +1169,7 @@ class TestRouteChatMessage:
         assert "error" in error_chunks[0]["message"].lower()
 
     @pytest.mark.asyncio
-    async def test_route_deprecated_query_kg(self):
+    async def test_route_deprecated_query_kg(self, mock_embedding_status):
         """
         Test that a deprecated QUERY_KG intent is correctly routed through the general chat handling path, ensuring the response contains at least one chunk of type `answer_chunk` when the router operates in `auto` mode. The test mocks database access, recent chat history retrieval, query expansion, intent classification, and the generic chat handler to isolate routing logic.
         """
@@ -1181,7 +1194,7 @@ class TestRouteChatMessage:
         assert any(c.get("type") == "answer_chunk" for c in chunks)
 
     @pytest.mark.asyncio
-    async def test_route_deprecated_mutate_kg(self):
+    async def test_route_deprecated_mutate_kg(self, mock_embedding_status):
         """
         Test that a chat message classified with the deprecated `MUTATE_KG` intent is correctly routed to the timeline handler when the router operates in `auto` mode.
 

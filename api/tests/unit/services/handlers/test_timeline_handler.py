@@ -326,6 +326,96 @@ class TestToolQueryTimeline:
         assert result["success"] is False
         assert "DB error" in result["error"]
 
+    async def test_query_with_event_data(self):
+        """
+        Test that timeline query includes full event data when event_id is present.
+        
+        This verifies the new functionality where timeline entries with linked events
+        return the complete event object for UI display.
+        """
+        from app.services.handlers.timeline_handler import _tool_query_timeline
+
+        db = AsyncMock()
+        investigation_id = uuid4()
+
+        # Mock database result with event data (from LEFT JOIN)
+        mock_row = (
+            1,  # entry_id
+            100,  # event_id
+            datetime(2024, 1, 1, 12, 0),  # timestamp
+            "event",  # entry_type
+            "PowerShell Execution",  # title
+            "Suspicious PowerShell command",  # description
+            {"severity": "high"},  # data
+            ["powershell", "suspicious"],  # tags
+            # Event data from LEFT JOIN:
+            "evtx_security_4688",  # event_type
+            datetime(2024, 1, 1, 12, 0, 0),  # event_ts
+            {"CommandLine": "powershell.exe -enc ..."},  # payload
+            5,  # artifact_id
+        )
+
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [mock_row]
+        db.execute.return_value = mock_result
+
+        result = await _tool_query_timeline(db, investigation_id, {})
+
+        assert result["success"] is True
+        assert len(result["entries"]) == 1
+        
+        entry = result["entries"][0]
+        assert entry["entry_id"] == 1
+        assert entry["event_id"] == 100
+        assert "event" in entry
+        
+        # Verify event data structure
+        event = entry["event"]
+        assert event["event_id"] == 100
+        assert event["event_type"] == "evtx_security_4688"
+        assert event["artifact_id"] == 5
+        assert "CommandLine" in event["payload"]
+
+    async def test_query_without_event_data(self):
+        """
+        Test that timeline entries without linked events don't include event field.
+        """
+        from app.services.handlers.timeline_handler import _tool_query_timeline
+
+        db = AsyncMock()
+        investigation_id = uuid4()
+
+        # Mock database result WITHOUT event data (event_id is NULL)
+        mock_row = (
+            1,  # entry_id
+            None,  # event_id (NULL)
+            datetime(2024, 1, 1, 12, 0),  # timestamp
+            "note",  # entry_type
+            "Investigation Note",  # title
+            "Manual note",  # description
+            {},  # data
+            ["note"],  # tags
+            # Event data from LEFT JOIN (all NULL):
+            None,  # event_type
+            None,  # event_ts
+            None,  # payload
+            None,  # artifact_id
+        )
+
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [mock_row]
+        db.execute.return_value = mock_result
+
+        result = await _tool_query_timeline(db, investigation_id, {})
+
+        assert result["success"] is True
+        assert len(result["entries"]) == 1
+        
+        entry = result["entries"][0]
+        assert entry["entry_id"] == 1
+        assert entry["event_id"] is None
+        assert "event" not in entry  # No event field when event_id is NULL
+
 
 @pytest.mark.unit
 class TestToolAddTimelineEntry:

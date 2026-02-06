@@ -31,6 +31,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [showConfigError, setShowConfigError] = useState(false);
+  const [embeddingInProgress, setEmbeddingInProgress] = useState(false);
   
   // Floating search state
   const [showSearch, setShowSearch] = useState(false);
@@ -53,6 +54,28 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
     selectChoice,
     dismissChoices,
   } = useInvestigationChat(investigationId);
+
+  // Check embedding status periodically
+  useEffect(() => {
+    const checkEmbeddingStatus = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/v1/embeddings/status/${investigationId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const status = await response.json();
+          setEmbeddingInProgress(!status.is_complete);
+        }
+      } catch (error) {
+        console.error('Failed to check embedding status:', error);
+      }
+    };
+
+    checkEmbeddingStatus();
+    const interval = setInterval(checkEmbeddingStatus, 3000);
+    return () => clearInterval(interval);
+  }, [investigationId]);
 
   // Check for LLM configuration errors in messages
   useEffect(() => {
@@ -502,6 +525,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
         isAgentRunning={isAgentRunning}
         disabled={investigationState === 'running' || parsingLocked}
         parsingLocked={parsingLocked}
+        embeddingInProgress={embeddingInProgress}
         effort={effort}
         onEffortChange={setEffort}
         mode={mode}
