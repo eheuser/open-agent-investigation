@@ -360,7 +360,13 @@ class ArchiveParser(BaseParser):
                 logger.debug(f"Queued parsing job {job.job_id} for artifact {artifact.artifact_id}")
                 
             except Exception as e:
-                logger.error(f"Failed to create artifact for {filename}: {e}", exc_info=True)
+                #logger.info(f"Failed to create artifact for {filename}: {e}")
+                logger.debug(f"Failed to create artifact for {filename}: {e}", exc_info=True)
+                # Rollback to prevent transaction poisoning
+                try:
+                    await db.rollback()
+                except Exception as rollback_error:
+                    logger.error(f"Rollback failed: {rollback_error}")
                 # Continue processing other files
                 continue
 
