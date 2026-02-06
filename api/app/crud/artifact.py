@@ -7,6 +7,13 @@ import uuid
 
 from ..models.artifact import Artifact, ArtifactClassification
 from ..core.config import settings
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
+
+# Maximum artifact size: 500 MB
+# Files larger than this will be stored on filesystem only (no database blob)
+MAX_ARTIFACT_BLOB_SIZE = 500 * 1024 * 1024
 
 
 def sha256_bytes(data: bytes) -> bytes:
@@ -47,6 +54,18 @@ async def create_artifact(
         sqlalchemy.exc.SQLAlchemyError: If any database operation fails.
     """
     sha = sha256_bytes(file_bytes)
+    file_size = len(file_bytes)
+
+    # For very large files (>500 MB), store empty blob to avoid database bloat
+    # The file will still be available on the filesystem for parsing
+    if file_size > MAX_ARTIFACT_BLOB_SIZE:
+        logger.warning(
+            f"Artifact {filename} is {file_size:,} bytes (>{MAX_ARTIFACT_BLOB_SIZE:,}), "
+            f"storing on filesystem only (empty database blob)"
+        )
+        blob_to_store = b""  # Empty blob - file available on filesystem
+    else:
+        blob_to_store = file_bytes
 
     # Create artifact record
     artifact = Artifact(
@@ -54,7 +73,7 @@ async def create_artifact(
         sha256=sha,
         filename=filename,
         classification=classification,
-        blob=file_bytes,
+        blob=blob_to_store,
     )
 
     db.add(artifact)
