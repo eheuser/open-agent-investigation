@@ -79,6 +79,12 @@ const AgentExecutionContainer: React.FC<AgentExecutionContainerProps> = ({
       if ('events' in t.result && Array.isArray(t.result.events)) {
         return total + t.result.events.length;
       }
+      // Check for sources array (from RAG tools)
+      // Count sources that have event data (owner_type === 'tool')
+      if ('sources' in t.result && Array.isArray(t.result.sources)) {
+        const eventSources = t.result.sources.filter((s: any) => s.owner_type === 'tool');
+        return total + eventSources.length;
+      }
     }
     
     // Fallback: Parse result_summary for "Found X events" pattern

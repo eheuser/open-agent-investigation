@@ -182,7 +182,9 @@ Dashboard → Click "Create Investigation"
 
 **Features**:
 - Ask natural language questions
+- **Embedding progress indicator** - Shows background embedding status with event count
 - **Mode selector** - Choose routing mode (Auto/Agent/Timeline/Augmented Chat)
+  - Augmented Chat mode automatically disabled while embeddings are being generated
 - **Effort selector** - Choose investigation depth (Quick/Standard/Thorough)
 - **Routing feedback badges** - Visual indicators showing:
   - Which handler processed your query (Agent/RAG/Timeline/General Chat)
@@ -191,7 +193,9 @@ Dashboard → Click "Create Investigation"
   - Color-coded badges with icons for quick identification
 - Real-time agent reasoning streaming (see agent's thought process)
 - **Expandable tool execution cards** - Click to view arguments and results
-- **RAG results display** - Query expansion and source retrieval shown as tool executions
+- **Unified event display** - EventCard component used across RAG sources, agent tools, timeline, and events
+- **RAG results display** - Query expansion and source retrieval shown as tool executions with EventCards
+- **Timeline query display** - Timeline operations shown with modern badges and linked event data
 - **Copy tool data to clipboard** - Copy arguments and results as JSON
 - **Query replication buttons** - Replicate JSONB and event search queries to Events tab
 - Markdown rendering with syntax highlighting
@@ -207,6 +211,9 @@ Dashboard → Click "Create Investigation"
 - Status indicators (executing, completed, failed)
 - Turn counter (e.g., "1/10")
 - Result summaries
+- **Event display** - Results with events array render as EventCard components
+- **RAG source display** - Retrieved sources show EventCards for tool-type sources with scores
+- **Key-value arguments** - Readable argument display instead of JSON dumps
 - **"Query" button** - Appears on JSONB and event search tools
 - Copy buttons for arguments and results
 - Timeline registration indicators
@@ -229,8 +236,9 @@ User: "Find failed logon attempts"
   → Click to expand container
     - Shows scrollable tool execution cards:
       1. "Count Security Events" - Result: 42 events
-      2. "Query Failed Logons" - Shows 5 EventCards with preview
-      3. "Analyze Patterns" - Result: admin (18 occurrences)
+      2. "Query Failed Logons" - Shows EventCards for each result
+         - Click to expand EventCard → Full event details with TypedDictionaryViewer
+      3. "Analyze Patterns" - Key-value display: "username: admin (18 occurrences)"
       4. "Register Timeline Entry" - Added: "Failed logon: admin from 10.50.30.15"
   → Agent thinking text appears below container
     - "Found 42 failed logon events targeting user 'admin'..."
@@ -572,6 +580,8 @@ Message type router:
 
 Agent message display:
 - **Routing badge** - Shows handler type, playbook name, and statistics
+- **Timeline mode indicator** - Purple badge for timeline queries (when no routing metadata)
+- **Timeline summary footer** - Displays operations performed (e.g., "Timeline: 1 query") in clean purple badge
 - Chronological event stream (thinking + tool executions)
 - Markdown rendering with syntax highlighting
 - Tool execution cards (expandable)
@@ -649,13 +659,14 @@ Tool execution display:
 
 #### EventCard.tsx
 
-Forensic event display for chat:
+Unified forensic event display used across the application:
 - **Expandable event metadata** - Event ID, type, timestamp, artifact ID
-- **Color-coded badges** - Event type badges with contextual colors
+- **Consistent blue badges** - All event types use blue badges (matches Events tab)
 - **Preview fields** - Shows 3 key fields when collapsed
-- **Full payload** - Expandable JSON view with syntax highlighting
+- **Structured payload display** - Uses TypedDictionaryViewer for key-value rendering
 - **Copy button** - Copy event data to clipboard
 - **Query result mode** - Blue border for query results
+- **Reusable component** - Used in RAG sources, agent tools, timeline, and Events tab
 
 ```tsx
 <EventCard
@@ -669,13 +680,11 @@ Forensic event display for chat:
 />
 ```
 
-**Event Type Colors**:
-- Security events (4624, 4625): Red
-- Sysmon/Process events: Blue
-- File system events (MFT): Green
-- Registry events: Purple
-- Browser events: Orange
-- Default: Gray
+**Component Usage**:
+- **RAG Sources**: Displays tool-type sources as EventCards with similarity scores
+- **Agent Tools**: Displays query results with events array as EventCards
+- **Timeline Queries**: Displays timeline entries with linked event data as EventCards
+- **Events Tab**: Displays search results as EventCards
 
 ### Events & Timeline Components
 
@@ -1302,17 +1311,24 @@ RAG results are displayed as expandable tool execution cards:
 
 **Query Expansion**:
 - Collapsed: "Query Expansion - Complete"
-- Expanded: Shows all generated search terms in JSON format
+- Expanded: Shows all generated search terms with count
+- Arguments displayed as key-value pairs (blue labels)
+- Results shown in structured format
 
 **Retrieved Sources (X results)**:
 - Collapsed: "Retrieved Sources (50 results) - Complete"
 - Expanded: Shows all sources with:
-  - Index number
-  - Owner type (tool, timeline, chat, note)
-  - Owner ID (event_id, entry_id, etc.)
-  - Similarity score
-  - Text preview (200 chars)
-  - Full text (complete event data)
+  - **EventCard display** for tool-type sources (owner_type='tool')
+  - Score badge above each EventCard (non-overlapping)
+  - Index number and similarity score
+  - Full event data with structured payload viewer
+  - Fallback to text preview for non-event sources (timeline, chat, note)
+
+**Timeline Query Display**:
+- Purple "Timeline Mode" badge in header
+- Timeline operations summary in purple badge footer
+- Clean separation from agent investigations
+- Consistent styling with other handlers
 
 ## Routing System Extensibility
 

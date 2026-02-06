@@ -14,6 +14,7 @@ from sqlalchemy import select, update, and_, text
 
 from app.models.job_parsing import ParsingJob, JobStatus
 from app.models.job_agent import AgentJob
+from app.models.job_embedding import EmbeddingJob
 from app.models.llm_config import LLMProviderConfig
 from app.models.investigation import Investigation
 from app.core.config import settings
@@ -23,6 +24,7 @@ from app.schemas.investigation_choice import InvestigationChoiceCreate
 from worker.parsers import parse_artifact
 from worker.agents.assistant_agent import AssistantAgent
 from worker.core.llm_client import LLMClient
+from worker.embedding_worker import claim_embedding_job, process_embedding_job
 
 from app.utils.log_setup import get_logger
 from app.utils.http_log_handler import setup_worker_logging
@@ -663,7 +665,7 @@ async def recover_stale_jobs(db: AsyncSession):
     """
     Recover and reset jobs that have been marked as running but are considered stale.
 
-    The function scans both parsing and agent job tables for entries whose status is `JobStatus.RUNNING` and whose `started_at` timestamp is older than 30 minutes from the current UTC time. Such jobs are assumed to be abandoned due to worker crashes, container restarts, or forced termination. For each stale job the status is set back to `JobStatus.PENDING`, the associated `worker_id` and `started_at` fields are cleared, and an explanatory `error_message` is recorded.
+    The function scans parsing, agent, and embedding job tables for entries whose status is `JobStatus.RUNNING` and whose `started_at` timestamp is older than 30 minutes from the current UTC time. Such jobs are assumed to be abandoned due to worker crashes, container restarts, or forced termination. For each stale job the status is set back to `JobStatus.PENDING`, the associated `worker_id` and `started_at` fields are cleared, and an explanatory `error_message` is recorded.
 
     After updating the database, the function commits the transaction and logs a summary of the recovery operation: a warning if any jobs were reset, otherwise an informational message indicating that no stale jobs were found.
 
@@ -708,11 +710,25 @@ async def recover_stale_jobs(db: AsyncSession):
 
     agent_count = agent_result.rowcount
 
+    # Reset stale embedding jobs
+    embedding_result = await db.execute(
+        update(EmbeddingJob)
+        .where(and_(EmbeddingJob.status == JobStatus.RUNNING, EmbeddingJob.started_at < stale_threshold))
+        .values(
+            status=JobStatus.PENDING,
+            worker_id=None,
+            started_at=None,
+            error_message="Job was stale (worker likely crashed), resetting to pending",
+        )
+    )
+
+    embedding_count = embedding_result.rowcount
+
     await db.commit()
 
-    if parsing_count > 0 or agent_count > 0:
+    if parsing_count > 0 or agent_count > 0 or embedding_count > 0:
         logger.warning(
-            f"Recovered {parsing_count} parsing job(s) and {agent_count} agent job(s) "
+            f"Recovered {parsing_count} parsing, {agent_count} agent, and {embedding_count} embedding job(s) "
             f"that were stale (running > 30 minutes)"
         )
     else:
@@ -819,7 +835,7 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
                     pass  # Queue empty, continue
 
                 async with WorkerSessionLocal() as db:
-                    # Try to claim an agent job first (higher priority)
+                    # Try to claim an agent job first (highest priority)
                     agent_job = await claim_agent_job(db, worker_id)
 
                     if agent_job:
@@ -835,7 +851,7 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
                             await db.commit()
                         continue
 
-                    # Try to claim a parsing job
+                    # Try to claim a parsing job (second priority)
                     parsing_job = await claim_parsing_job(db, worker_id)
 
                     if parsing_job:
@@ -848,6 +864,22 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
                             parsing_job.status = JobStatus.FAILED
                             parsing_job.finished_at = datetime.utcnow()
                             parsing_job.error_message = "Job cancelled by user"
+                            await db.commit()
+                        continue
+
+                    # Try to claim an embedding job (lowest priority)
+                    embedding_job = await claim_embedding_job(db, worker_id)
+
+                    if embedding_job:
+                        # Process embedding job
+                        try:
+                            await process_embedding_job(db, embedding_job)
+                        except asyncio.CancelledError:
+                            logger.info(f"Worker {worker_index} embedding job cancelled")
+                            # Mark job as failed
+                            embedding_job.status = JobStatus.FAILED
+                            embedding_job.finished_at = datetime.utcnow()
+                            embedding_job.error_message = "Job cancelled by user"
                             await db.commit()
                         continue
 
@@ -885,13 +917,13 @@ async def cleanup_worker_jobs(worker_id: uuid_pkg.UUID):
     """
     Clean up any jobs that were claimed by the specified worker and left in a running state.
 
-    This function queries both `ParsingJob` and `AgentJob` tables for entries whose
+    This function queries `ParsingJob`, `AgentJob`, and `EmbeddingJob` tables for entries whose
     status is :class:`~app.models.JobStatus.RUNNING` and whose `worker_id` matches the
     provided identifier. For each matching job it resets the status to
     :class:`~app.models.JobStatus.PENDING`, clears the `worker_id` and `started_at`
     fields, and records an `error_message` indicating that the worker shut down.
 
-    The function logs the number of parsing and agent jobs that were reset and commits
+    The function logs the number of parsing, agent, and embedding jobs that were reset and commits
     the changes to the database. Any exception raised during the operation is caught,
     logged with a stack trace, and does not propagate further.
     """
@@ -929,11 +961,25 @@ async def cleanup_worker_jobs(worker_id: uuid_pkg.UUID):
 
             agent_count = agent_result.rowcount
 
+            # Reset embedding jobs claimed by this worker
+            embedding_result = await db.execute(
+                update(EmbeddingJob)
+                .where(and_(EmbeddingJob.status == JobStatus.RUNNING, EmbeddingJob.worker_id == worker_id))
+                .values(
+                    status=JobStatus.PENDING,
+                    worker_id=None,
+                    started_at=None,
+                    error_message="Worker shutdown, job reset to pending",
+                )
+            )
+
+            embedding_count = embedding_result.rowcount
+
             await db.commit()
 
-            if parsing_count > 0 or agent_count > 0:
+            if parsing_count > 0 or agent_count > 0 or embedding_count > 0:
                 logger.info(
-                    f"Reset {parsing_count} parsing job(s) and {agent_count} agent job(s) "
+                    f"Reset {parsing_count} parsing, {agent_count} agent, and {embedding_count} embedding job(s) "
                     f"claimed by worker {worker_id}"
                 )
     except Exception as e:

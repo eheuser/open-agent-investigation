@@ -9,6 +9,7 @@ from .core.config import settings
 from .core.database import get_db, init_db
 from .models.job_parsing import ParsingJob, JobStatus
 from .models.job_agent import AgentJob
+from .models.job_embedding import EmbeddingJob
 from .routers import (
     auth,
     investigations,
@@ -32,6 +33,7 @@ from .routers import (
 )
 from .utils.log_setup import get_logger
 from .services.log_streaming import setup_log_streaming
+from .services.embedding_pool import start_pool_flusher, stop_pool_flusher, flush_embedding_pool
 
 logger = get_logger(__name__)
 
@@ -63,7 +65,7 @@ app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(chat_messages.router, prefix="/api/v1/chat", tags=["chat-messages"])
 app.include_router(timeline.router, tags=["timeline"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
-app.include_router(embeddings.router, prefix="/api/v1/embeddings", tags=["embeddings"])
+app.include_router(embeddings.router)  # Prefix already defined in router
 app.include_router(investigation_choices.router, tags=["investigation-choices"])
 app.include_router(reports.router, tags=["reports"])
 app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
@@ -135,6 +137,19 @@ async def startup_event():
     
     # Clean up any running/pending jobs from previous service instances
     await cleanup_stale_jobs()
+    
+    # Start the embedding pool background flusher
+    # Wrap get_db generator in a context manager for the pool flusher
+    from contextlib import asynccontextmanager
+    
+    @asynccontextmanager
+    async def get_db_session():
+        async for db in get_db():
+            yield db
+            break
+    
+    await start_pool_flusher(get_db_session)
+    logger.info("Embedding pool flusher started")
     
     logger.info("Chat router enabled")
     logger.info("Log streaming enabled")
@@ -221,10 +236,38 @@ async def cleanup_stale_jobs():
                     )
                     logger.info(f"Cleaned up {len(stale_agent_jobs)} stale agent job(s)")
                 
+                # Clean up embedding jobs
+                embedding_result = await db.execute(
+                    select(EmbeddingJob).where(
+                        or_(
+                            EmbeddingJob.status == JobStatus.RUNNING,
+                            EmbeddingJob.status == JobStatus.PENDING
+                        )
+                    )
+                )
+                stale_embedding_jobs = embedding_result.scalars().all()
+                
+                if stale_embedding_jobs:
+                    await db.execute(
+                        update(EmbeddingJob)
+                        .where(
+                            or_(
+                                EmbeddingJob.status == JobStatus.RUNNING,
+                                EmbeddingJob.status == JobStatus.PENDING
+                            )
+                        )
+                        .values(
+                            status=JobStatus.FAILED,
+                            finished_at=datetime.utcnow(),
+                            error_message="Job cancelled due to service restart"
+                        )
+                    )
+                    logger.info(f"Cleaned up {len(stale_embedding_jobs)} stale embedding job(s)")
+                
                 # Commit the changes
                 await db.commit()
                 
-                if not stale_parsing_jobs and not stale_agent_jobs:
+                if not stale_parsing_jobs and not stale_agent_jobs and not stale_embedding_jobs:
                     logger.info("No stale jobs found")
                     
             finally:
@@ -242,3 +285,20 @@ async def shutdown_event():
     Performs cleanup actions when the FastAPI application is shutting down. Logs a shutdown message and can be extended to close resources such as database connections or background tasks. Returns nothing.
     """
     logger.info("Shutting down Open Agent Investigation API...")
+    
+    # Flush any remaining pooled events
+    try:
+        async for db in get_db():
+            try:
+                jobs_created = await flush_embedding_pool(db)
+                if jobs_created > 0:
+                    logger.info(f"Flushed {jobs_created} embedding jobs on shutdown")
+            finally:
+                await db.close()
+            break
+    except Exception as e:
+        logger.error(f"Error flushing embedding pool on shutdown: {e}")
+    
+    # Stop the background flusher
+    await stop_pool_flusher()
+    logger.info("Embedding pool flusher stopped")

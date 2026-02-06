@@ -103,7 +103,7 @@ class TestRetriever:
         ]
 
         with patch.object(retriever, "_vector_search", return_value=candidates):
-            with patch.object(retriever, "_load_texts", return_value=chunks):
+            with patch.object(retriever, "_load_texts_with_events", return_value=chunks):
                 query_vec = np.array([0.1, 0.2, 0.3])
 
                 results = await retriever.retrieve(
@@ -132,7 +132,7 @@ class TestRetriever:
         candidates = [(i, "chat", i, 0.1) for i in range(10)]
 
         with patch.object(retriever, "_vector_search", return_value=candidates):
-            with patch.object(retriever, "_load_texts", return_value=chunks):
+            with patch.object(retriever, "_load_texts_with_events", return_value=chunks):
                 query_vec = np.array([0.1, 0.2, 0.3])
 
                 results = await retriever.retrieve(
@@ -288,13 +288,14 @@ class TestRetrieverLoadTexts:
         candidates = [(1, "chat", 100, 0.1), (2, "timeline", 200, 0.2)]
 
         with patch.object(retriever, "_fetch_text", side_effect=["Text 1", "Text 2"]):
-            chunks = await retriever._load_texts(candidates)
+            with patch.object(retriever, "_fetch_event_data", return_value=None):
+                chunks = await retriever._load_texts_with_events(candidates)
 
-            assert len(chunks) == 2
-            assert chunks[0].text == "Text 1"
-            assert chunks[0].score == 0.9  # 1.0 - 0.1
-            assert chunks[1].text == "Text 2"
-            assert chunks[1].score == 0.8  # 1.0 - 0.2
+                assert len(chunks) == 2
+                assert chunks[0].text == "Text 1"
+                assert chunks[0].score == 0.9  # 1.0 - 0.1
+                assert chunks[1].text == "Text 2"
+                assert chunks[1].score == 0.8  # 1.0 - 0.2
 
     async def test_load_texts_skips_failed(self):
         """
@@ -307,12 +308,13 @@ class TestRetrieverLoadTexts:
 
         # Second fetch returns None (not found)
         with patch.object(retriever, "_fetch_text", side_effect=["Text 1", None, "Text 3"]):
-            chunks = await retriever._load_texts(candidates)
+            with patch.object(retriever, "_fetch_event_data", return_value=None):
+                chunks = await retriever._load_texts_with_events(candidates)
 
-            # Should skip the one that returned None
-            assert len(chunks) == 2
-            assert chunks[0].text == "Text 1"
-            assert chunks[1].text == "Text 3"
+                # Should skip the one that returned None
+                assert len(chunks) == 2
+                assert chunks[0].text == "Text 1"
+                assert chunks[1].text == "Text 3"
 
     async def test_load_texts_stops_on_transaction_abort(self):
         """
@@ -352,11 +354,12 @@ class TestRetrieverLoadTexts:
             return f"Text for {owner_id}"
 
         with patch.object(retriever, "_fetch_text", side_effect=fetch_side_effect):
-            chunks = await retriever._load_texts(candidates)
+            with patch.object(retriever, "_fetch_event_data", return_value=None):
+                chunks = await retriever._load_texts_with_events(candidates)
 
-            # Should only have first chunk, then stop
-            assert len(chunks) == 1
-            assert chunks[0].text == "Text for 100"
+                # Should only have first chunk, then stop
+                assert len(chunks) == 1
+                assert chunks[0].text == "Text for 100"
 
 
 @pytest.mark.unit
@@ -457,3 +460,95 @@ class TestRetrieverVectorSearch:
             await retriever._vector_search(
                 query_vec=query_vec, investigation_id="test-uuid", owner_types=None, limit=5
             )
+
+
+@pytest.mark.unit
+class TestRetrieverFetchEventData:
+    """Test _fetch_event_data method."""
+
+    async def test_fetch_event_data_success(self):
+        """
+        Test that _fetch_event_data correctly retrieves and formats event data.
+        """
+        db = AsyncMock()
+        retriever = Retriever(db)
+
+        # Mock database result
+        from datetime import datetime
+        
+        result_mock = MagicMock()
+        result_mock.fetchone.return_value = (
+            123,  # event_id
+            "evtx_security_4624",  # event_type
+            datetime(2024, 1, 1, 12, 0),  # event_ts
+            {"LogonType": 3, "TargetUserName": "admin"},  # payload as dict (PostgreSQL jsonb)
+            5,  # artifact_id
+        )
+        db.execute.return_value = result_mock
+
+        event_data = await retriever._fetch_event_data(123)
+
+        assert event_data is not None
+        assert event_data["event_id"] == 123
+        assert event_data["event_type"] == "evtx_security_4624"
+        assert event_data["artifact_id"] == 5
+        assert "LogonType" in event_data["payload"]
+        assert event_data["payload"]["LogonType"] == 3
+
+    async def test_fetch_event_data_not_found(self):
+        """
+        Test that _fetch_event_data returns None when event doesn't exist.
+        """
+        db = AsyncMock()
+        retriever = Retriever(db)
+
+        # Mock empty result
+        result_mock = MagicMock()
+        result_mock.fetchone.return_value = None
+        db.execute.return_value = result_mock
+
+        event_data = await retriever._fetch_event_data(999)
+
+        assert event_data is None
+
+    async def test_fetch_event_data_handles_exception(self):
+        """
+        Test that _fetch_event_data returns None on database errors.
+        """
+        db = AsyncMock()
+        retriever = Retriever(db)
+
+        # Mock database error
+        db.execute.side_effect = Exception("Database error")
+
+        event_data = await retriever._fetch_event_data(123)
+
+        # Should return None instead of raising
+        assert event_data is None
+
+    async def test_fetch_event_data_with_dict_payload(self):
+        """
+        Test that _fetch_event_data handles payloads that are already dicts.
+        """
+        db = AsyncMock()
+        retriever = Retriever(db)
+
+        # Mock database result with dict payload (not JSON string)
+        from datetime import datetime
+        
+        result_mock = MagicMock()
+        result_mock.fetchone.return_value = (
+            456,  # event_id
+            "mft_file_created",  # event_type
+            datetime(2024, 1, 2, 10, 30),  # event_ts
+            {"FileName": "malware.exe", "FileSize": 1024},  # payload as dict
+            10,  # artifact_id
+        )
+        db.execute.return_value = result_mock
+
+        event_data = await retriever._fetch_event_data(456)
+
+        assert event_data is not None
+        assert event_data["event_id"] == 456
+        assert event_data["event_type"] == "mft_file_created"
+        assert event_data["payload"]["FileName"] == "malware.exe"

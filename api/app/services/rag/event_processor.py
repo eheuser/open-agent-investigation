@@ -129,7 +129,7 @@ async def _batch_create_embeddings(
 
         try:
             # Generate embeddings for the batch
-            logger.info(
+            logger.debug(
                 f"Generating embeddings for batch {i//batch_size + 1} ({len(texts):,} events)"
             )
             embeddings = await embedder.embed(texts)
@@ -164,7 +164,7 @@ async def _batch_create_embeddings(
                 await db.commit()
                 created_count += len(insert_params)
                 
-                logger.info(f"Created {created_count} embeddings so far...")
+                logger.debug(f"Created {created_count} embeddings so far...")
 
             except Exception as e:
                 # Log error and rollback the batch

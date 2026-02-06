@@ -24,6 +24,30 @@ See [Investigation Playbooks](playbooks.md) for the complete list and details on
 
 **Example**: When you ask "Find evidence of lateral movement", the system automatically selects the `lateral_movement.yaml` playbook and guides the agent to check Event IDs 4624 (logon), 4648 (explicit credentials), 5140 (share access), and other relevant indicators.
 
+## Background Embedding Generation
+
+When artifacts are uploaded and parsed:
+
+1. **Parsing Phase**: Events are inserted into database
+2. **Filtering Phase**: Interesting events identified (security events, process creation, etc.)
+3. **Pooling Phase**: Events accumulated in memory pool (threshold: 2000 events)
+4. **Auto-Flush**: Jobs created when pool reaches threshold
+5. **Background Processing**: Workers generate embeddings at lowest priority
+6. **Progress Display**: Progress bar above chat shows embedding status
+7. **RAG Availability**: Augmented Chat mode enabled once embeddings complete
+
+**UI Feedback:**
+- Progress bar displays pending event count
+- Updates every 3 seconds with smooth animations
+- Auto-hides when embedding complete
+- Augmented Chat mode disabled until complete
+
+**Performance:**
+- Parsing no longer blocked by embedding generation
+- Large EVTX files (300MB+) parse in minutes
+- Embeddings process in background
+- Users can investigate immediately after parsing
+
 ## Uploading Artifacts
 
 ### Supported File Types

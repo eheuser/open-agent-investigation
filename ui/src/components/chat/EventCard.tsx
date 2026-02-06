@@ -4,6 +4,7 @@
  */
 import React, { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
+import TypedDictionaryViewer from '../TypedDictionaryViewer';
 
 interface EventCardProps {
   event: {
@@ -38,32 +39,11 @@ const EventCard: React.FC<EventCardProps> = ({ event, isQueryResult = false }) =
     }
   };
 
-  // Get event type badge color
+  // Get event type badge color - use consistent blue like Events tab
   const getEventTypeBadge = (eventType: string | undefined) => {
     if (!eventType) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
-    
-    // Security events - red
-    if (eventType.includes('security') || eventType.includes('4624') || eventType.includes('4625')) {
-      return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200';
-    }
-    // Sysmon events - blue
-    if (eventType.includes('sysmon') || eventType.includes('process')) {
-      return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200';
-    }
-    // File system events - green
-    if (eventType.includes('mft') || eventType.includes('file')) {
-      return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200';
-    }
-    // Registry events - purple
-    if (eventType.includes('registry') || eventType.includes('reg_')) {
-      return 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200';
-    }
-    // Browser events - orange
-    if (eventType.includes('browser') || eventType.includes('chrome') || eventType.includes('firefox')) {
-      return 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200';
-    }
-    // Default - gray
-    return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
+    // All event types use blue badge for consistency
+    return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300';
   };
 
   // Extract key fields from payload for preview
@@ -183,11 +163,11 @@ const EventCard: React.FC<EventCardProps> = ({ event, isQueryResult = false }) =
             <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
               Payload:
             </div>
-            <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 overflow-x-auto max-h-96">
-              <pre className="text-xs text-gray-800 dark:text-gray-200">
-                {JSON.stringify(event.payload || event, null, 2)}
-              </pre>
-            </div>
+            <TypedDictionaryViewer
+              data={event.payload || event}
+              title=""
+              onAddToTimeline={() => {}}
+            />
           </div>
         </div>
       )}

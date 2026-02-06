@@ -8,6 +8,7 @@ import LogsViewer from '../components/LogsViewer';
 import JobsModal from '../components/JobsModal';
 import UploadModal from '../components/chat/UploadModal';
 import AnalysisViewer from '../components/analysis/AnalysisViewer';
+import EmbeddingProgressBar from '../components/EmbeddingProgressBar';
 import { useInvestigation } from '../hooks/useInvestigations';
 import { useJobs } from '../contexts/JobsContext';
 import { WebSocketProvider } from '../contexts/WebSocketContext';
@@ -281,16 +282,21 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden bg-white dark:bg-gray-900">
           {/* ChatBox key is stable for this investigation but changes when navigating to different investigation */}
-          <div className={`h-full ${activeTab === 'chat' ? '' : 'hidden'}`}>
-            <SimplifiedChatBox 
-              key={chatKey}
-              investigationId={investigationId} 
-              onGraphUpdated={() => {
-                // Increment key to force TimelineViewer to refresh
-                setTimelineKey(prev => prev + 1);
-              }}
-              onReplicateQuery={handleReplicateQuery}
-            />
+          <div className={`h-full flex flex-col ${activeTab === 'chat' ? '' : 'hidden'}`}>
+            <div className="px-4 pt-4">
+              <EmbeddingProgressBar investigationId={investigationId} />
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <SimplifiedChatBox 
+                key={chatKey}
+                investigationId={investigationId} 
+                onGraphUpdated={() => {
+                  // Increment key to force TimelineViewer to refresh
+                  setTimelineKey(prev => prev + 1);
+                }}
+                onReplicateQuery={handleReplicateQuery}
+              />
+            </div>
           </div>
           
           <div className={`h-full ${activeTab === 'events' ? '' : 'hidden'}`}>

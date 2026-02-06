@@ -639,8 +639,12 @@ const ConfigForm: React.FC<{
 
   // Test settings function
   const testSettings = async () => {
-    // Reset results
-    setTestResult({ llm: 'testing', embedding: hasPartialEmbeddingConfig ? 'testing' : 'untested' });
+    // Always test LLM (required)
+    // Only test embedding if it's fully configured (all required fields present)
+    setTestResult({ 
+      llm: 'testing', 
+      embedding: isEmbeddingValid ? 'testing' : 'untested' 
+    });
 
     // Test LLM
     try {
@@ -667,8 +671,8 @@ const ConfigForm: React.FC<{
       }));
     }
 
-    // Test embedding if any field is filled
-    if (hasPartialEmbeddingConfig) {
+    // Test embedding ONLY if fully configured (all required fields present)
+    if (isEmbeddingValid) {
       try {
         const embeddingResponse = await api.post('/api/v1/llm-config/test-embedding', {
           embedding_provider: formData.embedding_provider,
@@ -1146,12 +1150,12 @@ const ConfigForm: React.FC<{
             onClick={testSettings}
             disabled={
               !isLLMValid || 
-              !isEmbeddingValid ||
+              (hasPartialEmbeddingConfig && !isEmbeddingValid) ||
               testResult.llm === 'testing' ||
               testResult.embedding === 'testing'
             }
             className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 ${
-              !isLLMValid || !isEmbeddingValid
+              !isLLMValid || (hasPartialEmbeddingConfig && !isEmbeddingValid)
                 ? 'bg-gray-400 dark:bg-gray-600 text-gray-200 dark:text-gray-400 cursor-not-allowed'
                 : testResult.llm === 'testing' || testResult.embedding === 'testing'
                 ? 'bg-blue-500 text-white cursor-wait'
@@ -1261,11 +1265,24 @@ const ConfigForm: React.FC<{
           )}
         </div>
 
-        {testResult.llm !== 'success' && (
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-3">
-            <strong>Note:</strong> You must test your settings successfully before saving. This ensures the configuration is valid and working.
-          </p>
-        )}
+        {/* Help text */}
+        <div className="mt-3 space-y-2">
+          {testResult.llm !== 'success' && (
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              <strong>Note:</strong> You must test your LLM settings successfully before saving.
+            </p>
+          )}
+          {hasPartialEmbeddingConfig && !isEmbeddingValid && (
+            <p className="text-sm text-yellow-700 dark:text-yellow-300">
+              <strong>Warning:</strong> Embedding configuration is incomplete. Either fill all required fields or clear them to proceed without RAG.
+            </p>
+          )}
+          {!hasPartialEmbeddingConfig && (
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              <strong>Info:</strong> No embedding configuration detected. RAG features will be disabled.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

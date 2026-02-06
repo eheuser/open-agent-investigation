@@ -72,7 +72,7 @@ For detailed instructions, see [Getting Started](docs/getting-started.md).
 |--------|------------------|-----------|
 | **Agent Handler** | Multi‑step investigations (e.g., credential dumping) | Executes a playbook, invokes parsers, aggregates results, updates timeline |
 | **Augmented Search** | Semantic retrieval of events (e.g., “any suspicious logons”) | Expands query, performs hybrid BM25 + vector search, synthesises findings |
-| **Timeline Handler** | Direct manipulation of the evidence timeline | Query, insert, edit, or delete entries; export to report formats |
+| **Timeline Handler** | Direct manipulation of the evidence timeline | Query, insert, edit, or delete curated findings; displays linked event data |
 | **General Metadata** | Quick statistics (event count, artifact list) | Reads investigation metadata without invoking parsers |
 
 Routing is performed by an LLM‑based intent classifier; manual selection is also supported.
@@ -132,6 +132,7 @@ docker compose up -d          # Start nginx, API, worker, PostgreSQL
 ```shell
 docker compose down
 docker volume rm oai-pg-data # deletes Postgres database
+docker volume rm oai-investigations-data # deletes artifact data
 git pull
 docker compose up --build -d
 ```

@@ -222,12 +222,12 @@ async def handle_rag_query(
         allow_concurrent_embedding_calls = bool(allow_concurrent_val) if allow_concurrent_val is not None else False
 
         # Step 1: Use LLM to expand query with contextual search terms
-        logger.info(f"Expanding query: {user_query[:100]}")
+        logger.debug(f"Expanding query: {user_query[:100]}")
         expanded_terms = await _expand_query_with_llm(
             user_query=user_query,
             llm_config=llm_config,
         )
-        logger.info(f"Expanded query terms: {expanded_terms}")
+        logger.debug(f"Expanded query terms: {expanded_terms}")
 
         # Step 2: Initialize embedder with reranker support
         embedder = Embedder(
@@ -243,7 +243,7 @@ async def handle_rag_query(
 
         # Step 3: Generate embeddings for original query + expanded terms
         all_queries = [user_query] + expanded_terms
-        logger.info(f"Generating embeddings for {len(all_queries):,} queries")
+        logger.debug(f"Generating embeddings for {len(all_queries):,} queries")
         query_vecs = await embedder.embed(all_queries)
 
         if len(query_vecs) == 0:
@@ -258,6 +258,16 @@ async def handle_rag_query(
         retriever = Retriever(db)
         all_chunks = []
 
+        query_k = 50
+        if len(query_vecs) > 20:
+            query_k = 10
+        elif len(query_vecs) > 15:
+            query_k = 20
+        elif len(query_vecs) > 10:
+            query_k = 30
+        elif len(query_vecs) > 5:
+            query_k = 40
+        
         try:
             for i, query_vec in enumerate(query_vecs):
                 query_text = all_queries[i][:50]
@@ -267,11 +277,11 @@ async def handle_rag_query(
                     query_vec=query_vec,
                     investigation_id=str(investigation_id),
                     owner_types=["chat", "timeline", "note", "tool"],
-                    k=10,  # Get more candidates per query
+                    k=query_k,
                 )
                 all_chunks.extend(chunks)
 
-            logger.info(f"Retrieved {len(all_chunks):,} total chunks from {len(query_vecs):,} queries")
+            logger.debug(f"Retrieved {len(all_chunks):,} total chunks from {len(query_vecs):,} queries")
         except Exception as retrieval_error:
             logger.error(f"Retrieval error: {retrieval_error}", exc_info=True)
             # Rollback the transaction to clean up state
@@ -285,13 +295,13 @@ async def handle_rag_query(
 
         # Step 5: Deduplicate chunks first
         chunks = _deduplicate_and_rerank(all_chunks, top_k=200)  # Get more candidates for reranking
-        logger.info(f"After deduplication: {len(chunks):,} chunks")
+        logger.debug(f"After deduplication: {len(chunks):,} chunks")
 
         # Step 6: Use reranker model for better relevance scoring (only if explicitly configured)
         # Reranker only runs if reranker_model_name is set AND different from embedding_model_name
         if reranker_model_name_val and reranker_model_name != embedding_model_name:
             try:
-                logger.info(f"Reranking {len(chunks):,} chunks with model: {reranker_model_name}")
+                logger.debug(f"Reranking {len(chunks):,} chunks with model: {reranker_model_name}")
                 
                 # Prepare documents for reranking
                 documents = [chunk.text for chunk in chunks]
@@ -315,7 +325,7 @@ async def handle_rag_query(
                     reranked_chunks.append(chunk)
                 
                 chunks = reranked_chunks
-                logger.info(f"After reranking: {len(chunks):,} chunks (using {reranker_model_name})")
+                logger.debug(f"After reranking: {len(chunks):,} chunks (using {reranker_model_name})")
             except Exception as rerank_error:
                 logger.warning(f"Reranking failed, falling back to vector similarity: {rerank_error}")
                 # Fall back to original deduplication/ranking
@@ -323,7 +333,7 @@ async def handle_rag_query(
         else:
             # No reranker configured, use vector similarity only
             chunks = chunks[:50]  # Take top 50 from deduplicated results
-            logger.info(f"No reranker configured, using vector similarity only: {len(chunks):,} chunks")
+            logger.debug(f"No reranker configured, using vector similarity only: {len(chunks):,} chunks")
 
         # Build context from chunks
         context_parts = []
@@ -387,16 +397,22 @@ async def handle_rag_query(
 
         # Serialize chunk data and expanded terms for later persistence
         chunks_data = []
+        events_with_data = 0
         for chunk in chunks:
-            chunks_data.append(
-                {
-                    "id": chunk.id,
-                    "owner_type": chunk.owner_type,
-                    "owner_id": chunk.owner_id,
-                    "text": chunk.text,
-                    "score": chunk.score,
-                }
-            )
+            chunk_dict = {
+                "id": chunk.id,
+                "owner_type": chunk.owner_type,
+                "owner_id": chunk.owner_id,
+                "text": chunk.text,
+                "score": chunk.score,
+            }
+            # Include full event data for tool-type sources
+            if chunk.event_data:
+                chunk_dict["event_data"] = chunk.event_data
+                events_with_data += 1
+            chunks_data.append(chunk_dict)
+        
+        logger.info(f"Serialized {len(chunks_data)} chunks, {events_with_data} with event_data")
 
         # Build event_sequence placeholders (actual tool executions will be persisted later)
         event_sequence = []
@@ -594,6 +610,7 @@ async def persist_rag_tool_executions(
                             "text_preview": chunk["text"][:200]
                             + ("..." if len(chunk["text"]) > 200 else ""),
                             "text_full": chunk["text"],
+                            "event": chunk.get("event_data"),  # Include full event object if available
                         }
                         for i, chunk in enumerate(chunks_data)
                     ]
@@ -608,7 +625,7 @@ async def persist_rag_tool_executions(
             await db.flush()
             execution_ids.append(sources_tool.execution_id)
 
-        logger.info(f"Persisted {len(execution_ids):,} RAG tool executions for message {message_id}")
+        logger.debug(f"Persisted {len(execution_ids):,} RAG tool executions for message {message_id}")
         return execution_ids
 
     except Exception as e:

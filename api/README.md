@@ -102,13 +102,13 @@ Job queue (async)      Synchronous                   Synchronous
   - "Run SQL query to find all events where TargetUserName contains 'admin'"
 
 ### 2. **Timeline Handler** (`services/handlers/timeline_handler.py`)
-
 **LLM with timeline-specific tools for CRUD operations**
-
 - **Triggers**: Timeline queries, add/update/delete timeline entries, statistics
 - **Tools**: 5 timeline tools (query, add, update, delete, stats)
 - **Execution**: Multi-turn LLM loop (up to 10 iterations)
 - **Retry Logic**: Automatic retry on failures (up to 3 attempts per tool)
+- **Event Data**: Query tool includes full event objects via LEFT JOIN for UI display
+- **Smart Search**: Emphasizes `search_text` parameter over `entry_type` for better keyword matching
 - **Transaction Safety**: Savepoint isolation to prevent transaction pollution
 - **Response**: Immediate answer with micro-summary footer
 - **Cost**: Medium (tool execution with LLM reasoning)
@@ -146,7 +146,10 @@ Job queue (async)      Synchronous                   Synchronous
 - **Triggers**: Manual mode selection ("Augmented Chat") or semantic search queries
 - **Technology**: Hybrid BM25 + PGVector for best-of-both-worlds retrieval, LLM for query expansion and synthesis
 - **Execution**: Multi-step pipeline with tool execution persistence
-- **Requirements**: Embedding provider configured (OpenAI, Cohere, Ollama)
+- **Requirements**: 
+  - Embedding provider configured (OpenAI, Cohere, Ollama)
+  - All embedding jobs completed (no pending/running jobs)
+- **Availability**: Automatically disabled while embeddings are being generated in background
 - **Response**: LLM answer with expandable source citations
 - **Cost**: Medium-High (embedding generation + multiple LLM calls)
 
@@ -632,8 +635,54 @@ CREATE TABLE investigation_playbooks (
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/v1/embeddings/status/{investigation_id}` | Get embedding queue status (pending/running/completed jobs, progress %) |
 | POST | `/api/v1/embeddings/generate/investigation/{id}` | Backfill embeddings for investigation |
 | GET | `/api/v1/embeddings/stats/{investigation_id}` | Get embedding statistics |
+
+**Embedding Status Response**:
+```json
+{
+  "pending_jobs": 5,
+  "running_jobs": 2,
+  "completed_jobs": 10,
+  "total_jobs": 17,
+  "events_pending": 5000,
+  "events_completed": 10000,
+  "events_total": 15000,
+  "progress_percent": 67,
+  "is_complete": false
+}
+```
+
+**Background Embedding Queue:**
+
+Embeddings are generated asynchronously in the background to avoid blocking artifact parsing:
+
+1. **Parsing Phase**: Artifacts are parsed and events are inserted into the database
+2. **Filtering Phase**: Interesting events are identified using the filter engine
+3. **Pooling Phase**: Interesting events are added to in-memory pool (threshold: 2000 events)
+4. **Auto-Flush**: Pool automatically creates jobs when threshold exceeded
+5. **Timeout Flush**: Background task flushes stale pools after 30 seconds
+6. **Parsing Completes**: Parser exits immediately - embedding happens in background
+7. **Worker Processing**: Workers claim and process embedding jobs (lowest priority)
+8. **RAG Availability**: Augmented Chat mode becomes available once all embedding jobs complete
+
+**UI Feedback**:
+- Progress bar above chat interface shows embedding status
+- Displays pending event count with easing animations
+- Augmented Chat mode automatically disabled while embeddings pending
+- Mode dropdown shows "(embedding in progress)" for Augmented Chat
+- Auto-hides when embedding complete
+- Real-time updates every 3 seconds via polling
+
+**Performance**:
+- Artifact parsing no longer blocked by embedding generation
+- Large EVTX files (300MB+) parse in minutes instead of hours
+- Event pooling reduces job overhead (2000 events per job vs 50)
+- Concurrent batch processing (8 simultaneous embedding API calls)
+- Embeddings process in background at lowest worker priority
+- Users can start investigating immediately after parsing
+- Incremental progress updates with smooth easing animations
 
 **Embedding vs. Reranker Models:**
 
@@ -863,6 +912,45 @@ docker compose logs api | grep "CHAT_ROUTER"
 # Output: [CHAT_ROUTER] Classified as: timeline_query (confidence: 0.9)
 # Output: [CHAT_ROUTER] → Route 2: Timeline Handler
 ```
+
+**Timeline Query Enhancements**:
+
+The timeline handler now returns full event data for linked events:
+
+```python
+# Query tool uses LEFT JOIN to fetch event data
+SELECT te.entry_id, te.event_id, te.timestamp, ...,
+       e.event_type, e.event_ts, e.payload, e.artifact_id
+FROM timeline_entries te
+LEFT JOIN events e ON te.event_id = e.event_id
+WHERE te.investigation_id = :investigation_id
+```
+
+**Result Structure**:
+```json
+{
+  "success": true,
+  "entries": [
+    {
+      "entry_id": 1,
+      "event_id": 123,
+      "title": "Suspicious PowerShell Execution",
+      "description": "PowerShell with encoded command",
+      "tags": ["powershell", "suspicious"],
+      "event": {
+        "event_id": 123,
+        "event_type": "evtx_security_4688",
+        "timestamp": "2024-01-15T10:30:00Z",
+        "payload": { /* full event data */ },
+        "artifact_id": 5
+      }
+    }
+  ],
+  "total": 1
+}
+```
+
+The UI renders the `event` field using the unified `EventCard` component, providing consistent event display across all contexts (RAG sources, agent tools, timeline queries, and Events tab).
 
 ---
 

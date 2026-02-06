@@ -340,8 +340,8 @@ class TestParserFallback:
             
             with patch.object(EvtxParser, 'parse', mock_evtx_parse):
                 with patch.object(FileMetadataParser, 'parse', mock_metadata_parse):
-                    # Mock process_interesting_events to avoid that complexity
-                    with patch('worker.parsers.dispatcher.process_interesting_events', 
+                    # Mock embedding queue functions to avoid that complexity
+                    with patch('worker.parsers.dispatcher.add_events_to_pool', 
                                AsyncMock(return_value=0)):
                         
                         # Parse the artifact - should fall back to FileMetadataParser

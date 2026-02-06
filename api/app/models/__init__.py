@@ -4,6 +4,7 @@ from .artifact import Artifact
 from .mcp_server import MCPServer
 from .job_parsing import ParsingJob, JobStatus
 from .job_agent import AgentJob
+from .job_embedding import EmbeddingJob
 from .chat_history import ChatMessage
 from .tool_execution import ToolExecution
 from .embedding import Embedding
@@ -21,6 +22,7 @@ __all__ = [
     "MCPServer",
     "ParsingJob",
     "AgentJob",
+    "EmbeddingJob",
     "JobStatus",
     "ChatMessage",
     "ToolExecution",

@@ -84,18 +84,51 @@ Default credentials (change immediately):
 - Username: `admin`
 - Password: `admin123`
 
-#### Step 6: Configure LLM and (optional) Embeddings
+#### Step 6: Configure LLM Provider (Required)
 
-Before adding artifacts or creating investigations you will need to configure the inference API.
-* Click the username in the lower left corner of the screen and select `Settings`.
-* Defaults are provided that will connect to the docker hosting machine (usually your laptop).
-* You will need to configure the LLM API at a minimum in order to use the application. The embedding configuration is optional, but will disable the RAG functionality.
+On first login, you will be automatically redirected to Settings to configure your LLM provider. This is required before you can use the system.
 
-**Note** If you configure an embedding API and model, be sure to select the `Embedding Provider` or the RAG functionality will remain disabled.
+**LLM Configuration (Required):**
+1. Navigate to Settings (or you'll be redirected automatically)
+2. Click **+ Add Configuration**
+3. Fill in LLM provider details:
+   - Provider Name: `local`, `openai`, etc.
+   - Provider Type: Select from dropdown (OpenAI, Google, Anthropic, Localhost, etc.)
+   - API Endpoint: Auto-populated based on type, or enter custom URL
+   - Model Name: e.g., `gpt-4o`, `llama3`, etc.
+   - API Key: Required for internet providers (OpenAI, Anthropic, etc.)
+   - Max Context Length, Temperature, Timeout
+4. Click **Test Settings** - Must pass before saving
+5. Click **Create** to save configuration
+
+**Embedding Configuration (Optional - for RAG features):**
+
+Embeddings enable semantic search via "Augmented Chat" mode. This is completely optional:
+
+1. Scroll to "Embedding Configuration" section
+2. Select **Embedding Provider Type** (OpenAI, Cohere, Ollama, etc.)
+3. Fill in embedding fields:
+   - Embedding Provider: `openai`, `cohere`, `ollama`
+   - Embedding API URL: Auto-populated or custom
+   - Embedding Model: e.g., `text-embedding-3-small`
+   - Embedding API Key: Required for internet providers
+4. *Optional*: Configure **Reranker Model** for improved relevance (e.g., `text-embedding-3-large`)
+5. Click **Test Settings** - Tests both LLM and embedding if configured
+6. Click **Create** to save
+
+**Important:**
+- LLM configuration is **required** - system will not function without it
+- Embedding configuration is **optional** - only needed for RAG features
+- Without embeddings, "Augmented Chat" mode will be disabled
+- You can test and save with only LLM configured (embeddings can be added later)
+- If you start filling embedding fields, all required fields must be completed
 
 ![image](./img/configure.png)
 
-**Note** Tested settings for API, local is usable with gpt-oss-20b and a small embedding model.
+**Tested Configurations:**
+- **LM Studio (local)**: `gpt-oss-20b` for LLM, `nomic-embed-text` for embeddings
+- **OpenAI**: `gpt-4o` for LLM, `text-embedding-3-small` for embeddings
+- **Ollama (local)**: `llama3` for LLM, `nomic-embed-text` for embeddings
 
 ### Manual Installation
 
@@ -190,17 +223,27 @@ Max Context Length: 131072
 Temperature: 0.7
 ```
 
-#### Embedding Configuration (for RAG mode)
+#### Embedding Configuration (Optional - for RAG mode)
 
 ```
 Embedding Provider: openai
+Embedding Provider Type: OpenAI
 Embedding API URL: https://api.openai.com/v1/embeddings
 Embedding API Key: sk-your-api-key-here
-Embedding Model: text-embedding-ada-002
+Embedding Model: text-embedding-3-small
+Embedding Max Tokens: 8192
+Reranker Model: (optional) text-embedding-3-large
+Reranker Max Tokens: 8192
 ```
 
-4. Click **Save Configuration**
-5. Set as active configuration
+**Note:** Embedding configuration is optional. If not configured:
+- "Augmented Chat" mode will be disabled in mode selector
+- All other features (Agent, Timeline, General Chat) work normally
+- You can add embedding configuration later
+
+4. Click **Test Settings** (tests LLM, and embedding if configured)
+5. Click **Save Configuration**
+6. Set as active configuration
 
 ### User Management
 

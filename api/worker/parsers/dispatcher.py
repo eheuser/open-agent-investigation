@@ -1,12 +1,16 @@
 from pathlib import Path
+from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 import uuid
 
 from app.models.artifact import Artifact
+from app.models.filter_config import FilterConfig
 from app.core.config import settings
-from app.services.rag.event_processor import process_interesting_events
+from app.services.rag.filter_engine import FilterEngine
+from app.services.embedding_pool import add_events_to_pool
 from app.utils.log_setup import get_logger
+import json
 
 # Import all parser classes
 from .archive_parser import ArchiveParser
@@ -150,24 +154,102 @@ async def parse_artifact(
             logger.error(f"FileMetadataParser failed for artifact {artifact_id}: {e}")
             raise
 
-    # After parsing, process interesting events to create timeline entries with embeddings
+    # After parsing, queue interesting events for background embedding
     if events_inserted > 0:
         try:
-            timeline_entries_created = await process_interesting_events(
-                db, investigation_id, artifact_id, user_id
+            # Get filter configuration
+            filter_config_result = await db.execute(
+                select(FilterConfig)
+                .where(FilterConfig.investigation_id == investigation_id)
+                .order_by(FilterConfig.updated_at.desc())
             )
-            if timeline_entries_created > 0:
-                logger.debug(
-                    f"Created {timeline_entries_created} timeline entries from artifact {artifact_id}"
+            filter_config_obj = filter_config_result.scalars().first()
+            
+            if filter_config_obj:
+                # Extract content and ensure it's a dict with string keys
+                content = getattr(filter_config_obj, "content", None)
+                if content and isinstance(content, dict):
+                    filter_config: Dict[str, Any] = dict(content)
+                else:
+                    filter_config = FilterEngine.DEFAULT_CONFIG
+            else:
+                filter_config = FilterEngine.DEFAULT_CONFIG
+            
+            filter_engine = FilterEngine(filter_config)
+            
+            # Fetch all events from this artifact that don't have embeddings yet
+            result = await db.execute(
+                text(
+                    """
+                    SELECT e.event_id, e.event_type, e.payload
+                    FROM events e
+                    LEFT JOIN embeddings emb ON emb.owner_type = 'tool' AND emb.owner_id = e.event_id
+                    WHERE e.artifact_id = :artifact_id
+                    AND e.investigation_id = :investigation_id
+                    AND emb.id IS NULL
+                    ORDER BY e.event_ts
+                """
+                ),
+                {
+                    "artifact_id": artifact_id,
+                    "investigation_id": str(investigation_id),
+                },
+            )
+            
+            events = result.fetchall()
+            
+            # Filter for interesting events
+            interesting_event_ids: list[int] = []
+            for row in events:
+                event_id = int(row[0])
+                event_type = str(row[1])
+                payload_json = row[2]
+                try:
+                    payload = (
+                        json.loads(payload_json) if isinstance(payload_json, str) else payload_json
+                    )
+                    is_interesting = False
+                    
+                    if event_type.startswith("evtx_"):
+                        is_interesting, _ = filter_engine.is_interesting_evtx(payload)
+                    elif event_type.startswith("mft_"):
+                        path = payload.get("path", payload.get("file_path", ""))
+                        extension = payload.get("extension", "")
+                        is_interesting = filter_engine.is_interesting_mft(path, extension)
+                    elif event_type.startswith("registry_"):
+                        key_path = payload.get("key_path", payload.get("path", ""))
+                        is_interesting = filter_engine.is_interesting_registry(key_path)
+                    elif event_type.startswith("prefetch_"):
+                        executable = payload.get("executable", payload.get("name", ""))
+                        is_interesting = filter_engine.is_interesting_prefetch(executable)
+                    elif event_type.startswith("lnk_"):
+                        target = payload.get("target_path", payload.get("target", ""))
+                        is_interesting = filter_engine.is_interesting_lnk(target)
+                    
+                    if is_interesting:
+                        interesting_event_ids.append(event_id)
+                except Exception as e:
+                    logger.debug(f"Failed to filter event {event_id}: {e}")
+                    continue
+            
+            # Add interesting events to pool for batched embedding
+            if interesting_event_ids:
+                jobs_created = await add_events_to_pool(
+                    db, investigation_id, user_id, interesting_event_ids
                 )
+                if jobs_created > 0:
+                    logger.debug(
+                        f"Added {len(interesting_event_ids):,} events to pool and flushed "
+                        f"({jobs_created} jobs created)"
+                    )
+                else:
+                    logger.debug(
+                        f"Added {len(interesting_event_ids):,} events to embedding pool "
+                        f"(pooling for larger batch)"
+                    )
         except Exception as e:
-            logger.warning(f"Event processing failed for artifact {artifact_id}: {e}")
-            # Rollback to clean up the session state
-            try:
-                await db.rollback()
-            except:
-                pass
-            # Don't re-raise - parsing succeeded, event processing is optional
+            logger.warning(f"Event queueing failed for artifact {artifact_id}: {e}")
+            # Don't rollback - parsing succeeded, queueing is optional
 
     return events_inserted
 

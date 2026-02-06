@@ -9,9 +9,42 @@ from ..services.rag.embedding_service import (
     generate_embedding_for_timeline_entry,
     generate_embedding_for_chat_message,
 )
+from ..services.embedding_queue import get_embedding_status
 from ..crud.llm_config import get_active_llm_config
+from ..utils.log_setup import get_logger
 
-router = APIRouter()
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/api/v1/embeddings", tags=["embeddings"])
+
+
+@router.get("/status/{investigation_id}")
+async def get_embedding_status_endpoint(
+    investigation_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get embedding queue status for an investigation.
+    
+    Returns:
+        Dictionary with:
+            - pending_jobs: Number of pending jobs
+            - running_jobs: Number of running jobs
+            - total_pending_events: Total events in pending/running jobs
+            - is_complete: True if no pending/running jobs
+    """
+    try:
+        inv_uuid = UUID(investigation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid investigation ID format")
+    
+    try:
+        status = await get_embedding_status(db, inv_uuid)
+        return status
+    except Exception as e:
+        logger.error(f"Failed to get embedding status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/generate/investigation/{investigation_id}")
