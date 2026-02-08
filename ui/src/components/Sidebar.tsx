@@ -15,6 +15,7 @@ import {
   UserIcon,
   QueueListIcon,
   BookOpenIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import { 
   getInvestigations, 
@@ -26,6 +27,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useJobs } from '../contexts/JobsContext';
 import ThemeToggle from './ThemeToggle';
+import StatusModal from './StatusModal';
  
 const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, onToggle }) => {
   const [list, setList] = useState<Investigation[]>([]);
@@ -40,6 +42,7 @@ const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, 
   const [errorMessage, setErrorMessage] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [showStatus, setShowStatus] = useState(false);
         const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -355,6 +358,17 @@ const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, 
                     {/* User Dropdown Menu */}
           {userMenuOpen && (
             <div className="absolute bottom-full left-2 right-2 mb-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
+              <button
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  setShowStatus(true);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 transition-colors text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <ChartBarIcon className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm">Status</span>
+              </button>
+              
               <NavLink
                 to="/playbooks"
                 onClick={() => setUserMenuOpen(false)}
@@ -574,6 +588,9 @@ const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, 
           </div>
         </div>
       )}      
+      
+      {/* Status Modal */}
+      <StatusModal isOpen={showStatus} onClose={() => setShowStatus(false)} />
     </>
   );
 };

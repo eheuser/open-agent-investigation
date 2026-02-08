@@ -299,6 +299,46 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({ message, toolExec
                       </div>
                     );
                   })()
+                ) : /* Check if result contains entries array (analysis module results) */
+                typeof result === 'object' && result.entries && Array.isArray(result.entries) ? (
+                  (() => {
+                    const entries = result.entries;
+                    const total = result.total || entries.length;
+                    const page = result.page || 1;
+                    const totalPages = result.total_pages || 1;
+                    
+                    return (
+                      <div className="space-y-2">
+                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                          {total} entr{total !== 1 ? 'ies' : 'y'} found (page {page}/{totalPages})
+                        </div>
+                        {entries.map((entry: any, idx: number) => {
+                          // Analysis module entries have an event_id field that links to the full event
+                          // We need to convert them to event format for EventCard
+                          if (entry.event_id) {
+                            // Create a pseudo-event from the entry
+                            const pseudoEvent = {
+                              event_id: entry.event_id,
+                              event_type: entry.event_type || 'analysis_entry',
+                              timestamp: entry.timestamp || entry.last_modified || entry.last_visit_time || entry.created,
+                              artifact_id: entry.artifact_id,
+                              payload: entry,
+                            };
+                            return <EventCard key={`entry-${idx}`} event={pseudoEvent} isQueryResult={true} />;
+                          }
+                          
+                          // Fallback: render as simple card
+                          return (
+                            <div key={`entry-${idx}`} className="bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-800 p-3">
+                              <div className="text-sm text-gray-700 dark:text-gray-300">
+                                {JSON.stringify(entry, null, 2)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()
                 ) : /* Check if result contains RAG sources */
                 typeof result === 'object' && result.sources && Array.isArray(result.sources) ? (
                   <div className="space-y-2">

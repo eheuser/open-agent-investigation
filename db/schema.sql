@@ -9,6 +9,8 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "vector";
+-- Extension for trigram-based text search (supports ILIKE with indexes)
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- ============================================================================
 -- CORE TABLES
@@ -54,6 +56,10 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE INDEX idx_artifacts_investigation ON artifacts(investigation_id);
 CREATE INDEX idx_artifacts_sha256 ON artifacts(sha256);
 CREATE INDEX idx_artifacts_upload_ts ON artifacts(upload_ts DESC);
+-- Index for filename search (ILIKE queries) - supports case-insensitive search
+CREATE INDEX idx_artifacts_filename_trgm ON artifacts USING gin (filename gin_trgm_ops);
+-- Index for classification grouping
+CREATE INDEX idx_artifacts_classification ON artifacts(classification);
 
 -- MCP Servers table (§4.4)
 CREATE TABLE IF NOT EXISTS mcp_servers (
@@ -314,6 +320,8 @@ CREATE TABLE IF NOT EXISTS timeline_entries (
 
 CREATE INDEX idx_timeline_investigation ON timeline_entries(investigation_id, timestamp DESC);
 CREATE INDEX idx_timeline_type ON timeline_entries(investigation_id, entry_type);
+-- Index for entry_type grouping (used in status queries)
+CREATE INDEX idx_timeline_entry_type ON timeline_entries(entry_type);
 CREATE INDEX idx_timeline_event ON timeline_entries(event_id) WHERE event_id IS NOT NULL;
 CREATE INDEX idx_timeline_event_visible ON timeline_entries(event_id, is_visible, timestamp DESC) WHERE event_id IS NOT NULL;  -- For efficient field sampling with JOIN
 CREATE INDEX idx_timeline_tags ON timeline_entries USING GIN(tags);
@@ -408,6 +416,10 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 CREATE INDEX idx_embeddings_owner ON embeddings(owner_type, owner_id);
+-- Index for model_name grouping (used in status queries)
+CREATE INDEX idx_embeddings_model ON embeddings(model_name);
+-- Composite index for tool-type embeddings (optimizes event embedding coverage queries)
+CREATE INDEX idx_embeddings_tool_owner ON embeddings(owner_type, owner_id) WHERE owner_type = 'tool';
 -- Note: Vector indexes are NOT created for large embedding models (>2048 dimensions)
 -- Models like qwen3-embedding-8b (8192 dims) exceed PostgreSQL's 8KB index page limit
 -- Sequential scans are acceptable for <10k embeddings and avoid index maintenance overhead

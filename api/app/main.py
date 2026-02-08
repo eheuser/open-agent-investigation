@@ -30,6 +30,7 @@ from .routers import (
     logs,
     playbooks,
     analysis,
+    system,
 )
 from .utils.log_setup import get_logger
 from .services.log_streaming import setup_log_streaming
@@ -71,6 +72,7 @@ app.include_router(reports.router, tags=["reports"])
 app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
 app.include_router(playbooks.router, tags=["playbooks"])
 app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
+app.include_router(system.router, prefix="/api/v1", tags=["system"])
 
 
 @app.get("/health")
