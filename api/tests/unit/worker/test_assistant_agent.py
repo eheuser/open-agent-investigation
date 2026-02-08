@@ -4,27 +4,13 @@ from uuid import uuid4
 from datetime import datetime
 import json
 
-from worker.agents.assistant_agent import AssistantAgent, _deduplicate_tool_calls, _strip_cot_tags
+from worker.agents.assistant_agent import AssistantAgent, _deduplicate_tool_calls
 from worker.models import ToolResult, AssistantMessage, ToolCall
 
 
 @pytest.mark.unit
 class TestAssistantAgentUtilities:
     """Test utility functions."""
-
-    def test_strip_cot_tags_removes_tags(self):
-        """Test that _strip_cot_tags removes chain-of-thought tags."""
-        text = "Before <cot>thinking process</cot> After"
-        result = _strip_cot_tags(text)
-        assert result == "Before  After"
-
-    def test_strip_cot_tags_handles_multiline(self):
-        """Test that _strip_cot_tags handles multiline CoT blocks."""
-        text = "Start\n<cot>\nLine 1\nLine 2\n</cot>\nEnd"
-        result = _strip_cot_tags(text)
-        assert "Line 1" not in result
-        assert "Start" in result
-        assert "End" in result
 
     def test_deduplicate_tool_calls_removes_duplicates(self):
         """Test that _deduplicate_tool_calls removes duplicate tool calls."""

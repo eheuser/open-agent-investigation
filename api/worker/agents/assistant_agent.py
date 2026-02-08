@@ -1,6 +1,5 @@
 import asyncio
 import json
-import re
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
@@ -37,12 +36,6 @@ HIGH_RESULT_THRESHOLD = 50           # Threshold for "too many results" warning
 
 def _compact_serialize(data: Any) -> str:
     return json.dumps(data, default=str, separators=(",", ":"), ensure_ascii=False)
-
-def _strip_cot_tags(text: str) -> str:
-    cleaned = re.sub(r"<cot>.*?</cot>", "", text, flags=re.DOTALL | re.IGNORECASE)
-    cleaned = re.sub(r"</?cot>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned).strip()
-    return cleaned
 
 def _deduplicate_tool_calls(
     tool_calls: List[ToolCall],
@@ -265,8 +258,7 @@ class AssistantAgent:
                                     tool_calls[idx]["function"]["arguments"] += f["arguments"]
 
                 # Build AssistantMessage
-                cleaned = _strip_cot_tags(content) if content else None
-                msg_dict: Dict[str, Any] = {"role": "assistant", "content": cleaned}
+                msg_dict: Dict[str, Any] = {"role": "assistant", "content": content or None}
                 if tool_calls:
                     parsed = [
                         ToolCall(id=tc.get("id"), type="function", function=tc["function"])
@@ -528,9 +520,7 @@ class AssistantAgent:
                         async for tool_ev in self._execute_tools([tc]):
                             if tool_ev["type"] != "_internal_tool_result":
                                 yield tool_ev
-                # Strip CoT and emit analysis summary
-                cleaned = _strip_cot_tags(msg.content or "")
-                yield {"type": "analysis_complete", "summary": cleaned}
+                yield {"type": "analysis_complete", "summary": msg.content or ""}
                 return
             else:
                 yield ev
