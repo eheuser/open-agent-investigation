@@ -148,8 +148,8 @@ async def generate_chat_summary(
                     transcript_parts.append(f"**{tool_name}**: No results")
             except:
                 # Non-JSON content
-                if len(content) > 150:
-                    content = str(content)[:150] + "..."
+                if len(content) > 300:
+                    content = str(content)[:300] + "..."
                 transcript_parts.append(f"**{tool_name}**: {content}")
 
     transcript = "\n".join(transcript_parts)
@@ -162,7 +162,7 @@ async def generate_chat_summary(
 **Tools Executed**: {', '.join(tools_executed) if tools_executed else 'None'}
 
 **Activity Transcript**:
-{transcript[:1500]}
+{transcript[:4096]}
 
 **Requirements**:
 - Preserve ALL event IDs mentioned
