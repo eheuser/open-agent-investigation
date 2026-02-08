@@ -146,7 +146,7 @@ Your response (playbook name or "none"):"""
         stream = llm_client.stream_chat(
             messages=messages,
             temperature=0.0,
-            max_tokens=50,
+            max_tokens=64,
             tools=None,
             tool_choice="none"
         )

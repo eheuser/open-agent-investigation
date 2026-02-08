@@ -269,10 +269,12 @@ async def classify_intent(
         )
 
         # Call LLM via centralized service
+        # Note: Use None for max_tokens and temperature to respect user's DB configuration
+        # Classification is a short task, so we rely on the model's default behavior
         data = await llm_service.call_llm(
             messages=messages,
-            max_tokens=150,  # Fixed for classification
-            temperature=0.1,  # Low temperature for consistent classification
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
             enforce_context_limit=False,  # Already managed by context manager
         )
 

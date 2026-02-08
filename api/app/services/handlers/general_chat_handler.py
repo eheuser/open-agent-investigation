@@ -307,10 +307,11 @@ async def _get_llm_response(llm_config, prompt: str) -> Dict[str, Any]:
         llm_service = LLMService(config)
 
         # Call LLM with simple user message
+        # Use None for max_tokens and temperature to respect user's DB configuration
         data = await llm_service.call_llm(
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1000,
-            temperature=0.7,
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
             enforce_context_limit=False,  # Single message, no need to enforce
         )
 

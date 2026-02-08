@@ -187,11 +187,11 @@ async def generate_chat_summary(
             {"role": "user", "content": prompt},
         ]
 
-        # Generate summary with deterministic settings
+        # Generate summary
         stream = llm_client.stream_chat(
             messages=messages,
-            temperature=0.0,  # Deterministic
-            max_tokens=400,
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
         )
 
         # Parse streaming response

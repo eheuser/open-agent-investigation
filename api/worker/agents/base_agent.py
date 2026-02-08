@@ -786,10 +786,8 @@ This step is critical, losing control of your investigation due to omission is a
             # Use centralized service for compaction
             result = await self._llm_service.call_llm(
                 messages=compaction_messages,
-                max_tokens=4096,  # Allow substantial summary
-                temperature=min(
-                    self.llm_temperature + 0.3, 1.0
-                ),  # Slightly higher for summarization
+                max_tokens=16_384,
+                temperature=self.llm_temperature,
                 enforce_context_limit=False,  # Compaction messages are already minimal
             )
 

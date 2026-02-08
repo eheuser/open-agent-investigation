@@ -121,7 +121,7 @@ class AssistantAgent:
         llm_model: str,
         llm_api_key: Optional[str] = None,
         llm_max_context: int = 32768,
-        llm_temperature: float = 0.1,
+        llm_temperature: float = 0.7,
         llm_top_p: Optional[float] = None,
         llm_top_k: Optional[int] = None,
         llm_min_p: Optional[float] = None,

@@ -275,10 +275,11 @@ async def _execute_timeline_llm_loop(
             iteration += 1
 
             # Call LLM with tools via centralized service
+            # Use None for max_tokens and temperature to respect user's DB configuration
             data = await llm_service.call_llm(
                 messages=messages,
-                max_tokens=2000,
-                temperature=0.1,
+                max_tokens=None,  # Use user's configured default
+                temperature=None,  # Use user's configured temperature
                 tools=TIMELINE_TOOLS,
                 tool_choice="auto",
                 enforce_context_limit=True,

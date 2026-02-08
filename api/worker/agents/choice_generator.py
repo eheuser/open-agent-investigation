@@ -138,8 +138,8 @@ Generate the JSON now:"""
         async for chunk in llm_client.stream_chat(
             messages=messages,
             tools=[],  # No tools for choice generation
-            temperature=0.7,  # Slightly higher for creativity
-            max_tokens=2000,
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
         ):
             if "choices" in chunk and len(chunk["choices"]) > 0:
                 delta = chunk["choices"][0].get("delta", {})

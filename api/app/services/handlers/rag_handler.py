@@ -61,10 +61,11 @@ Respond with ONLY a comma-separated list of terms, no explanations."""
 
     try:
         # Call LLM via centralized service
+        # Use None for max_tokens and temperature to respect user's DB configuration
         data = await llm_service.call_llm(
             messages=[{"role": "user", "content": expansion_prompt}],
-            max_tokens=4096,
-            temperature=0.3,  # Lower temp for focused expansion
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
             enforce_context_limit=False,
         )
 
@@ -366,13 +367,14 @@ async def handle_rag_query(
 
         # Call LLM with context
         try:
+            # Use None for max_tokens and temperature to respect user's DB configuration
             data = await llm_service.call_llm(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prepared_query},
                 ],
-                max_tokens=4096,
-                temperature=0.7,
+                max_tokens=None,  # Use user's configured default
+                temperature=None,  # Use user's configured temperature
                 enforce_context_limit=True,  # Enforce limit (context manager already trimmed if needed)
             )
 
