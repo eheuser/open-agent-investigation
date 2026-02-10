@@ -62,7 +62,7 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
       const response = await api.get(`/api/v1/jobs/parsing/investigation/${investigationId}?limit=10000`);
       const fetchedJobs: ParsingJob[] = response.data.jobs || [];
       const apiTotal = response.data.total || 0;
-      
+
       setJobs(fetchedJobs);
       setTotalJobs(apiTotal);
 
@@ -84,7 +84,7 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
 
       // Use API total instead of fetched count for accurate progress
       counts.total = apiTotal;
-      
+
       setStatusCounts(counts);
 
       // Track which boxes have ever been shown (sticky display)
@@ -134,7 +134,7 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
   // Track parsing start time and elapsed seconds
   useEffect(() => {
     const parsingActive = statusCounts.queued > 0 || statusCounts.running > 0;
-    
+
     if (parsingActive && parsingStartTime === null && !isLoading) {
       // Parsing just started (and initial load is complete)
       setParsingStartTime(Date.now());
@@ -198,7 +198,7 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
     if (parsingActive) {
       const interval = setInterval(() => {
         fetchJobs();
-        
+
         // Progressive reveal: only fetch additional data after 15 seconds
         if (elapsedSeconds >= 15) {
           fetchEventCount();
@@ -222,7 +222,7 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
   const parsingProgress = statusCounts.total > 0
     ? ((statusCounts.completed + statusCounts.failed) / statusCounts.total) * 100
     : 0;
-  
+
   // Progressive reveal: only show detailed stats after 15 seconds
   const showDetailedStats = elapsedSeconds >= 15;
 
@@ -255,58 +255,58 @@ const ParsingStatusBanner: React.FC<ParsingStatusBannerProps> = ({
         {/* Status Grid - Only show after 15 seconds */}
         {showDetailedStats && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-          {/* Queued - sticky once shown */}
-          {everHadQueued && (
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-              <ClockIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Queued</div>
-                <div className="text-lg font-bold text-gray-900 dark:text-white">
-                  {statusCounts.queued}
+            {/* Queued - sticky once shown */}
+            {everHadQueued && (
+              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
+                <ClockIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Queued</div>
+                  <div className="text-lg font-bold text-gray-900 dark:text-white">
+                    {statusCounts.queued}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Running - sticky once shown */}
-          {everHadRunning && (
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-              <CogIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Parsing</div>
-                <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                  {statusCounts.running}
+            {/* Running - sticky once shown */}
+            {everHadRunning && (
+              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
+                <CogIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Parsing</div>
+                  <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                    {statusCounts.running}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Completed - sticky once shown */}
-          {everHadCompleted && (
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-              <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Completed</div>
-                <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                  {statusCounts.completed}
+            {/* Completed - sticky once shown */}
+            {everHadCompleted && (
+              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
+                <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Completed</div>
+                  <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                    {statusCounts.completed}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Failed - sticky once shown */}
-          {everHadFailed && (
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-              <ExclamationCircleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Failed</div>
-                <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                  {statusCounts.failed}
+            {/* Failed - sticky once shown */}
+            {everHadFailed && (
+              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
+                <ExclamationCircleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
+                <div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Failed</div>
+                  <div className="text-lg font-bold text-red-600 dark:text-red-400">
+                    {statusCounts.failed}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
         )}
 
         {/* Event Count - Show after 15 seconds */}

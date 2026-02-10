@@ -100,7 +100,7 @@ const nodesOverlap = (
     pos1.y < pos2.y + nodeHeight + padding &&
     pos1.y + nodeHeight + padding > pos2.y
   );
-  
+
   return overlap;
 };
 
@@ -108,7 +108,7 @@ const nodesOverlap = (
 const resolveOverlaps = (positions: Record<string, { x: number; y: number }>): Record<string, { x: number; y: number }> => {
   const nodeIds = Object.keys(positions);
   if (nodeIds.length === 0) return positions;
-  
+
   const resolvedPositions = { ...positions };
   const maxIterations = 100;
   let iteration = 0;
@@ -127,17 +127,17 @@ const resolveOverlaps = (positions: Record<string, { x: number; y: number }>): R
 
         if (nodesOverlap(pos1, pos2, 20)) {
           hasOverlaps = true;
-          
+
           // Calculate displacement vector
           const centerDx = pos2.x - pos1.x;
           const centerDy = pos2.y - pos1.y;
           const distance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
-          
+
           // Minimum distance needed (with padding)
           const minDistance = Math.sqrt(
             Math.pow(nodeWidth + 40, 2) + Math.pow(nodeHeight + 40, 2)
           ) / 2;
-          
+
           if (distance === 0 || distance < 1) {
             // Nodes are at exact same position, move them apart horizontally
             resolvedPositions[id2] = {
@@ -149,7 +149,7 @@ const resolveOverlaps = (positions: Record<string, { x: number; y: number }>): R
             const moveDistance = (minDistance - distance) / 2 + 20;
             const moveX = (centerDx / distance) * moveDistance;
             const moveY = (centerDy / distance) * moveDistance;
-            
+
             resolvedPositions[id1] = {
               x: pos1.x - moveX,
               y: pos1.y - moveY,
@@ -179,7 +179,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => 
   const layoutedNodes = nodes.map((node, index) => {
     const row = Math.floor(index / nodesPerRow);
     const col = index % nodesPerRow;
-    
+
     return {
       ...node,
       position: {
@@ -203,7 +203,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [showEventClusters, setShowEventClusters] = useState(true);
-  
+
   // Draggable panel states - use refs to track panel elements
   const containerRef = React.useRef<HTMLDivElement>(null);
   const nodePanelRef = React.useRef<HTMLDivElement>(null);
@@ -213,14 +213,14 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
   const [isDraggingNodePanel, setIsDraggingNodePanel] = useState(false);
   const [isDraggingEdgePanel, setIsDraggingEdgePanel] = useState(false);
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
-  
+
   // Modal states
   const [showNodeModal, setShowNodeModal] = useState(false);
   const [showEdgeModal, setShowEdgeModal] = useState(false);
   const [editingNode, setEditingNode] = useState<GraphNode | null>(null);
   const [editingEdge, setEditingEdge] = useState<GraphEdge | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<number | null>(null);
-  
+
   // Confirmation modals
   const [deleteNodeModalOpen, setDeleteNodeModalOpen] = useState(false);
   const [nodeToDelete, setNodeToDelete] = useState<number | null>(null);
@@ -229,23 +229,23 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
   const [clearLayoutModalOpen, setClearLayoutModalOpen] = useState(false);
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  
+
   // Detect dark mode
   const [isDarkMode, setIsDarkMode] = useState(
     document.documentElement.classList.contains('dark')
   );
-  
+
   useEffect(() => {
     // Watch for theme changes
     const observer = new MutationObserver(() => {
       setIsDarkMode(document.documentElement.classList.contains('dark'));
     });
-    
+
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class'],
     });
-    
+
     return () => observer.disconnect();
   }, []);
 
@@ -256,7 +256,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
     try {
       const response = await api.get(`/api/v1/graph/${investigationId}`);
       const { nodes: fetchedNodes, edges: fetchedEdges } = response.data;
-      
+
       const nodes = fetchedNodes || [];
       const edges = fetchedEdges || [];
       setRawNodes(nodes);
@@ -288,10 +288,10 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
 
     rawNodes.forEach((node) => {
       const nodeType = node.data.node_type || 'entity';
-      
+
       if (nodeType === 'event' || nodeType === 'parsed_event') {
         eventNodes.push(node);
-        
+
         // Cluster by event_type or artifact
         const clusterKey = node.data.event_type || node.data.artifact_id || 'unknown';
         if (!clusters.has(clusterKey)) {
@@ -313,25 +313,25 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
 
     // Load saved layout from localStorage
     const savedLayout = loadLayoutFromStorage(investigationId);
-    
+
     // Collect all positions first (before resolving overlaps)
     const allPositions: Record<string, { x: number; y: number }> = {};
 
     // Add regular nodes
     processedNodes.forEach((node) => {
       const hasPosition = node.data.position?.x !== undefined && node.data.position?.y !== undefined;
-      
+
       // Ensure node.data has a 'name' field, fallback to label if missing
       const nodeName = node.data.name || node.label;
-      
+
       // Update node.data to ensure it has a name field
       const updatedData = {
         ...node.data,
         name: nodeName,
       };
-      
+
       const nodeId = String(node.node_id);
-      
+
       // Priority: 1. localStorage, 2. backend position, 3. default (0,0)
       let position = { x: 0, y: 0 };
       if (savedLayout && savedLayout[nodeId]) {
@@ -339,10 +339,10 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
       } else if (hasPosition) {
         position = { x: node.data.position.x, y: node.data.position.y };
       }
-      
+
       // Store position for overlap resolution
       allPositions[nodeId] = position;
-      
+
       flowNodes.push({
         id: nodeId,
         type: 'entity',
@@ -365,7 +365,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
           const clusterNode = clusterNodes[0];
           const clusterLabel = clusterNode.data.event_type || `Cluster: ${clusterKey}`;
           const clusterId = `cluster-${clusterKey}`;
-          
+
           // Check if we have a saved position for this cluster
           let clusterPosition: { x: number; y: number };
           if (savedLayout && savedLayout[clusterId]) {
@@ -375,9 +375,9 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
             // Default position: below regular nodes to avoid overlap
             clusterPosition = { x: clusterIndex * (nodeWidth + 60), y: 400 };
           }
-          
+
           allPositions[clusterId] = clusterPosition;
-          
+
           flowNodes.push({
             id: clusterId,
             type: 'eventCluster',
@@ -391,7 +391,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
             },
             position: clusterPosition,
           });
-          
+
           clusterIndex++;
         }
       });
@@ -399,23 +399,23 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
 
     // Add edges - filter out invalid edges
     const nodeIdSet = new Set(flowNodes.map(n => n.id));
-    
+
     rawEdges.forEach((edge) => {
       const sourceId = String(edge.source_id);
       const targetId = String(edge.target_id);
-      
+
       // Skip edges where source or target nodes don't exist
       if (!nodeIdSet.has(sourceId) || !nodeIdSet.has(targetId)) {
         return;
       }
-      
+
       // Skip self-loops (edges where source === target)
       if (sourceId === targetId) {
         return;
       }
-      
+
       const isSuspicious = edge.tags?.includes('suspicious') || false;
-      
+
       flowEdges.push({
         id: String(edge.edge_id),
         source: sourceId,
@@ -450,7 +450,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
 
     // Auto-layout if nodes don't have positions
     const hasPositions = flowNodes.some((n) => n.position.x !== 0 || n.position.y !== 0);
-    
+
     if (!hasPositions && flowNodes.length > 0) {
       const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
         flowNodes,
@@ -459,7 +459,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
       );
       setNodes(layoutedNodes);
       setEdges(layoutedEdges);
-      
+
       // Save initial layout to localStorage
       const positions: Record<string, { x: number; y: number }> = {};
       layoutedNodes.forEach((node) => {
@@ -469,17 +469,17 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
     } else {
       // ALWAYS resolve overlaps in all positions
       const resolvedPositions = resolveOverlaps(allPositions);
-      
+
       // Apply resolved positions to flowNodes
       flowNodes.forEach((node) => {
         if (resolvedPositions[node.id]) {
           node.position = resolvedPositions[node.id];
         }
       });
-      
+
       // Save resolved positions to localStorage
       saveLayoutToStorage(investigationId, resolvedPositions);
-      
+
       setNodes(flowNodes);
       setEdges(flowEdges);
     }
@@ -492,7 +492,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
       const savedLayout = loadLayoutFromStorage(investigationId) || {};
       savedLayout[node.id] = { x: node.position.x, y: node.position.y };
       saveLayoutToStorage(investigationId, savedLayout);
-      
+
       // Only save to backend for real nodes (not cluster nodes)
       // Cluster nodes have IDs like "cluster-xxx", real nodes are numeric
       const isClusterNode = node.id.startsWith('cluster-');
@@ -662,7 +662,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
       edges,
       'TB'
     );
-    
+
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
 
@@ -695,24 +695,24 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
     if ((e.target as HTMLElement).closest('button, pre, input, select, textarea')) {
       return; // Don't start drag if clicking on interactive elements
     }
-    
+
     if (!nodePanelRef.current || !containerRef.current) return;
-    
+
     const panelRect = nodePanelRef.current.getBoundingClientRect();
     const containerRect = containerRef.current.getBoundingClientRect();
-    
+
     // Calculate position relative to container
     const relativeX = panelRect.left - containerRect.left;
     const relativeY = panelRect.top - containerRect.top;
-    
+
     // Calculate offset from mouse to top-left of panel
     const offsetX = e.clientX - panelRect.left;
     const offsetY = e.clientY - panelRect.top;
-    
+
     // Set position immediately to current location before starting drag
     setNodePanelPosition({ x: relativeX, y: relativeY });
     setDragStartPos({ x: offsetX, y: offsetY });
-    
+
     // Use setTimeout to ensure state is updated before enabling drag
     setTimeout(() => {
       setIsDraggingNodePanel(true);
@@ -723,24 +723,24 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
     if ((e.target as HTMLElement).closest('button, pre, input, select, textarea')) {
       return; // Don't start drag if clicking on interactive elements
     }
-    
+
     if (!edgePanelRef.current || !containerRef.current) return;
-    
+
     const panelRect = edgePanelRef.current.getBoundingClientRect();
     const containerRect = containerRef.current.getBoundingClientRect();
-    
+
     // Calculate position relative to container
     const relativeX = panelRect.left - containerRect.left;
     const relativeY = panelRect.top - containerRect.top;
-    
+
     // Calculate offset from mouse to top-left of panel
     const offsetX = e.clientX - panelRect.left;
     const offsetY = e.clientY - panelRect.top;
-    
+
     // Set position immediately to current location before starting drag
     setEdgePanelPosition({ x: relativeX, y: relativeY });
     setDragStartPos({ x: offsetX, y: offsetY });
-    
+
     // Use setTimeout to ensure state is updated before enabling drag
     setTimeout(() => {
       setIsDraggingEdgePanel(true);
@@ -749,9 +749,9 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!containerRef.current) return;
-    
+
     const containerRect = containerRef.current.getBoundingClientRect();
-    
+
     if (isDraggingNodePanel) {
       // Calculate position relative to container
       const newX = e.clientX - containerRect.left - dragStartPos.x;
@@ -849,7 +849,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
           zoomable
           pannable
         />
-        
+
         {/* Control Panel */}
         <Panel position="top-right" className="space-y-2">
           <button
@@ -876,7 +876,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
             <PlusCircleIcon className="w-4 h-4" />
             <span className="text-sm font-medium">Add Edge</span>
           </button>
-          
+
           <button
             onClick={handleAutoLayout}
             className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -885,14 +885,13 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
             <ArrowPathIcon className="w-4 h-4" />
             <span className="text-sm font-medium">Auto Layout</span>
           </button>
-          
+
           <button
             onClick={() => setShowEventClusters(!showEventClusters)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg shadow-md transition-colors ${
-              showEventClusters
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg shadow-md transition-colors ${showEventClusters
                 ? 'bg-gray-600 dark:bg-gray-600 text-white hover:bg-gray-500 dark:hover:bg-gray-500'
                 : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
+              }`}
             title="Toggle event clustering"
           >
             <FunnelIcon className="w-4 h-4" />
@@ -900,7 +899,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
               {showEventClusters ? 'Clusters On' : 'Clusters Off'}
             </span>
           </button>
-          
+
           <button
             onClick={fetchGraph}
             className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -909,7 +908,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
             <ArrowPathIcon className="w-4 h-4" />
             <span className="text-sm font-medium">Refresh</span>
           </button>
-          
+
           <button
             onClick={handleClearLayoutClick}
             className="flex items-center gap-2 px-3 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg shadow-md hover:bg-gray-600 dark:hover:bg-gray-600 transition-colors"
@@ -945,7 +944,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
 
       {/* Node Details Panel (bottom overlay) - Outside ReactFlow to avoid context issues */}
       {selectedNode && (
-        <div 
+        <div
           ref={nodePanelRef}
           className="absolute bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700"
           style={{
@@ -959,7 +958,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
             zIndex: 9999,
           }}
         >
-          <div 
+          <div
             className="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-grab active:cursor-grabbing"
             onMouseDown={handleNodePanelMouseDown}
           >
@@ -973,7 +972,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
               <XMarkIcon className="w-4 h-4" />
             </button>
           </div>
-          
+
           <div className="p-3 space-y-3 max-h-64 overflow-y-auto">
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
@@ -1056,7 +1055,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
 
       {/* Edge Details Panel - Outside ReactFlow to avoid context issues */}
       {selectedEdge && (
-        <div 
+        <div
           ref={edgePanelRef}
           className="absolute bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700"
           style={{
@@ -1070,7 +1069,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
             zIndex: 9999,
           }}
         >
-          <div 
+          <div
             className="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-grab active:cursor-grabbing"
             onMouseDown={handleEdgePanelMouseDown}
           >
@@ -1084,7 +1083,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
               <XMarkIcon className="w-4 h-4" />
             </button>
           </div>
-          
+
           <div className="p-3 space-y-3 max-h-64 overflow-y-auto">
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
@@ -1194,7 +1193,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
       {/* Delete Node Confirmation Modal */}
       {deleteNodeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div 
+          <div
             className="absolute inset-0 bg-black bg-opacity-50"
             onClick={cancelDeleteNode}
           />
@@ -1235,7 +1234,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
       {/* Delete Edge Confirmation Modal */}
       {deleteEdgeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div 
+          <div
             className="absolute inset-0 bg-black bg-opacity-50"
             onClick={cancelDeleteEdge}
           />
@@ -1276,7 +1275,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
       {/* Clear Layout Confirmation Modal */}
       {clearLayoutModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div 
+          <div
             className="absolute inset-0 bg-black bg-opacity-50"
             onClick={cancelClearLayout}
           />
@@ -1317,7 +1316,7 @@ const InteractiveGraphViewer: React.FC<Props> = ({ investigationId, onCountsChan
       {/* Error Modal */}
       {errorModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div 
+          <div
             className="absolute inset-0 bg-black bg-opacity-50"
             onClick={() => setErrorModalOpen(false)}
           />

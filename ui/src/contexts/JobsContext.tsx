@@ -25,7 +25,7 @@ interface JobsProviderProps {
 
 export const JobsProvider: React.FC<JobsProviderProps> = ({ children }) => {
   const location = useLocation();
-  
+
   // Extract investigation ID from URL path
   const investigationId = React.useMemo(() => {
     const match = location.pathname.match(/\/investigation\/([^/]+)/);
@@ -50,10 +50,10 @@ export const JobsProvider: React.FC<JobsProviderProps> = ({ children }) => {
           api.get(`/api/v1/jobs/parsing/investigation/${investigationId}`),
           api.get(`/api/v1/jobs/agent/investigation/${investigationId}`)
         ]);
-        
+
         const parsingJobs = parsingResponse.data.jobs || [];
         const agentJobs = agentResponse.data.jobs || [];
-        
+
         // Count active jobs (pending or running)
         const activeParsingJobs = parsingJobs.filter(
           (job: any) => job.status === 'pending' || job.status === 'running'
@@ -61,7 +61,7 @@ export const JobsProvider: React.FC<JobsProviderProps> = ({ children }) => {
         const activeAgentJobs = agentJobs.filter(
           (job: any) => job.status === 'pending' || job.status === 'running'
         ).length;
-        
+
         const totalActive = activeParsingJobs + activeAgentJobs;
         setActiveJobsCount(totalActive);
         setHasRunningJobs(totalActive > 0);
@@ -71,7 +71,7 @@ export const JobsProvider: React.FC<JobsProviderProps> = ({ children }) => {
     };
 
     fetchJobCounts();
-    
+
     // Poll job counts every 2 seconds
     const jobInterval = setInterval(fetchJobCounts, 2000);
 

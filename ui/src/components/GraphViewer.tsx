@@ -5,7 +5,7 @@
 import React from 'react';
 import InteractiveGraphViewer from './InteractiveGraphViewer';
 
-type Props = { 
+type Props = {
   investigationId: string;
   onCountsChange?: (nodeCount: number, edgeCount: number) => void;
 };

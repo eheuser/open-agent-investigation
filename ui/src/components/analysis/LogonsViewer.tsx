@@ -187,48 +187,48 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
       const response = await api.get<LogonsResponse>(
         `/api/v1/analysis/logons/${investigationId}`
       );
-      
+
       //console.log('Loaded initial data:', response.data.entries.length, 'entries');
       setEntries(response.data.entries);
       setSummary(response.data.summary);
-      
+
       // Calculate cardinality counts from all entries
       const logonTypeCounts: Record<string, number> = {};
       const sourceIPCounts: Record<string, number> = {};
       const usernameCounts: Record<string, number> = {};
-      
+
       response.data.entries.forEach(entry => {
         // Count logon types
         logonTypeCounts[entry.logon_type] = (logonTypeCounts[entry.logon_type] || 0) + 1;
-        
+
         // Count source IPs
         if (entry.source_ip) {
           sourceIPCounts[entry.source_ip] = (sourceIPCounts[entry.source_ip] || 0) + 1;
         }
-        
+
         // Count usernames
         if (entry.username) {
           usernameCounts[entry.username] = (usernameCounts[entry.username] || 0) + 1;
         }
       });
-      
+
       setCardinalityCounts({
         logonTypes: logonTypeCounts,
         sourceIPs: sourceIPCounts,
         usernames: usernameCounts,
       });
-      
+
       //console.log('Cardinality counts:', { logonTypeCounts, sourceIPCounts, usernameCounts });
-      
+
       // Build dynamic filter lists from the cardinality counts, sorted by count (descending)
       const sourceIPList = Object.keys(sourceIPCounts).sort((a, b) => sourceIPCounts[b] - sourceIPCounts[a]);
       const usernameList = Object.keys(usernameCounts).sort((a, b) => usernameCounts[b] - usernameCounts[a]);
-      
+
       setDynamicFilters({
         source_ips: sourceIPList,
         usernames: usernameList,
       });
-      
+
       //console.log('Dynamic filters set:', { sourceIPList: sourceIPList.length, usernameList: usernameList.length });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load logon data');
@@ -407,7 +407,7 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
       //console.warn('Cannot add to timeline: entry has no event_id');
       return;
     }
-    
+
     setAddingToTimeline(entry.event_id);
     try {
       await api.post(`/api/v1/timeline/${investigationId}/entries`, {
@@ -417,19 +417,19 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         title: `${entry.event_action}: ${entry.username}`,
         description: `Logon Type: ${entry.logon_type}${entry.source_ip ? '\nSource IP: ' + entry.source_ip : ''}${entry.source_host ? '\nSource Host: ' + entry.source_host : ''}`,
       });
-      
+
       setTimeout(() => {
         setAddingToTimeline(null);
       }, 1000);
     } catch (err: any) {
       console.error('Failed to add to timeline:', err);
-      
+
       if (err.response?.status === 409) {
         setErrorMessage('This event is already on the timeline');
       } else {
         setErrorMessage(err.response?.data?.detail || err.message || 'Failed to add to timeline');
       }
-      
+
       setShowErrorModal(true);
       setAddingToTimeline(null);
     }
@@ -546,11 +546,10 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                showFilters
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${showFilters
                   ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
+                }`}
             >
               <FunnelIcon className="w-4 h-4" />
               Filters
@@ -564,31 +563,28 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
               <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
                 <button
                   onClick={() => setActiveFilterTab('logon_types')}
-                  className={`px-3 py-1.5 rounded-t-md text-xs font-medium transition-colors ${
-                    activeFilterTab === 'logon_types'
+                  className={`px-3 py-1.5 rounded-t-md text-xs font-medium transition-colors ${activeFilterTab === 'logon_types'
                       ? 'bg-blue-600 dark:bg-blue-500 text-white'
                       : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
-                  }`}
+                    }`}
                 >
                   Logon Types
                 </button>
                 <button
                   onClick={() => setActiveFilterTab('source_ips')}
-                  className={`px-3 py-1.5 rounded-t-md text-xs font-medium transition-colors ${
-                    activeFilterTab === 'source_ips'
+                  className={`px-3 py-1.5 rounded-t-md text-xs font-medium transition-colors ${activeFilterTab === 'source_ips'
                       ? 'bg-blue-600 dark:bg-blue-500 text-white'
                       : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
-                  }`}
+                    }`}
                 >
                   Source IPs ({dynamicFilters.source_ips.length})
                 </button>
                 <button
                   onClick={() => setActiveFilterTab('usernames')}
-                  className={`px-3 py-1.5 rounded-t-md text-xs font-medium transition-colors ${
-                    activeFilterTab === 'usernames'
+                  className={`px-3 py-1.5 rounded-t-md text-xs font-medium transition-colors ${activeFilterTab === 'usernames'
                       ? 'bg-blue-600 dark:bg-blue-500 text-white'
                       : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
-                  }`}
+                    }`}
                 >
                   Usernames ({dynamicFilters.usernames.length})
                 </button>
@@ -604,28 +600,27 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
                     {filterCategories.logon_types
                       .sort((a, b) => getLogonTypeCount(b.key) - getLogonTypeCount(a.key))
                       .map((type) => {
-                      const count = getLogonTypeCount(type.key);
-                      return (
-                        <button
-                          key={type.key}
-                          onClick={() => toggleLogonType(type.key)}
-                          className={`px-3 py-2 rounded-md text-xs font-medium transition-colors text-left min-h-[4.5rem] flex flex-col justify-between ${
-                            selectedLogonTypes.includes(type.key)
-                              ? 'bg-blue-600 dark:bg-blue-500 text-white'
-                              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-                          }`}
-                          title={type.description}
-                        >
-                          <div>
-                            <div className="font-semibold">{type.name}</div>
-                            <div className="text-[10px] opacity-75 mt-0.5">{type.description}</div>
-                          </div>
-                          <div className="text-[10px] opacity-75">
-                            {count > 0 ? `${count} ${count === 1 ? 'event' : 'events'}` : '\u00A0'}
-                          </div>
-                        </button>
-                      );
-                    })}
+                        const count = getLogonTypeCount(type.key);
+                        return (
+                          <button
+                            key={type.key}
+                            onClick={() => toggleLogonType(type.key)}
+                            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors text-left min-h-[4.5rem] flex flex-col justify-between ${selectedLogonTypes.includes(type.key)
+                                ? 'bg-blue-600 dark:bg-blue-500 text-white'
+                                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                              }`}
+                            title={type.description}
+                          >
+                            <div>
+                              <div className="font-semibold">{type.name}</div>
+                              <div className="text-[10px] opacity-75 mt-0.5">{type.description}</div>
+                            </div>
+                            <div className="text-[10px] opacity-75">
+                              {count > 0 ? `${count} ${count === 1 ? 'event' : 'events'}` : '\u00A0'}
+                            </div>
+                          </button>
+                        );
+                      })}
                   </div>
                 </div>
               )}
@@ -648,11 +643,10 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
                           <button
                             key={ip}
                             onClick={() => toggleSourceIP(ip)}
-                            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors text-left min-h-[3.5rem] flex flex-col justify-between ${
-                              selectedSourceIPs.includes(ip)
+                            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors text-left min-h-[3.5rem] flex flex-col justify-between ${selectedSourceIPs.includes(ip)
                                 ? 'bg-blue-600 dark:bg-blue-500 text-white'
                                 : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-                            }`}
+                              }`}
                           >
                             <div className="font-mono break-all">{ip}</div>
                             <div className="text-[10px] opacity-75 mt-1">
@@ -684,11 +678,10 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
                           <button
                             key={username}
                             onClick={() => toggleUsername(username)}
-                            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors text-left min-h-[3.5rem] flex flex-col justify-between ${
-                              selectedUsernames.includes(username)
+                            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors text-left min-h-[3.5rem] flex flex-col justify-between ${selectedUsernames.includes(username)
                                 ? 'bg-blue-600 dark:bg-blue-500 text-white'
                                 : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-                            }`}
+                              }`}
                           >
                             <div className="font-semibold break-all">{username}</div>
                             <div className="text-[10px] opacity-75 mt-1">
@@ -963,7 +956,7 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
                               <TypedDictionaryViewer
                                 data={entry.raw_data}
                                 title=""
-                                onAddToTimeline={() => {}}
+                                onAddToTimeline={() => { }}
                               />
                             </div>
                           )}

@@ -53,14 +53,14 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
   const handleGenerateMarkdown = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const response = await api.post('/api/v1/reports/generate', {
         investigation_id: investigationId,
         user_prompt: userPrompt || null,
         format: 'markdown',
       });
-      
+
       setReportData(response.data);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to generate report');
@@ -74,7 +74,7 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
     setLoading(true);
     setError(null);
     setReportData(null); // Clear previous preview
-    
+
     try {
       const response = await api.post('/api/v1/reports/download', {
         investigation_id: investigationId,
@@ -83,13 +83,13 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
       }, {
         responseType: 'blob',
       });
-      
+
       // Create download link
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
+
       // Extract filename from Content-Disposition header or use default
       const contentDisposition = response.headers['content-disposition'];
       let filename = 'investigation_report.pdf';
@@ -99,7 +99,7 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
           filename = filenameMatch[1].trim();
         }
       }
-      
+
       // Ensure proper .pdf extension (remove defanging)
       // Some browsers/proxies add underscore to potentially dangerous extensions
       filename = filename.replace(/\.pdf_?$/i, '.pdf');
@@ -107,7 +107,7 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
       if (!filename.toLowerCase().endsWith('.pdf')) {
         filename += '.pdf';
       }
-      
+
       // Force the download attribute to use .pdf extension
       link.download = filename;
       link.setAttribute('download', filename); // Explicit attribute set
@@ -115,7 +115,7 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       // Show success modal
       setError(null);
       setSuccessMessage(`Report "${filename}" downloaded successfully!`);
@@ -158,78 +158,78 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
         {/* Preview */}
         {reportData ? (
           <div className="flex-1 overflow-auto p-6">
-          <div className="max-w-4xl mx-auto">
-            {/* Metadata */}
-            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Report Metadata</h3>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Generated:</span>{' '}
-                  <span className="text-gray-900 dark:text-gray-100">
-                    {new Date(reportData.generated_at).toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Artifacts:</span>{' '}
-                  <span className="text-gray-900 dark:text-gray-100">{reportData.artifacts_count}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Timeline Entries:</span>{' '}
-                  <span className="text-gray-900 dark:text-gray-100">{reportData.timeline_entries_count}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600 dark:text-gray-400">Event Types:</span>{' '}
-                  <span className="text-gray-900 dark:text-gray-100">{reportData.event_types_count}</span>
+            <div className="max-w-4xl mx-auto">
+              {/* Metadata */}
+              <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Report Metadata</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Generated:</span>{' '}
+                    <span className="text-gray-900 dark:text-gray-100">
+                      {new Date(reportData.generated_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Artifacts:</span>{' '}
+                    <span className="text-gray-900 dark:text-gray-100">{reportData.artifacts_count}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Timeline Entries:</span>{' '}
+                    <span className="text-gray-900 dark:text-gray-100">{reportData.timeline_entries_count}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Event Types:</span>{' '}
+                    <span className="text-gray-900 dark:text-gray-100">{reportData.event_types_count}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Markdown Preview */}
-            <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-table:text-sm">
-              <ReactMarkdown 
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  // Style tables properly
-                  table: ({node, ...props}) => (
-                    <div className="overflow-x-auto my-4">
-                      <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-700" {...props} />
-                    </div>
-                  ),
-                  thead: ({node, ...props}) => (
-                    <thead className="bg-gray-50 dark:bg-gray-800" {...props} />
-                  ),
-                  th: ({node, ...props}) => (
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />
-                  ),
-                  td: ({node, ...props}) => (
-                    <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100" {...props} />
-                  ),
-                  // Style code blocks
-                  code: ({node, inline, className, children, ...props}: any) => {
-                    const isInline = !className?.includes('language-');
-                    if (isInline) {
+              {/* Markdown Preview */}
+              <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-table:text-sm">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    // Style tables properly
+                    table: ({ node, ...props }) => (
+                      <div className="overflow-x-auto my-4">
+                        <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-700" {...props} />
+                      </div>
+                    ),
+                    thead: ({ node, ...props }) => (
+                      <thead className="bg-gray-50 dark:bg-gray-800" {...props} />
+                    ),
+                    th: ({ node, ...props }) => (
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />
+                    ),
+                    td: ({ node, ...props }) => (
+                      <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100" {...props} />
+                    ),
+                    // Style code blocks
+                    code: ({ node, inline, className, children, ...props }: any) => {
+                      const isInline = !className?.includes('language-');
+                      if (isInline) {
+                        return (
+                          <code className="bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded font-mono text-xs" {...props}>
+                            {children}
+                          </code>
+                        );
+                      }
                       return (
-                        <code className="bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded font-mono text-xs" {...props}>
+                        <code className="block bg-gray-900 dark:bg-gray-950 text-gray-100 p-3 rounded font-mono text-xs overflow-x-auto" {...props}>
                           {children}
                         </code>
                       );
-                    }
-                    return (
-                      <code className="block bg-gray-900 dark:bg-gray-950 text-gray-100 p-3 rounded font-mono text-xs overflow-x-auto" {...props}>
-                        {children}
-                      </code>
-                    );
-                  },
-                  // Style horizontal rules
-                  hr: ({node, ...props}) => (
-                    <hr className="my-6 border-gray-300 dark:border-gray-700" {...props} />
-                  ),
-                }}
-              >
-                {reportData.markdown}
-              </ReactMarkdown>
+                    },
+                    // Style horizontal rules
+                    hr: ({ node, ...props }) => (
+                      <hr className="my-6 border-gray-300 dark:border-gray-700" {...props} />
+                    ),
+                  }}
+                >
+                  {reportData.markdown}
+                </ReactMarkdown>
+              </div>
             </div>
-          </div>
           </div>
         ) : !loading && !loadingExisting ? (
           <div className="flex-1 flex items-center justify-center p-6">
@@ -300,7 +300,7 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
             >
               {loading ? 'Generating...' : 'Generate Preview'}
             </button>
-            
+
             <button
               onClick={handleDownloadPDF}
               disabled={loading}

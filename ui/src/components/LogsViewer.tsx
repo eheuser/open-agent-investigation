@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  MagnifyingGlassIcon, 
+import {
+  MagnifyingGlassIcon,
   XMarkIcon,
   ArrowsUpDownIcon,
   PauseIcon,
@@ -240,11 +240,10 @@ const LogsViewer: React.FC<LogsViewerProps> = ({ investigationId }) => {
         {/* Pause/Resume */}
         <button
           onClick={() => setIsPaused(!isPaused)}
-          className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            isPaused
+          className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${isPaused
               ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700'
               : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-white border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-          }`}
+            }`}
           title={isPaused ? 'Resume streaming' : 'Pause streaming'}
         >
           {isPaused ? (
@@ -302,10 +301,10 @@ const LogsViewer: React.FC<LogsViewerProps> = ({ investigationId }) => {
             >
               {/* Timestamp */}
               <span className="text-gray-500 dark:text-gray-600 whitespace-nowrap">
-                {new Date(log.timestamp).toLocaleTimeString('en-US', { 
-                  hour12: false, 
-                  hour: '2-digit', 
-                  minute: '2-digit', 
+                {new Date(log.timestamp).toLocaleTimeString('en-US', {
+                  hour12: false,
+                  hour: '2-digit',
+                  minute: '2-digit',
                   second: '2-digit',
                   fractionalSecondDigits: 3
                 })}

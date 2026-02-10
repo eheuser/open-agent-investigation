@@ -256,11 +256,10 @@ const StatusModal: React.FC<StatusModalProps> = ({ isOpen, onClose }) => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === tab.id
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
                       ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
                       : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -477,7 +476,7 @@ const StatusModal: React.FC<StatusModalProps> = ({ isOpen, onClose }) => {
                               </div>
                             </div>
                           </div>
-                    </div>
+                        </div>
                       ))
                     )}
                   </div>
@@ -549,7 +548,7 @@ const StatusModal: React.FC<StatusModalProps> = ({ isOpen, onClose }) => {
                           Page {stats.artifacts.page} of {stats.artifacts.total_pages}
                         </div>
                       </div>
-                      
+
                       {stats.artifacts.list.length === 0 ? (
                         <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
                           {artifactsSearch ? 'No artifacts match your search' : 'No artifacts found'}
@@ -602,11 +601,11 @@ const StatusModal: React.FC<StatusModalProps> = ({ isOpen, onClose }) => {
                             <ChevronLeftIcon className="w-4 h-4" />
                             Previous
                           </button>
-                          
+
                           <span className="text-sm text-gray-600 dark:text-gray-400">
                             Page {stats.artifacts.page} of {stats.artifacts.total_pages}
                           </span>
-                          
+
                           <button
                             onClick={() => setArtifactsPage(Math.min(stats.artifacts.total_pages, artifactsPage + 1))}
                             disabled={!stats.artifacts.has_more || loading}

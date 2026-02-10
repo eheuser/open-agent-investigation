@@ -18,11 +18,11 @@ const Login: React.FC = () => {
 
     try {
       await login(username, password);
-      
+
       // Check if LLM configuration exists
       try {
         const response = await api.get('/api/v1/llm-config/active');
-        
+
         // If no active config exists, redirect to settings
         if (!response.data || !response.data.config_id) {
           navigate('/settings');
@@ -35,7 +35,7 @@ const Login: React.FC = () => {
           return;
         }
       }
-      
+
       // If config exists, go to dashboard
       navigate('/');
     } catch (err: any) {

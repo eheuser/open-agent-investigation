@@ -8,8 +8,8 @@ export const useWebSocket = (investigationId: string) => {
     const ws = new WebSocket(`${protocol}://${location.host}/api/v1/ws/${investigationId}`);
     wsRef.current = ws;
 
-        ws.onopen = () => {};
-    ws.onclose = () => {};
+    ws.onopen = () => { };
+    ws.onclose = () => { };
 
     return () => {
       ws.close();

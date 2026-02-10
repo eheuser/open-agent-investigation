@@ -75,7 +75,7 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
 
     try {
       const params = new URLSearchParams();
-      
+
       // Add browser filters - FastAPI expects multiple 'browsers' params
       if (selectedBrowsers.length > 0) {
         selectedBrowsers.forEach(browser => {
@@ -84,7 +84,7 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
       }
 
       const response = await api.get(`/api/v1/analysis/browsed-urls/${investigationId}?${params.toString()}`);
-      
+
       setEntries(response.data.entries);
       setSummary(response.data.summary);
     } catch (err: any) {
@@ -115,7 +115,7 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
       //console.warn('Cannot add to timeline: entry has no event_id');
       return;
     }
-    
+
     setAddingToTimeline(entry.event_id);
     try {
       //console.log('Adding to timeline:', {
@@ -123,7 +123,7 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
       //  timestamp: entry.timestamp,
       //  url: entry.url
       //});
-      
+
       await api.post(`/api/v1/timeline/${investigationId}/entries`, {
         event_id: entry.event_id,
         timestamp: entry.timestamp || new Date().toISOString(),
@@ -131,20 +131,20 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
         title: entry.title || entry.url,
         description: `Browser: ${entry.browser}\nURL: ${entry.url}`,
       });
-      
+
       setTimeout(() => {
         setAddingToTimeline(null);
       }, 1000);
     } catch (err: any) {
       console.error('Failed to add to timeline:', err);
       console.error('Error response:', err.response?.data);
-      
+
       if (err.response?.status === 409) {
         setErrorMessage('This event is already on the timeline');
       } else {
         setErrorMessage(err.response?.data?.detail || err.message || 'Failed to add to timeline');
       }
-      
+
       setShowErrorModal(true);
       setAddingToTimeline(null);
     }
@@ -225,7 +225,7 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
 
   const highlightText = (text: string) => {
     if (!searchText || !text) return text;
-    
+
     const regex = new RegExp(`(${searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
     return String(text).replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-700">$1</mark>');
   };
@@ -357,27 +357,26 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
               {browsers
                 .sort((a, b) => (summary[b.key] || 0) - (summary[a.key] || 0))
                 .map((browser) => (
-                <button
-                  key={browser.key}
-                  onClick={() => toggleBrowser(browser.key)}
-                  className={`px-3 py-2 rounded-md text-xs font-medium transition-colors text-left min-h-[4.5rem] flex flex-col justify-between ${
-                    selectedBrowsers.includes(browser.key)
-                      ? 'bg-blue-600 dark:bg-blue-500 text-white'
-                      : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <span className="text-lg">{getBrowserIcon(browser.key)}</span>
-                    <div>
-                      <div className="font-semibold">{browser.name}</div>
-                      <div className="text-[10px] opacity-75 mt-0.5">{browser.description}</div>
+                  <button
+                    key={browser.key}
+                    onClick={() => toggleBrowser(browser.key)}
+                    className={`px-3 py-2 rounded-md text-xs font-medium transition-colors text-left min-h-[4.5rem] flex flex-col justify-between ${selectedBrowsers.includes(browser.key)
+                        ? 'bg-blue-600 dark:bg-blue-500 text-white'
+                        : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-lg">{getBrowserIcon(browser.key)}</span>
+                      <div>
+                        <div className="font-semibold">{browser.name}</div>
+                        <div className="text-[10px] opacity-75 mt-0.5">{browser.description}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-[10px] opacity-75">
-                    {summary[browser.key] ? `${summary[browser.key]} entries` : '\u00A0'}
-                  </div>
-                </button>
-              ))}
+                    <div className="text-[10px] opacity-75">
+                      {summary[browser.key] ? `${summary[browser.key]} entries` : '\u00A0'}
+                    </div>
+                  </button>
+                ))}
             </div>
           </div>
 
@@ -603,7 +602,7 @@ const BrowsedURLsViewer: React.FC<BrowsedURLsViewerProps> = ({ investigationId }
                                 <TypedDictionaryViewer
                                   data={entry.raw_data}
                                   title=""
-                                  onAddToTimeline={() => {}}
+                                  onAddToTimeline={() => { }}
                                 />
                               </div>
                             )}

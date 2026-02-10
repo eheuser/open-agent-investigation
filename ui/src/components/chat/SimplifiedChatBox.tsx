@@ -32,7 +32,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [showConfigError, setShowConfigError] = useState(false);
   const [embeddingInProgress, setEmbeddingInProgress] = useState(false);
-  
+
   // Floating search state
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,10 +42,10 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
 
   const { ws, isConnected } = useWebSocketContext();
   const { checkConfig } = useLLMConfig();
-  const { 
-    messages, 
-    isLoading, 
-    investigationState, 
+  const {
+    messages,
+    isLoading,
+    investigationState,
     parsingLocked,
     investigationChoices,
     sendMessage,
@@ -79,12 +79,12 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
 
   // Check for LLM configuration errors in messages
   useEffect(() => {
-    const hasConfigError = messages.some(msg => 
-      msg.message_type === 'error' && 
-      msg.content && 
+    const hasConfigError = messages.some(msg =>
+      msg.message_type === 'error' &&
+      msg.content &&
       msg.content.toLowerCase().includes('no active llm configuration')
     );
-    
+
     if (hasConfigError) {
       setShowConfigError(true);
     }
@@ -110,7 +110,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (!messagesEndRef.current || !messagesContainerRef.current) return;
-    
+
     // Only auto-scroll if user is near the bottom
     // Don't force scroll if user has scrolled up to read previous messages
     if (shouldAutoScroll) {
@@ -187,7 +187,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
 
       const data = await response.json();
       //console.log('Investigation continued:', data);
-      
+
       // The API will broadcast message_updated and job_continuing via WebSocket
       // which will trigger the UI to update automatically
       // Keep continuingJobId set until we get the update
@@ -199,7 +199,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
   };
 
   const isAgentRunning = investigationState === 'running';
-  
+
   // Search functionality - find all <mark> elements
   useEffect(() => {
     if (!searchQuery) {
@@ -214,33 +214,33 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
       }
       return;
     }
-    
+
     // Wait for DOM to update with new mark elements
     setTimeout(() => {
       const container = messagesContainerRef.current;
       if (!container) return;
-      
+
       const markElements = container.querySelectorAll('mark[data-search-id]');
       const results: string[] = [];
-      
+
       markElements.forEach((mark) => {
         const searchId = mark.getAttribute('data-search-id');
         if (searchId) {
           results.push(searchId);
         }
       });
-      
+
       //console.log(`Found ${results.length} search results`);
       setSearchResults(results);
       setCurrentResultIndex(0);
-      
+
       // Scroll to first result
       if (results.length > 0) {
         scrollToSearchResult(results[0]);
       }
     }, 100);
   }, [searchQuery, messages]);
-  
+
   // Keyboard shortcut for search (Ctrl+F or Cmd+F)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -254,43 +254,43 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
         setSearchQuery('');
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showSearch]);
-  
+
   const scrollToSearchResult = (searchId: string) => {
     const container = messagesContainerRef.current;
     if (!container) {
       //console.log('No container ref');
       return;
     }
-    
+
     // Find the specific mark element by its search ID
     const targetElement = container.querySelector(`mark[data-search-id="${searchId}"]`) as HTMLElement;
-    
+
     if (targetElement) {
       //console.log('Scrolling to search result:', searchId);
-      
+
       // Remove previous highlight
       const previousHighlight = container.querySelector('mark.search-current');
       if (previousHighlight) {
         previousHighlight.classList.remove('search-current');
       }
-      
+
       // Add current highlight
       targetElement.classList.add('search-current');
-      
+
       // Scroll into view
       targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
       //console.log('Could not find mark element with search ID:', searchId);
     }
   };
-  
+
   const scrollToResult = (direction: 'next' | 'prev') => {
     if (searchResults.length === 0) return;
-    
+
     let newIndex = currentResultIndex;
     if (direction === 'next') {
       newIndex = currentResultIndex + 1;
@@ -303,7 +303,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
         newIndex = searchResults.length - 1; // Wrap to end
       }
     }
-    
+
     setCurrentResultIndex(newIndex);
     scrollToSearchResult(searchResults[newIndex]);
   };
@@ -318,7 +318,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
         message="You must configure an LLM provider before using the chat functionality. All natural language processing requires LLM capabilities."
         showSettingsButton={true}
       />
-      
+
       {/* Upload Modal */}
       {showUploadModal && (
         <UploadModal
@@ -326,7 +326,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
           onClose={() => setShowUploadModal(false)}
         />
       )}
-      
+
       {/* Add global styles for search highlighting */}
       <style>{`
         mark.search-current {
@@ -339,7 +339,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
           outline: 2px solid rgb(234 88 12);
         }
       `}</style>
-      
+
       {/* Floating Search Box */}
       {showSearch && (
         <div className="absolute top-4 right-4 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-3 w-80">
@@ -369,7 +369,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
               <XMarkIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
             </button>
           </div>
-          
+
           {searchQuery && (
             <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
               <span>
@@ -407,7 +407,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
           )}
         </div>
       )}
-      
+
       {/* Search Toggle Button */}
       {!showSearch && (
         <button
@@ -418,7 +418,7 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
           <MagnifyingGlassIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
         </button>
       )}
-      
+
       {/* Messages Area */}
       <div
         ref={messagesContainerRef}
@@ -435,26 +435,26 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
                 // Augment message with continuation state if this job is continuing
                 const augmentedMsg = msg.metadata?.job_id === continuingJobId
                   ? {
-                      ...msg,
-                      metadata: {
-                        ...msg.metadata,
-                        is_continuing: true,
-                        isWaitingForLLM: true,
-                      }
+                    ...msg,
+                    metadata: {
+                      ...msg.metadata,
+                      is_continuing: true,
+                      isWaitingForLLM: true,
                     }
+                  }
                   : msg;
-                
+
                 return (
-                  <div 
-                    key={msg.message_id} 
+                  <div
+                    key={msg.message_id}
                     data-message-index={index}
                   >
                     <MessageRenderer
                       message={augmentedMsg}
                       isStreaming={
                         !!(msg.metadata?.streaming_message_id &&
-                        isAgentRunning &&
-                        msg === messages[messages.length - 1])
+                          isAgentRunning &&
+                          msg === messages[messages.length - 1])
                       }
                       onDelete={deleteMessage}
                       onEdit={editMessage}

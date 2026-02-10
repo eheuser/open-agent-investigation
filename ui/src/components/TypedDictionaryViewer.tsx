@@ -15,7 +15,7 @@ interface TypedDictionaryViewerProps {
   onOpenInPanel?: (key: string, value: any) => void;
 }
 
-type ValueType = 
+type ValueType =
   | 'scalar'
   | 'identifier'
   | 'ip'
@@ -138,8 +138,8 @@ const TypedDictionaryViewer: React.FC<TypedDictionaryViewerProps> = ({
 
     // Code/JSON (contains brackets, braces, semicolons, keywords)
     if (typeof value === 'string' && (
-      value.includes('{') || 
-      value.includes('[') || 
+      value.includes('{') ||
+      value.includes('[') ||
       value.includes(';') ||
       /\b(function|class|const|let|var|if|else|return)\b/.test(value)
     )) {

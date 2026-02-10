@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  BeakerIcon, 
-  DocumentPlusIcon, 
+import {
+  BeakerIcon,
+  DocumentPlusIcon,
   ChatBubbleLeftRightIcon,
   ChartBarIcon,
-  ExclamationTriangleIcon 
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { createInvestigation } from '../services/investigations';
 
@@ -56,11 +56,11 @@ const Dashboard: React.FC = () => {
           <div className="inline-flex items-center justify-center w-20 h-20 mb-6 bg-gradient-to-br from-blue-500 to-purple-600 dark:bg-gray-700 dark:bg-gradient-to-br dark:from-gray-600 dark:to-gray-600 rounded-3xl">
             <BeakerIcon className="w-12 h-12 text-white" />
           </div>
-          
+
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
             Welcome to Open Agent Investigation
           </h1>
-          
+
           <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-2xl mx-auto">
             A chat-driven investigation platform for security analysts. Upload evidence, ask questions, and let agents help you uncover the truth.
           </p>
@@ -82,7 +82,7 @@ const Dashboard: React.FC = () => {
             return (
               <div
                 key={idx}
-                                  className="p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+                className="p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
               >
                 <div className="inline-flex items-center justify-center w-12 h-12 mb-4 bg-blue-100 dark:bg-gray-700 rounded-xl">
                   <Icon className="w-6 h-6 text-blue-600 dark:text-gray-300" />
@@ -98,23 +98,23 @@ const Dashboard: React.FC = () => {
           })}
         </div>
 
-                  {/* Footer Note */}
-          <div className="mt-12 pt-8">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Open source and GPL-v3 licensed • Built for security professionals
-            </p>
-          </div>
+        {/* Footer Note */}
+        <div className="mt-12 pt-8">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Open source and GPL-v3 licensed • Built for security professionals
+          </p>
+        </div>
       </div>
 
       {/* Error Modal */}
       {errorModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}
-          <div 
+          <div
             className="absolute inset-0 bg-black bg-opacity-50"
             onClick={() => setErrorModalOpen(false)}
           />
-          
+
           {/* Modal */}
           <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
             <div className="flex items-start gap-4">

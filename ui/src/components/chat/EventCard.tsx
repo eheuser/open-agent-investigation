@@ -50,32 +50,31 @@ const EventCard: React.FC<EventCardProps> = ({ event, isQueryResult = false }) =
   const getPreviewFields = () => {
     const payload = event.payload || event;
     const preview: string[] = [];
-    
+
     // Common interesting fields
     const interestingFields = [
       'EventID', 'TargetUserName', 'SubjectUserName', 'ProcessName', 'Image',
       'CommandLine', 'FileName', 'FullPath', 'SourceIP', 'IpAddress',
       'WorkstationName', 'LogonType', 'Status', 'FailureReason'
     ];
-    
+
     for (const field of interestingFields) {
       if (payload[field]) {
         preview.push(`${field}: ${payload[field]}`);
         if (preview.length >= 3) break; // Show max 3 fields
       }
     }
-    
+
     return preview;
   };
 
   const previewFields = getPreviewFields();
 
   return (
-    <div className={`border rounded-lg ${
-      isQueryResult
+    <div className={`border rounded-lg ${isQueryResult
         ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10'
         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
-    }`}>
+      }`}>
       {/* Header */}
       <div
         className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-t-lg transition-colors"
@@ -166,7 +165,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, isQueryResult = false }) =
             <TypedDictionaryViewer
               data={event.payload || event}
               title=""
-              onAddToTimeline={() => {}}
+              onAddToTimeline={() => { }}
             />
           </div>
         </div>

@@ -57,48 +57,48 @@ export const useInvestigationCounts = ({
         .then(response => setEventCount(response.data.total || 0))
         .catch(err => console.error('Failed to fetch event count:', err));
     }
-    
+
     if (message.type === 'timeline_mutated' || message.type === 'timeline_updated') {
       // Refetch both counts
       api.get(`/api/v1/events/${investigationId}?limit=1&offset=0`)
         .then(response => setEventCount(response.data.total || 0))
         .catch(err => console.error('Failed to fetch event count:', err));
-      
+
       api.get(`/api/v1/timeline/${investigationId}?limit=1`)
         .then(response => setTimelineEntryCount(response.data.total || 0))
         .catch(err => console.error('Failed to fetch timeline counts:', err));
     }
-    
+
     if (message.type === 'timeline_entry_added') {
       setTimelineEntryCount(prev => prev + 1);
       // Trigger animation
       setTimelineCountChanged(true);
       setTimeout(() => setTimelineCountChanged(false), 1000);
-      
+
       // Notify parent that timeline needs refresh
       if (onTimelineRefresh) {
         onTimelineRefresh();
       }
     }
-    
+
     if (message.type === 'timeline_entry_removed') {
       setTimelineEntryCount(prev => Math.max(0, prev - 1));
       // Trigger animation
       setTimelineCountChanged(true);
       setTimeout(() => setTimelineCountChanged(false), 1000);
-      
+
       // Notify parent that timeline needs refresh
       if (onTimelineRefresh) {
         onTimelineRefresh();
       }
     }
-    
+
     if (message.type === 'agent_completed') {
       // Refetch timeline counts
       api.get(`/api/v1/timeline/${investigationId}?limit=1`)
         .then(response => setTimelineEntryCount(response.data.total || 0))
         .catch(err => console.error('Failed to fetch timeline counts:', err));
-      
+
       // Notify parent that timeline needs refresh
       if (onTimelineRefresh) {
         onTimelineRefresh();

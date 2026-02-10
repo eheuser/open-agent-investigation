@@ -1,9 +1,9 @@
 import React from 'react';
-import { 
-  CpuChipIcon, 
-  ChatBubbleLeftRightIcon, 
-  ClockIcon, 
-  SparklesIcon 
+import {
+  CpuChipIcon,
+  ChatBubbleLeftRightIcon,
+  ClockIcon,
+  SparklesIcon
 } from '@heroicons/react/24/outline';
 
 interface RoutingBadgeProps {

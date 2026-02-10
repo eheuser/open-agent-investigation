@@ -52,7 +52,7 @@ const ToolExecutionDisplay: React.FC<ToolExecutionDisplayProps> = ({ tool, onRep
   // Extract result count from result
   const getResultCount = () => {
     if (!tool.result) return null;
-    
+
     // Check for common result patterns
     if (typeof tool.result === 'object') {
       // Search results: { count: N, events: [...] }
@@ -68,7 +68,7 @@ const ToolExecutionDisplay: React.FC<ToolExecutionDisplayProps> = ({ tool, onRep
         return tool.result.top_values.length;
       }
     }
-    
+
     return null;
   };
 
@@ -107,9 +107,8 @@ const ToolExecutionDisplay: React.FC<ToolExecutionDisplayProps> = ({ tool, onRep
 
       {/* Compact header - always visible */}
       <div
-        className={`flex items-center gap-2 ${
-          hasDetails ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 -ml-1 pl-1 pr-2 py-1 rounded' : ''
-        }`}
+        className={`flex items-center gap-2 ${hasDetails ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 -ml-1 pl-1 pr-2 py-1 rounded' : ''
+          }`}
         onClick={() => hasDetails && setIsExpanded(!isExpanded)}
       >
         {/* Expand/collapse icon */}
@@ -131,11 +130,11 @@ const ToolExecutionDisplay: React.FC<ToolExecutionDisplayProps> = ({ tool, onRep
           <span className="font-medium text-gray-700 dark:text-gray-300 truncate">
             {tool.display_name || tool.tool_name}
           </span>
-                      {tool.execution_number !== null && tool.max_tools && (
-              <span className="text-gray-500 dark:text-gray-500 flex-shrink-0">
-                Turn {tool.execution_number}/{tool.max_tools}
-              </span>
-            )}
+          {tool.execution_number !== null && tool.max_tools && (
+            <span className="text-gray-500 dark:text-gray-500 flex-shrink-0">
+              Turn {tool.execution_number}/{tool.max_tools}
+            </span>
+          )}
         </div>
 
         {/* Result count and summary - compact */}
@@ -211,14 +210,14 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
   const isContinuing = message.metadata?.is_continuing;
   const jobId = message.metadata?.job_id;
   const stats = message.metadata?.stats;
-  
+
   // Extract routing metadata
   const routingMetadata = message.metadata?.routing_metadata;
   const playbookMetadata = message.metadata?.playbook_metadata;
 
   // Prefer explicit tool_executions from database over metadata
   // This is the new architecture - tool executions are stored in a separate table
-  const toolExecutions: ToolExecution[] = message.tool_executions || 
+  const toolExecutions: ToolExecution[] = message.tool_executions ||
     // Fall back to legacy metadata for backwards compatibility
     (message.metadata?.tool_executions?.map((te, idx) => ({
       execution_id: idx,
@@ -250,7 +249,7 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
     .replace(/\s+:\s*$/gm, '') // Remove trailing colons with whitespace
     .replace(/\n{3,}/g, '\n\n') // Clean up excessive newlines
     .trim();
-  
+
   // For timeline queries, extract summary footer if present
   // Backend adds summary as: "\n\n---\n📊 Timeline: X query"
   let timelineSummary: string | null = null;
@@ -262,7 +261,7 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
       timelineSummary = match[1].trim();
     }
   }
-  
+
   // If content starts with a JSON block, remove it
   if (cleanContent.startsWith('{')) {
     const jsonEndIndex = cleanContent.indexOf('}');
@@ -280,7 +279,7 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
   const showLoadingAnimation = isStreaming && !hasAnyContent && !hasAnyTools;
 
   // Build chronological event stream using explicit sequence from backend
-  type ChronologicalEvent = 
+  type ChronologicalEvent =
     | { type: 'text'; content: string; sequence: number }
     | { type: 'tool'; tool: ToolExecution; sequence: number };
 
@@ -288,7 +287,7 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
   const cleanMarkdown = (text: string): string => {
     // First, normalize line breaks
     text = text.replace(/\r\n/g, '\n');
-    
+
     // Fix unbalanced ** (bold) markers
     const boldMarkers = text.match(/\*\*/g);
     if (boldMarkers && boldMarkers.length % 2 !== 0) {
@@ -296,7 +295,7 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
       const lastIndex = text.lastIndexOf('**');
       text = text.substring(0, lastIndex) + text.substring(lastIndex + 2);
     }
-    
+
     // Fix unbalanced single * (italic) markers
     // Split by ** first to avoid counting ** as two *
     const parts = text.split('**');
@@ -310,30 +309,30 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
       }
     }
     text = parts.join('**');
-    
+
     // Remove standalone ** that aren't part of bold formatting
     text = text.replace(/\s\*\*\s/g, ' ');
     text = text.replace(/^\*\*\s/g, '');
     text = text.replace(/\s\*\*$/g, '');
-    
+
     // Fix common markdown issues from LLMs
     // Remove ** at start/end of lines if unmatched
     text = text.replace(/^\*\*$/gm, '');
-    
+
     // Ensure proper spacing around code blocks
     text = text.replace(/```\n*/g, '\n```\n');
     text = text.replace(/\n*```/g, '\n```\n');
-    
+
     // Clean up excessive blank lines
     text = text.replace(/\n{4,}/g, '\n\n\n');
-    
+
     return text.trim();
   };
 
   const buildEventStream = (): ChronologicalEvent[] => {
     // Use explicit event_sequence from metadata if available
     const eventSequence = message.metadata?.event_sequence;
-    
+
     if (eventSequence && eventSequence.length > 0) {
       // Map event_sequence to ChronologicalEvent format
       const mappedEvents = eventSequence.map(event => {
@@ -343,7 +342,7 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
           if (!content.trim()) {
             return null;
           }
-          
+
           return {
             type: 'text' as const,
             content: cleanMarkdown(content),
@@ -386,7 +385,7 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
           };
         }
       }) as ChronologicalEvent[];
-      
+
       // Filter out internal control tools and null events (Phase 1 artifacts)
       return mappedEvents.filter(event => {
         if (event === null) {
@@ -400,19 +399,19 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
         return true;
       });
     }
-    
+
     // Fallback: legacy mode - use old interleaving logic
     const events: ChronologicalEvent[] = [];
     let content = message.content || '';
-    
+
     // Remove the "Starting analysis..." prefix if present
     content = content.replace(/^Starting analysis\.\.\.\s*/i, '').trim();
-    
+
     if (toolExecutions.length === 0 && !content) {
       // No tools and no content
       return events;
     }
-    
+
     if (toolExecutions.length === 0) {
       // No tools, just return the text content
       if (content) {
@@ -420,13 +419,13 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
       }
       return events;
     }
-    
+
     // Strategy: Split content into paragraphs and interleave with tools
     const paragraphs = content.split(/\n\n+/).filter(p => p.trim());
-    
+
     let sequence = 0;
     const maxLength = Math.max(paragraphs.length, toolExecutions.length);
-    
+
     for (let i = 0; i < maxLength; i++) {
       // Add text paragraph if available
       if (i < paragraphs.length) {
@@ -435,13 +434,13 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
           events.push({ type: 'text', content: cleanMarkdown(text), sequence: sequence++ });
         }
       }
-      
+
       // Add tool execution if available
       if (i < toolExecutions.length) {
         events.push({ type: 'tool', tool: toolExecutions[i], sequence: sequence++ });
       }
     }
-    
+
     return events;
   };
 
@@ -471,233 +470,233 @@ const AgentMessageCard: React.FC<AgentMessageCardProps> = ({ message, isStreamin
 
   return (
     <>
-    <div className="flex justify-start group pr-12">
-      <div className="w-full max-w-4xl bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3 shadow-sm relative" style={{ minHeight: showLoadingAnimation ? '80px' : 'auto' }}>
-        {/* Action buttons - show on hover */}
-        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={handleCopy}
-            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-            title="Copy message"
-          >
-            {copied ? (
-              <CheckIcon className="w-4 h-4 text-green-600" />
-            ) : (
-              <ClipboardDocumentIcon className="w-4 h-4 text-gray-500" />
-            )}
-          </button>
-          {onDelete && (
+      <div className="flex justify-start group pr-12">
+        <div className="w-full max-w-4xl bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3 shadow-sm relative" style={{ minHeight: showLoadingAnimation ? '80px' : 'auto' }}>
+          {/* Action buttons - show on hover */}
+          <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
-              onClick={handleDeleteClick}
+              onClick={handleCopy}
               className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-              title="Delete message"
+              title="Copy message"
             >
-              <TrashIcon className="w-4 h-4 text-gray-500" />
+              {copied ? (
+                <CheckIcon className="w-4 h-4 text-green-600" />
+              ) : (
+                <ClipboardDocumentIcon className="w-4 h-4 text-gray-500" />
+              )}
             </button>
-          )}
-        </div>
-        {/* Assistant header - cleaner, more chat-like */}
-        <div className="flex items-center gap-2 mb-2 text-sm text-gray-600 dark:text-gray-400">
-          <span className="font-medium">Assistant</span>
-          {/* Show "Thinking" with bouncing dots when waiting for LLM */}
-          {isWaiting && (
-            <div className="flex items-center gap-1.5 ml-1">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Thinking</span>
-              <div className="flex gap-0.5">
-                <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-              </div>
-            </div>
-          )}
-          {/* Show timeline mode indicator for timeline queries */}
-          {isTimelineQuery && !routingMetadata && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium">
-              Timeline Mode
-            </span>
-          )}
-        </div>
-
-        {/* Routing Badge - show handler type and playbook */}
-        {routingMetadata && (
-          <RoutingBadge
-            handlerType={routingMetadata.handler_type}
-            handlerDisplayName={routingMetadata.handler_display_name}
-            playbookName={playbookMetadata?.playbook_name}
-            playbookDisplayName={playbookMetadata?.playbook_display_name}
-            stats={{
-              sources_retrieved: routingMetadata.sources_retrieved,
-              expansion_terms: routingMetadata.expansion_terms,
-              entries_affected: routingMetadata.entries_affected,
-              effort_level: routingMetadata.effort_level,
-              max_turns: routingMetadata.max_turns,
-            }}
-          />
-        )}
-
-        {/* Agent Execution Container - shows tool executions in collapsible container */}
-        {toolExecutions.length > 0 && (
-          <AgentExecutionContainer
-            toolExecutions={toolExecutions}
-            isStreaming={isStreaming}
-            onReplicateQuery={onReplicateQuery}
-            stats={stats}
-          />
-        )}
-
-        {/* Chronological text stream - agent thinking/analysis */}
-        {eventStream.length > 0 && (
-          <div className="space-y-3">
-            {eventStream.map((event) => {
-              if (event.type === 'text') {
-                // Apply highlighting to text content
-                const highlightedContent = searchQuery ? highlightSearchText(event.content) : event.content;
-                
-                return (
-                  <div key={`text-${event.sequence}`} className="prose prose-sm dark:prose-invert max-w-none prose-p:my-3 prose-p:leading-relaxed prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-code:before:content-none prose-code:after:content-none">
-                    {searchQuery ? (
-                      <div dangerouslySetInnerHTML={{ __html: highlightedContent }} className="text-gray-800 dark:text-gray-200 leading-relaxed" />
-                    ) : (
-                      <ReactMarkdown 
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        // Ensure paragraphs render properly with better spacing
-                        p: ({node, ...props}) => <p className="my-3 text-gray-800 dark:text-gray-200 leading-relaxed" {...props} />,
-                        // Ensure strong (bold) renders with high contrast
-                        strong: ({node, ...props}) => <strong className="font-semibold text-gray-900 dark:text-white" {...props} />,
-                        // Ensure em (italic) renders properly  
-                        em: ({node, ...props}) => <em className="italic text-gray-800 dark:text-gray-200" {...props} />,
-                        // Ensure code blocks render with high contrast
-                        code: ({node, className, children, ...props}: any) => {
-                          const inline = !className?.includes('language-');
-                          if (inline) {
-                            return (
-                              <code 
-                                className="bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded font-mono text-sm font-medium"
-                                {...props}
-                              >
-                                {children}
-                              </code>
-                            );
-                          }
-                          return (
-                            <code 
-                              className="block bg-gray-900 dark:bg-gray-950 text-gray-100 dark:text-gray-200 p-3 rounded font-mono text-sm overflow-x-auto my-2"
-                              {...props}
-                            >
-                              {children}
-                            </code>
-                          );
-                        },
-                        // Ensure lists render properly
-                        ul: ({node, ...props}) => <ul className="my-2 space-y-1" {...props} />,
-                        ol: ({node, ...props}) => <ol className="my-2 space-y-1" {...props} />,
-                      }}
-                      >
-                        {event.content}
-                      </ReactMarkdown>
-                    )}
-                  </div>
-                );
-              }
-              // Skip tool events - they're now in the container
-              return null;
-            })}
+            {onDelete && (
+              <button
+                onClick={handleDeleteClick}
+                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                title="Delete message"
+              >
+                <TrashIcon className="w-4 h-4 text-gray-500" />
+              </button>
+            )}
           </div>
-        )}
-
-        {/* Stats are now shown in AgentExecutionContainer - removed duplicate footer */}
-
-        {/* Timeline query summary - show operations performed */}
-        {isTimelineQuery && timelineSummary && (
-          <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium">
-                {timelineSummary}
+          {/* Assistant header - cleaner, more chat-like */}
+          <div className="flex items-center gap-2 mb-2 text-sm text-gray-600 dark:text-gray-400">
+            <span className="font-medium">Assistant</span>
+            {/* Show "Thinking" with bouncing dots when waiting for LLM */}
+            {isWaiting && (
+              <div className="flex items-center gap-1.5 ml-1">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Thinking</span>
+                <div className="flex gap-0.5">
+                  <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                </div>
+              </div>
+            )}
+            {/* Show timeline mode indicator for timeline queries */}
+            {isTimelineQuery && !routingMetadata && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium">
+                Timeline Mode
               </span>
-            </div>
+            )}
           </div>
-        )}
 
-        {/* Show continuation option when investigation is incomplete and not currently continuing */}
-        {/* Note: can_continue is disabled in new system, so we check for investigation_incomplete instead */}
-        {isIncomplete && !isContinuing && jobId && onContinue && (
-          <div className="mt-4 pt-3 border-t border-yellow-300 dark:border-yellow-600">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <div className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">
-                  Investigation Incomplete
-                </div>
-                <div className="text-xs text-yellow-700 dark:text-yellow-300">
-                  The investigation reached its turn limit. You can continue with additional turns.
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={selectedEffort}
-                  onChange={(e) => setSelectedEffort(e.target.value)}
-                  className="text-sm px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                >
-                  <option value="low">Quick (+3 turns)</option>
-                  <option value="medium">Standard (+6 turns)</option>
-                  <option value="high">Thorough (+9 turns)</option>
-                </select>
-                <button
-                  onClick={() => onContinue(jobId, selectedEffort)}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors"
-                >
-                  Continue
-                </button>
+          {/* Routing Badge - show handler type and playbook */}
+          {routingMetadata && (
+            <RoutingBadge
+              handlerType={routingMetadata.handler_type}
+              handlerDisplayName={routingMetadata.handler_display_name}
+              playbookName={playbookMetadata?.playbook_name}
+              playbookDisplayName={playbookMetadata?.playbook_display_name}
+              stats={{
+                sources_retrieved: routingMetadata.sources_retrieved,
+                expansion_terms: routingMetadata.expansion_terms,
+                entries_affected: routingMetadata.entries_affected,
+                effort_level: routingMetadata.effort_level,
+                max_turns: routingMetadata.max_turns,
+              }}
+            />
+          )}
+
+          {/* Agent Execution Container - shows tool executions in collapsible container */}
+          {toolExecutions.length > 0 && (
+            <AgentExecutionContainer
+              toolExecutions={toolExecutions}
+              isStreaming={isStreaming}
+              onReplicateQuery={onReplicateQuery}
+              stats={stats}
+            />
+          )}
+
+          {/* Chronological text stream - agent thinking/analysis */}
+          {eventStream.length > 0 && (
+            <div className="space-y-3">
+              {eventStream.map((event) => {
+                if (event.type === 'text') {
+                  // Apply highlighting to text content
+                  const highlightedContent = searchQuery ? highlightSearchText(event.content) : event.content;
+
+                  return (
+                    <div key={`text-${event.sequence}`} className="prose prose-sm dark:prose-invert max-w-none prose-p:my-3 prose-p:leading-relaxed prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-code:before:content-none prose-code:after:content-none">
+                      {searchQuery ? (
+                        <div dangerouslySetInnerHTML={{ __html: highlightedContent }} className="text-gray-800 dark:text-gray-200 leading-relaxed" />
+                      ) : (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            // Ensure paragraphs render properly with better spacing
+                            p: ({ node, ...props }) => <p className="my-3 text-gray-800 dark:text-gray-200 leading-relaxed" {...props} />,
+                            // Ensure strong (bold) renders with high contrast
+                            strong: ({ node, ...props }) => <strong className="font-semibold text-gray-900 dark:text-white" {...props} />,
+                            // Ensure em (italic) renders properly  
+                            em: ({ node, ...props }) => <em className="italic text-gray-800 dark:text-gray-200" {...props} />,
+                            // Ensure code blocks render with high contrast
+                            code: ({ node, className, children, ...props }: any) => {
+                              const inline = !className?.includes('language-');
+                              if (inline) {
+                                return (
+                                  <code
+                                    className="bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded font-mono text-sm font-medium"
+                                    {...props}
+                                  >
+                                    {children}
+                                  </code>
+                                );
+                              }
+                              return (
+                                <code
+                                  className="block bg-gray-900 dark:bg-gray-950 text-gray-100 dark:text-gray-200 p-3 rounded font-mono text-sm overflow-x-auto my-2"
+                                  {...props}
+                                >
+                                  {children}
+                                </code>
+                              );
+                            },
+                            // Ensure lists render properly
+                            ul: ({ node, ...props }) => <ul className="my-2 space-y-1" {...props} />,
+                            ol: ({ node, ...props }) => <ol className="my-2 space-y-1" {...props} />,
+                          }}
+                        >
+                          {event.content}
+                        </ReactMarkdown>
+                      )}
+                    </div>
+                  );
+                }
+                // Skip tool events - they're now in the container
+                return null;
+              })}
+            </div>
+          )}
+
+          {/* Stats are now shown in AgentExecutionContainer - removed duplicate footer */}
+
+          {/* Timeline query summary - show operations performed */}
+          {isTimelineQuery && timelineSummary && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium">
+                  {timelineSummary}
+                </span>
               </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* Show continuation option when investigation is incomplete and not currently continuing */}
+          {/* Note: can_continue is disabled in new system, so we check for investigation_incomplete instead */}
+          {isIncomplete && !isContinuing && jobId && onContinue && (
+            <div className="mt-4 pt-3 border-t border-yellow-300 dark:border-yellow-600">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">
+                    Investigation Incomplete
+                  </div>
+                  <div className="text-xs text-yellow-700 dark:text-yellow-300">
+                    The investigation reached its turn limit. You can continue with additional turns.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedEffort}
+                    onChange={(e) => setSelectedEffort(e.target.value)}
+                    className="text-sm px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="low">Quick (+3 turns)</option>
+                    <option value="medium">Standard (+6 turns)</option>
+                    <option value="high">Thorough (+9 turns)</option>
+                  </select>
+                  <button
+                    onClick={() => onContinue(jobId, selectedEffort)}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
 
-    {/* Delete Confirmation Modal */}
-    {showDeleteModal && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
-        {/* Backdrop */}
-        <div 
-          className="absolute inset-0 bg-black bg-opacity-50"
-          onClick={cancelDelete}
-        />
-        
-        {/* Modal */}
-        <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                <ExclamationTriangleIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={cancelDelete}
+          />
+
+          {/* Modal */}
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <ExclamationTriangleIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
+                </div>
               </div>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Delete Message
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-                Are you sure you want to delete this message? This action cannot be undone.
-              </p>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={cancelDelete}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Delete
-                </button>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  Delete Message
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                  Are you sure you want to delete this message? This action cannot be undone.
+                </p>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={cancelDelete}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
     </>
   );
 };

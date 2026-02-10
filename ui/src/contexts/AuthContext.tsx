@@ -24,7 +24,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const resp = await api.post('/api/v1/auth/login', { username, password });
     const token = resp.data.access_token;
     localStorage.setItem('token', token);
-    
+
     // Fetch full user details
     const userResp = await api.get('/api/v1/auth/me');
     setUser(userResp.data);

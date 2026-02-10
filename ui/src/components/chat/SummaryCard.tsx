@@ -14,7 +14,7 @@ interface SummaryCardProps {
 
 const SummaryCard: React.FC<SummaryCardProps> = ({ message }) => {
   const stats = message.metadata?.stats;
-  
+
   // Clean tool-exec placeholders, JSON code blocks, and starting analysis text from summary content
   const summaryContent = (message.content || message.metadata?.summary || 'No summary available.')
     .replace(/<tool-exec[^>]*><\/tool-exec>/g, '') // Self-closing tags

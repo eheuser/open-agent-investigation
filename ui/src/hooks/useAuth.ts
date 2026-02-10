@@ -10,15 +10,15 @@ interface User {
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
 
-    const login = async (username: string, password: string) => {
+  const login = async (username: string, password: string) => {
     const resp = await api.post('/api/v1/auth/login', { username, password });
     const token = resp.data.access_token;
     localStorage.setItem('token', token);
-    
+
     // Decode JWT payload to get user info
     const payload = JSON.parse(atob(token.split('.')[1]));
     const userId = parseInt(payload.sub);
-    
+
     // Fetch full user details
     const userResp = await api.get('/api/v1/auth/me');
     setUser(userResp.data);
@@ -30,7 +30,7 @@ export const useAuth = () => {
     setUser(null);
   };
 
-    useEffect(() => {
+  useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       // Fetch current user details

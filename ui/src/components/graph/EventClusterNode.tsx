@@ -37,9 +37,8 @@ const EventClusterNode: React.FC<NodeProps<EventClusterNodeData>> = ({ data, sel
 
   return (
     <div
-      className={`px-4 py-3 rounded-lg border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md transition-all duration-200 min-w-[220px] max-w-[300px] relative ${
-        selected ? 'ring-2 ring-blue-500 shadow-lg' : ''
-      }`}
+      className={`px-4 py-3 rounded-lg border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md transition-all duration-200 min-w-[220px] max-w-[300px] relative ${selected ? 'ring-2 ring-blue-500 shadow-lg' : ''
+        }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -54,7 +53,7 @@ const EventClusterNode: React.FC<NodeProps<EventClusterNodeData>> = ({ data, sel
         </button>
       )}
       <Handle type="target" position={Position.Top} className="w-3 h-3 !bg-blue-500" />
-      
+
       <div className="space-y-2">
         <div className="flex items-center gap-2 cursor-pointer" onClick={handleToggle}>
           <FolderIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
@@ -96,7 +95,7 @@ const EventClusterNode: React.FC<NodeProps<EventClusterNodeData>> = ({ data, sel
           </div>
         )}
       </div>
-      
+
       <Handle type="source" position={Position.Bottom} className="w-3 h-3 !bg-blue-500" />
     </div>
   );

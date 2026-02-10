@@ -42,9 +42,8 @@ const EntityNode: React.FC<NodeProps<EntityNodeData>> = ({ data, selected }) => 
 
   return (
     <div
-      className={`px-4 py-3 rounded-lg border-2 shadow-md transition-all duration-200 min-w-[200px] max-w-[280px] relative ${getNodeColor()} ${
-        selected ? 'ring-2 ring-blue-500 shadow-lg' : ''
-      }`}
+      className={`px-4 py-3 rounded-lg border-2 shadow-md transition-all duration-200 min-w-[200px] max-w-[280px] relative ${getNodeColor()} ${selected ? 'ring-2 ring-blue-500 shadow-lg' : ''
+        }`}
       onClick={data.onSelect}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -59,19 +58,19 @@ const EntityNode: React.FC<NodeProps<EntityNodeData>> = ({ data, selected }) => 
           <XMarkIcon className="w-4 h-4" />
         </button>
       )}
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        className="w-3 h-3 !bg-gray-400" 
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="w-3 h-3 !bg-gray-400"
       />
-      
+
       <div className="flex items-start gap-2">
         <span className="text-xl flex-shrink-0">{getIconEmoji()}</span>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm text-gray-900 dark:text-white truncate">
             {data.label}
           </div>
-          
+
           {data.tags && data.tags.length > 0 && (
             <div className="flex items-center gap-1 mt-1 flex-wrap">
               <TagIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
@@ -90,11 +89,11 @@ const EntityNode: React.FC<NodeProps<EntityNodeData>> = ({ data, selected }) => 
           )}
         </div>
       </div>
-      
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        className="w-3 h-3 !bg-gray-400" 
+
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="w-3 h-3 !bg-gray-400"
       />
     </div>
   );

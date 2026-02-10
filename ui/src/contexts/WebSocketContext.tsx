@@ -77,7 +77,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ investigat
     const host = window.location.hostname;
     const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
     const wsUrl = `${protocol}//${host}:${port}/api/v1/chat/ws/${investigationId}?token=${token}`;
-    
+
     //console.log(`[WebSocket] Connecting to investigation ${investigationId}`);
     const websocket = new WebSocket(wsUrl);
     wsRef.current = websocket;
@@ -87,7 +87,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ investigat
       setIsConnected(true);
       setWs(websocket);
       reconnectAttemptsRef.current = 0;
-      
+
       // Send queued messages
       while (messageQueueRef.current.length > 0) {
         const queuedMessage = messageQueueRef.current.shift();
@@ -110,7 +110,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ investigat
       }
     };
 
-    websocket.onerror = () => {};
+    websocket.onerror = () => { };
 
     websocket.onclose = (event) => {
       //console.log(`[WebSocket] Disconnected from investigation ${investigationId}, code: ${event.code}`);

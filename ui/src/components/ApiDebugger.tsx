@@ -63,7 +63,7 @@ const ApiDebugger: React.FC = () => {
   return (
     <div className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-lg shadow-2xl p-4 max-w-2xl max-h-96 overflow-auto z-50">
       <h3 className="text-lg font-bold mb-3 text-gray-900 dark:text-white">API Debugger</h3>
-      
+
       <div className="flex gap-2 mb-3">
         <button
           onClick={testAuth}

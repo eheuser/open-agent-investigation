@@ -33,7 +33,7 @@ export interface ChatMessage {
   metadata: {
     // Legacy type field
     type?: string;
-    
+
     // For agent messages
     streaming_message_id?: string;
     job_id?: number;
@@ -50,7 +50,7 @@ export interface ChatMessage {
     };
     summary?: string;
     effort?: 'low' | 'medium' | 'high';
-    
+
     // Routing metadata
     routing_metadata?: {
       handler_type: 'agent' | 'rag' | 'timeline' | 'general_chat';
@@ -77,14 +77,14 @@ export interface ChatMessage {
       context_sources?: string[];
       query_type?: string;
     };
-    
+
     // Playbook metadata (for agent)
     playbook_metadata?: {
       playbook_name: string;
       playbook_display_name: string;
       playbook_description: string;
     };
-    
+
     // Event sequence for chronological ordering
     event_sequence?: Array<{
       type: 'thinking' | 'tool_execution';
@@ -100,7 +100,7 @@ export interface ChatMessage {
       timestamp?: string;
       completed_at?: string;
     }>;
-    
+
     // Legacy tool executions in metadata (for backwards compat)
     tool_executions?: Array<{
       tool: string;
@@ -121,7 +121,7 @@ export interface ChatMessage {
     tool_status?: 'executing' | 'completed' | 'failed';
     execution_number?: number;
     max_tools?: number;
-    
+
     // For summaries
     intent?: string;
   };
@@ -166,10 +166,10 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
   const [investigationState, setInvestigationState] = useState<InvestigationState['state']>('idle');
   const [parsingLocked, setParsingLocked] = useState(false);
   const [investigationChoices, setInvestigationChoices] = useState<InvestigationChoice[]>([]);
-  
+
   // Track the current investigation to reset state on change
   const currentInvestigationRef = useRef(investigationId);
-  
+
   // WebSocket context
   const { subscribe, ws } = useWebSocketContext();
 
@@ -185,10 +185,10 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
       const response = await api.get(`/api/v1/chat/messages/${investigationId}`);
       const newMessages = response.data.messages || [];
       const locked = response.data.parsing_locked || false;
-      
+
       // Update parsing lock state
       setParsingLocked(locked);
-      
+
       // Only update if messages actually changed (prevent flashing)
       setMessages(prev => {
         if (JSON.stringify(prev) === JSON.stringify(newMessages)) {
@@ -225,7 +225,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
    */
   const sendMessage = useCallback(async (text: string, effort: AgentEffort = 'medium', mode: RouterMode = 'auto') => {
     if (!text.trim() || !ws) return;
-    
+
     // Check if parsing is locked
     if (parsingLocked) {
       //console.warn('Cannot send message while parsing is in progress');
@@ -244,7 +244,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
         effort: effort,
         router_mode: mode,
       }));
-      
+
       // Backend broadcasts:
       // 1. user_message (user's question)
       // 2. message_created (assistant thinking message with isWaitingForLLM=true)
@@ -282,7 +282,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
         content: newContent,
       });
       // Optimistic update
-      setMessages(prev => prev.map(m => 
+      setMessages(prev => prev.map(m =>
         m.message_id === messageId ? { ...m, content: newContent } : m
       ));
     } catch (error) {
@@ -306,13 +306,13 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
     try {
       const response = await api.post(`/api/v1/investigations/${investigationId}/choices/${choiceId}/select`);
       //console.log('Choice selected, new job created:', response.data);
-      
+
       // Clear choices from UI
       setInvestigationChoices([]);
-      
+
       // Refresh messages to show new agent job
       await refreshMessages();
-      
+
       // Set state to running
       setInvestigationState('running');
     } catch (error) {
@@ -335,7 +335,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
     try {
       const response = await api.get(`/api/v1/chat/active-job/${investigationId}`);
       const activeJob = response.data.active_job;
-      
+
       if (activeJob && activeJob.status === 'running') {
         //console.log('Active job detected:', activeJob);
         setInvestigationState('running');
@@ -359,7 +359,7 @@ export const useInvestigationChat = (investigationId: string): UseInvestigationC
       setIsLoading(true);
       setInvestigationState('idle');
     }
-    
+
     // Load messages and check for active job
     const init = async () => {
       await loadMessages(true); // Show loading on initial load

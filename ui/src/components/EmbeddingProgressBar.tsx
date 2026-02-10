@@ -38,12 +38,12 @@ export default function EmbeddingProgressBar({ investigationId }: EmbeddingProgr
         //console.log('Embedding status:', data);
         setStatus(data);
         setIsLoading(false);
-        
+
         // Track if we've ever seen jobs
         if (data.total_jobs > 0) {
           setHasSeenJobs(true);
         }
-        
+
         // Initialize display values on first load
         if (displayProgress === 0 && data.progress_percent > 0) {
           setDisplayProgress(data.progress_percent);
@@ -53,16 +53,16 @@ export default function EmbeddingProgressBar({ investigationId }: EmbeddingProgr
         console.error('Failed to fetch embedding status:', error);
         // Don't show error - just hide the component
         setIsLoading(false);
-        setStatus({ 
-          pending_jobs: 0, 
-          running_jobs: 0, 
+        setStatus({
+          pending_jobs: 0,
+          running_jobs: 0,
           completed_jobs: 0,
           total_jobs: 0,
           events_pending: 0,
           events_completed: 0,
           events_total: 0,
           progress_percent: 100,
-          is_complete: true 
+          is_complete: true
         });
       }
     };
@@ -104,7 +104,7 @@ export default function EmbeddingProgressBar({ investigationId }: EmbeddingProgr
     const timer = setInterval(() => {
       currentStep++;
       const progress = currentStep / steps;
-      
+
       // Ease-out cubic: 1 - (1 - x)^3
       const eased = 1 - Math.pow(1 - progress, 3);
 
@@ -127,11 +127,11 @@ export default function EmbeddingProgressBar({ investigationId }: EmbeddingProgr
   // 2. Status exists AND
   // 3. Either (jobs are incomplete OR we've seen jobs and they just completed)
   const shouldShow = !isLoading && status && (!status.is_complete || (hasSeenJobs && status.progress_percent < 100));
-  
+
   if (!shouldShow) {
     return null;
   }
-  
+
   //console.log('EmbeddingProgressBar: Showing progress', status);
 
   return (
@@ -150,14 +150,14 @@ export default function EmbeddingProgressBar({ investigationId }: EmbeddingProgr
           {displayCompleted.toLocaleString()} / {status.events_total.toLocaleString()} events
         </span>
       </div>
-      
+
       <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
-        <div 
+        <div
           className="bg-blue-600 dark:bg-blue-400 h-2 rounded-full transition-all duration-150"
           style={{ width: `${displayProgress}%` }}
         ></div>
       </div>
-      
+
       <div className="flex items-center justify-between mt-2">
         <p className="text-xs text-blue-600 dark:text-blue-400">
           Augmented Chat mode will be available once embedding is complete

@@ -11,7 +11,7 @@ export interface Message {
   deleted_at?: string;
 }
 
-export type MessageType = 
+export type MessageType =
   | 'question'
   | 'assistant_answer'
   | 'timeline_query'
