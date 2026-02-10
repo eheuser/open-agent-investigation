@@ -33,7 +33,7 @@ prometheus-client==0.20.*
 # Utilities
 python-dotenv==1.0.*
 tiktoken==0.7.*
-python-dateutil==2.8.*
+python-dateutil==2.9.*
 
 # RAG & Embeddings (lightweight - no torch/transformers)
 pgvector==0.2.*
