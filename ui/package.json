@@ -11,7 +11,7 @@
     "@heroicons/react": "^2.1.5",
     "@tailwindcss/typography": "^0.5.19",
     "@types/dagre": "^0.7.53",
-    "axios": "^1.7.2",
+    "axios": "^1.13.5",
     "classnames": "^2.5.1",
     "dagre": "^0.8.5",
     "highlight.js": "^11.9.0",
