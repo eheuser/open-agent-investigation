@@ -62,7 +62,7 @@ async def hybrid_search(
     bm25_weight = max(0.0, min(1.0, float(bm25_weight)))
     vector_weight = 1.0 - bm25_weight
 
-    logger.info(
+    logger.debug(
         f"Hybrid search: query='{query[:50]}...', "
         f"bm25_weight={bm25_weight:.2f}, limit={limit}, offset={offset}"
     )
@@ -100,13 +100,13 @@ async def hybrid_search(
                         if len(embeddings) > 0:
                             query_embedding = embeddings[0]
                             embedding_available = True
-                            logger.info("Vector search enabled for hybrid search")
+                            logger.debug("Vector search enabled for hybrid search")
         except Exception as e:
             logger.warning(f"Failed to initialize embedder for hybrid search: {e}")
 
     # If embeddings not available, fall back to BM25-only
     if not embedding_available:
-        logger.info("Embeddings not available, falling back to BM25-only search")
+        logger.debug("Embeddings not available, falling back to BM25-only search")
         return await _bm25_only_search(
             db=db,
             investigation_id=investigation_id,
@@ -142,7 +142,7 @@ async def hybrid_search(
     bm25_rows = bm25_result.fetchall()
     bm25_scores = {row[0]: float(row[1]) for row in bm25_rows}
 
-    logger.info(f"BM25 search returned {len(bm25_scores)} results")
+    logger.debug(f"BM25 search returned {len(bm25_scores)} results")
 
     # === Step 2: Vector Similarity Search ===
     # Convert query embedding to PostgreSQL vector format
@@ -184,7 +184,7 @@ async def hybrid_search(
     vector_rows = vector_result.fetchall()
     vector_scores = {row[0]: float(row[1]) for row in vector_rows}
 
-    logger.info(f"Vector search returned {len(vector_scores)} results")
+    logger.debug(f"Vector search returned {len(vector_scores)} results")
 
     # === Step 3: Merge and Re-rank ===
     # Normalize scores to [0, 1] range
@@ -213,7 +213,7 @@ async def hybrid_search(
         combined_scores.keys(), key=lambda eid: combined_scores[eid]["final_score"], reverse=True
     )
 
-    logger.info(f"Merged {len(combined_scores)} unique results")
+    logger.debug(f"Merged {len(combined_scores)} unique results")
 
     # === Step 4: Pagination ===
     total_count = len(sorted_event_ids)
@@ -278,7 +278,7 @@ async def hybrid_search(
     current_page = (offset // limit) + 1 if limit > 0 else 1
     total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
 
-    logger.info(
+    logger.debug(
         f"Hybrid search returned {len(events)} events, "
         f"page {current_page}/{total_pages}, total={total_count}"
     )
@@ -355,7 +355,7 @@ async def _bm25_only_search(
     * If *limit* is zero or negative, pagination calculations default to page 1 with a single total page.
     * Vector-related score components are populated with neutral values (zero or one) because no embedding comparison is performed.
     """
-    logger.info(f"BM25-only search: query='{query[:50]}...', limit={limit}, offset={offset}")
+    logger.debug(f"BM25-only search: query='{query[:50]}...', limit={limit}, offset={offset}")
 
     # BM25 search with pagination
     bm25_query = f"""
@@ -423,7 +423,7 @@ async def _bm25_only_search(
     current_page = (offset // limit) + 1 if limit > 0 else 1
     total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
 
-    logger.info(
+    logger.debug(
         f"BM25-only search returned {len(events)} events, "
         f"page {current_page}/{total_pages}, total={total_count}"
     )

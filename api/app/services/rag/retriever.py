@@ -379,7 +379,7 @@ class Retriever:
                 # Format in Python instead of SQL to avoid casting issues
                 timestamp_str = str(event_ts) if event_ts else "unknown time"
                 # Truncate payload to avoid huge strings
-                payload_str = str(payload)[:500] if payload else "No details"
+                payload_str = str(payload)[:4096] if payload else "No details"
                 text_result = f"{event_type} at {timestamp_str}: {payload_str}"
                 logger.debug(
                     f"Successfully fetched event {owner_id}, text length: {len(text_result):,}"

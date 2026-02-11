@@ -414,7 +414,7 @@ async def handle_rag_query(
                 events_with_data += 1
             chunks_data.append(chunk_dict)
         
-        logger.info(f"Serialized {len(chunks_data)} chunks, {events_with_data} with event_data")
+        logger.debug(f"Serialized {len(chunks_data)} chunks, {events_with_data} with event_data")
 
         # Build event_sequence placeholders (actual tool executions will be persisted later)
         event_sequence = []

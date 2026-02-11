@@ -453,7 +453,7 @@ def _format_sysmon_event(event_id: str, payload: Dict[str, Any]) -> tuple[str, s
     # Generic Sysmon event
     else:
         title = f"Sysmon Event {event_id}"
-        description = json.dumps(payload, indent=2)[:500]
+        description = json.dumps(payload, indent=2)[:4096]
         return (title, description)
 
 
@@ -537,7 +537,7 @@ def _format_security_event(event_id: str, payload: Dict[str, Any]) -> tuple[str,
     # Generic Security event
     else:
         title = f"Security Event {event_id}"
-        description = json.dumps(payload, indent=2)[:500]
+        description = json.dumps(payload, indent=2)[:4096]
         return (title, description)
 
 
@@ -596,7 +596,7 @@ def _format_system_event(event_id: str, payload: Dict[str, Any]) -> tuple[str, s
     # Generic System event
     else:
         title = f"System Event {event_id}"
-        description = json.dumps(payload, indent=2)[:500]
+        description = json.dumps(payload, indent=2)[:4096]
         return (title, description)
 
 
@@ -633,7 +633,7 @@ def _format_powershell_event(event_id: str, payload: Dict[str, Any]) -> tuple[st
     script_block = get_field("ScriptBlockText")
 
     title = f"PowerShell Execution"
-    description = f"Script: {script_block[:500]}"
+    description = f"Script: {script_block[:4096]}"
     return (title, description)
 
 
@@ -650,7 +650,7 @@ def _format_mft_event(payload: Dict[str, Any]) -> tuple[str, str]:
     path = payload.get("path", payload.get("file_path", "Unknown"))
 
     title = f"File Activity: {path}"
-    description = json.dumps(payload, indent=2)[:500]
+    description = json.dumps(payload, indent=2)[:4096]
     return (title, description)
 
 
@@ -673,7 +673,7 @@ def _format_registry_event(payload: Dict[str, Any]) -> tuple[str, str]:
     key_path = payload.get("key_path", payload.get("path", "Unknown"))
 
     title = f"Registry Key: {key_path}"
-    description = json.dumps(payload, indent=2)[:500]
+    description = json.dumps(payload, indent=2)[:4096]
     return (title, description)
 
 
@@ -718,7 +718,7 @@ def _format_lnk_event(payload: Dict[str, Any]) -> tuple[str, str]:
     target = payload.get("target_path", payload.get("target", "Unknown"))
 
     title = f"LNK File: {target}"
-    description = json.dumps(payload, indent=2)[:500]
+    description = json.dumps(payload, indent=2)[:4096]
     return (title, description)
 
 
@@ -742,7 +742,7 @@ def _format_generic_event(event_type: str, payload: Dict[str, Any]) -> tuple[str
         * **description** - A pretty-printed JSON representation of `payload`, truncated to the first 500 characters to keep the output succinct.
     """
     title = f"Event: {event_type}"
-    description = json.dumps(payload, indent=2)[:500]
+    description = json.dumps(payload, indent=2)[:4096]
     return (title, description)
 
 

@@ -349,8 +349,8 @@ class TestEmbeddingServiceTokenWarnings:
         await service.embed([long_text])
 
         # Should have logged a warning
-        mock_logger.warning.assert_called()
-        warning_call = mock_logger.warning.call_args[0][0]
+        mock_logger.info.assert_called()
+        warning_call = mock_logger.info.call_args[0][0]
         assert "exceeds embedding model token limit" in warning_call
 
     @patch('app.services.llm_service.logger')
@@ -386,10 +386,10 @@ class TestEmbeddingServiceTokenWarnings:
         )
 
         # Long query and document
-        long_query = "a" * 2000  # ~500 tokens
-        long_doc = "b" * 2000    # ~500 tokens
+        long_query = "a" * 5000  # ~500 tokens
+        long_doc = "b" * 5000    # ~500 tokens
         
         await service.rerank(query=long_query, documents=[long_doc])
 
         # Should have logged warnings for both query and document
-        assert mock_logger.warning.call_count >= 2
+        assert mock_logger.info.call_count >= 2

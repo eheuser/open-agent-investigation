@@ -63,13 +63,13 @@ class ChatContextManager:
                 * `{"role": "system", "content": system_prompt}`
                 * `{"role": "user", "content": user_prompt}`
 
-        The `user_prompt` contains a “Conversation History” section (truncated to 200 characters per message) followed by the current query and an instruction to classify it based on the provided context.
+        The `user_prompt` contains a “Conversation History” section followed by the current query and an instruction to classify it based on the provided context.
         """
         # Format chat history
         if chat_history:
             history_text = "\n".join(
                 [
-                    f"{msg['role'].upper()}: {msg['content'][:200]}{'...' if len(msg['content']) > 200 else ''}"
+                    f"{msg['role'].upper()}: {msg['content']}"
                     for msg in chat_history[-max_history_messages:]
                 ]
             )

@@ -358,7 +358,7 @@ class TestFormatEventForTimeline:
         title, description = _format_event_for_timeline("custom_event", large_payload)
 
         # Description should be truncated to 500 chars
-        assert len(description) <= 500
+        assert len(description) <= 4096
 
 
 @pytest.mark.asyncio

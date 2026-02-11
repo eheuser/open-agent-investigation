@@ -44,7 +44,7 @@ async def handle_general_chat(
     Raises:
         No exceptions are propagated; any error is caught, logged, and returned in the error dictionary.
     """
-    logger.info(f"[GENERAL_CHAT] Processing: {user_query[:100]}")
+    logger.debug(f"[GENERAL_CHAT] Processing: {user_query[:100]}")
 
     try:
         # Get LLM config

@@ -291,10 +291,10 @@ class RegistryParser(BaseParser):
                     # Log raw plugin output for debugging
                     logger.debug(f"Plugin {plugin_name} returned data type: {type(plugin_data)}")
                     if isinstance(plugin_data, (dict, list)):
-                        data_sample = json.dumps(plugin_data, default=str)[:500]
+                        data_sample = json.dumps(plugin_data, default=str)[:1024]
                         logger.debug(f"Plugin {plugin_name} data sample: {data_sample}")
                     else:
-                        logger.debug(f"Plugin {plugin_name} data: {str(plugin_data)[:500]}")
+                        logger.debug(f"Plugin {plugin_name} data: {str(plugin_data)[:1024]}")
 
                     # Parse plugin output
                     plugin_events = self._parse_plugin_data(plugin_data, plugin_name, artifact_id)

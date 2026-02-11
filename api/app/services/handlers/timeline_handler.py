@@ -178,7 +178,7 @@ async def handle_timeline_query(
     Raises:
         No exceptions are propagated to callers; all errors are caught, logged, and translated into an error-type dictionary. Transaction rollbacks are attempted on failure.
     """
-    logger.info(f"[TIMELINE_HANDLER] Processing query: {user_query[:100]}")
+    logger.debug(f"[TIMELINE_HANDLER] Processing query: {user_query[:100]}")
 
     try:
         # Get user's active LLM configuration
@@ -322,7 +322,7 @@ async def _execute_timeline_llm_loop(
                 # Generate micro-summary
                 summary = _generate_timeline_summary(tools_used)
 
-                logger.info(
+                logger.debug(
                     f"[TIMELINE_HANDLER] Completed in {iteration} iterations with {len(tools_used):,} tools"
                 )
 
@@ -365,7 +365,7 @@ async def _execute_timeline_llm_loop(
                 except json.JSONDecodeError:
                     arguments = {}
 
-                logger.info(f"[TIMELINE_HANDLER] Calling tool: {tool_name} with args: {arguments}")
+                logger.debug(f"[TIMELINE_HANDLER] Calling tool: {tool_name} with args: {arguments}")
 
                 # Execute tool with retry - wrap in try/except to ensure transaction stays clean
                 try:

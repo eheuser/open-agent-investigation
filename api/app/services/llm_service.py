@@ -790,7 +790,7 @@ class EmbeddingService:
         for i, text in enumerate(texts):
             estimated_tokens = self._estimate_tokens(text)
             if estimated_tokens > self.embedding_max_context_length:
-                logger.warning(
+                logger.info(
                     f"Text {i+1}/{len(texts)} exceeds embedding model token limit: "
                     f"{estimated_tokens:,} tokens > {self.embedding_max_context_length:,} limit. "
                     f"Text will be truncated by the API or may fail. "
@@ -911,7 +911,7 @@ class EmbeddingService:
         # Check token limits for query and documents
         query_tokens = self._estimate_tokens(query)
         if query_tokens > self.reranker_max_context_length:
-            logger.warning(
+            logger.info(
                 f"Query exceeds reranker model token limit: "
                 f"{query_tokens:,} tokens > {self.reranker_max_context_length:,} limit. "
                 f"Query: {query[:100]}..."
@@ -920,7 +920,7 @@ class EmbeddingService:
         for i, doc in enumerate(documents):
             estimated_tokens = self._estimate_tokens(doc)
             if estimated_tokens > self.reranker_max_context_length:
-                logger.warning(
+                logger.info(
                     f"Document {i+1}/{len(documents)} exceeds reranker model token limit: "
                     f"{estimated_tokens:,} tokens > {self.reranker_max_context_length:,} limit. "
                     f"Document will be truncated by the API or may fail. "

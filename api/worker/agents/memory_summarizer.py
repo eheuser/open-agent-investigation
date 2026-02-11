@@ -111,7 +111,7 @@ async def generate_chat_summary(
                 if any(keyword in sentence.lower() for keyword in forensic_keywords):
                     key_findings.append(sentence.strip())
 
-    # === Step 2: Build Compact Transcript ===
+    # === Step 2: Build Transcript ===
     transcript_parts = []
 
     for msg in messages_to_summarize:
@@ -127,8 +127,6 @@ async def generate_chat_summary(
                 transcript_parts.append(f"**Tools called**: {', '.join(tool_names)}")
             elif content:
                 # Truncate long content
-                if len(content) > 300:
-                    content = content[:300] + "..."
                 transcript_parts.append(f"**Analysis**: {content}")
 
         elif role == "tool":
@@ -148,8 +146,6 @@ async def generate_chat_summary(
                     transcript_parts.append(f"**{tool_name}**: No results")
             except:
                 # Non-JSON content
-                if len(content) > 300:
-                    content = str(content)[:300] + "..."
                 transcript_parts.append(f"**{tool_name}**: {content}")
 
     transcript = "\n".join(transcript_parts)
@@ -162,7 +158,7 @@ async def generate_chat_summary(
 **Tools Executed**: {', '.join(tools_executed) if tools_executed else 'None'}
 
 **Activity Transcript**:
-{transcript[:4096]}
+{transcript}
 
 **Requirements**:
 - Preserve ALL event IDs mentioned
@@ -444,13 +440,16 @@ def trim_messages_from_middle(
     logger.info(f"Trimming messages from middle: {current_tokens} → {max_tokens} tokens")
 
     # Keep first 2 and last 5
-    preserved = messages[:2] + messages[-5:]
+    if len(messages) > 7:
+        preserved = messages[:2] + messages[-5:]
+    else:
+        preserved = messages
     preserved_tokens = sum(estimate_tokens(json.dumps(msg, default=str)) for msg in preserved)
 
     if preserved_tokens > max_tokens:
         # Even preserved messages exceed budget, just keep first 2 + last 3
         trimmed = messages[:2] + messages[-3:]
-        logger.warning(f"Aggressive trimming required: {len(messages):,} → {len(trimmed):,} messages")
+        logger.info(f"Aggressive trimming required: {len(messages):,} → {len(trimmed):,} messages")
         return trimmed
 
     # Add messages from middle until we hit budget

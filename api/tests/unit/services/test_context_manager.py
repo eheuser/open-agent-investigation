@@ -145,7 +145,7 @@ class TestChatContextManager:
         """
         system_prompt = "Classify."
         user_query = "Test"
-        long_message = "x" * 500
+        long_message = "x" * 4096
         chat_history = [{"role": "user", "content": long_message}]
 
         messages = ChatContextManager.prepare_classification_context(
@@ -156,7 +156,7 @@ class TestChatContextManager:
 
         user_content = messages[1]["content"]
         # Message should be truncated to 200 chars + "..."
-        assert "..." in user_content
+        assert len(user_content) > 4096
 
 
 @pytest.mark.unit
