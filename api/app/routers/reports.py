@@ -57,6 +57,13 @@ class ReportMetadata(BaseModel):
     generated_at: datetime
 
 
+class ReportExistsResponse(BaseModel):
+    """Response indicating whether a report exists."""
+
+    exists: bool
+    report_id: Optional[int] = None
+
+
 @router.post("/generate", response_model=GenerateReportResponse)
 async def generate_report(
     request: GenerateReportRequest,
@@ -175,6 +182,37 @@ async def get_latest_report(
     except Exception as e:
         logger.error(f"Failed to retrieve report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve report: {str(e)}")
+
+
+@router.get("/latest/{investigation_id}/exists", response_model=ReportExistsResponse)
+async def check_report_exists(
+    investigation_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Check if a report exists for the given investigation without throwing 404.
+
+    Args:
+        investigation_id (UUID): Identifier of the investigation to check.
+        db (AsyncSession, optional): Database session dependency. Defaults to Depends(get_db).
+        current_user (User, optional): Authenticated user. Defaults to Depends(get_current_user).
+
+    Returns:
+        ReportExistsResponse: Object with 'exists' boolean and optional 'report_id'.
+    """
+    try:
+        report = await report_crud.get_latest_report(db, investigation_id)
+        
+        if report:
+            return ReportExistsResponse(exists=True, report_id=report.report_id)
+        else:
+            return ReportExistsResponse(exists=False, report_id=None)
+    
+    except Exception as e:
+        logger.error(f"Failed to check report existence: {e}", exc_info=True)
+        # Return false on error to prevent breaking the UI
+        return ReportExistsResponse(exists=False, report_id=None)
 
 
 @router.get("/latest/{investigation_id}/metadata", response_model=ReportMetadata)

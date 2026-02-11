@@ -35,13 +35,17 @@ export default function ReportGenerator({ investigationId }: ReportGeneratorProp
   useEffect(() => {
     const loadExistingReport = async () => {
       try {
-        const response = await api.get(`/api/v1/reports/latest/${investigationId}`);
-        setReportData(response.data);
-      } catch (err: any) {
-        // 404 is expected if no report exists yet
-        if (err.response?.status !== 404) {
-          console.error('Failed to load existing report:', err);
+        // First check if a report exists (this endpoint never returns 404)
+        const existsResponse = await api.get(`/api/v1/reports/latest/${investigationId}/exists`);
+        
+        // Only fetch the full report if one exists
+        if (existsResponse.data.exists) {
+          const response = await api.get(`/api/v1/reports/latest/${investigationId}`);
+          setReportData(response.data);
         }
+      } catch (err: any) {
+        // Only log unexpected errors
+        console.error('Failed to load existing report:', err);
       } finally {
         setLoadingExisting(false);
       }

@@ -500,6 +500,7 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" \
 | POST | `/api/v1/reports/download` | Download report as PDF |
 | GET | `/api/v1/reports/latest/{investigation_id}` | Get most recent report |
 | GET | `/api/v1/reports/latest/{investigation_id}/metadata` | Get report metadata only |
+| GET | `/api/v1/reports/latest/{investigation_id}/exists` | Check if report exists (never returns 404) |
 
 ## Playbook Management
 
