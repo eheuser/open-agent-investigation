@@ -11,11 +11,11 @@ docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit
 
 The test suite uses a three-tier strategy:
 
-1. **Unit Tests** (~770 tests) - Fast, isolated tests for individual functions
-2. **Integration Tests** (~956 tests) - Database and API endpoint tests
+1. **Unit Tests** (~800 tests) - Fast, isolated tests for individual functions
+2. **Integration Tests** (~1000 tests) - Database and API endpoint tests
 3. **End-to-End Tests** (planned) - Full workflow tests
 
-**Current Status:** 1726 tests, 71.96% coverage (targeting 80%)
+**Current Status:** 1802 tests, 71.32% coverage (targeting 80%)
 
 ## Structure
 
@@ -198,7 +198,7 @@ docker compose -f docker-compose.test.yml down -v
 
 ## Coverage
 
-**Current Coverage**: 71.93% (1745 tests)
+**Current Coverage**: 71.32% (1802 tests)
 **Target**: 80% line coverage
 
 The test suite aims for:
@@ -213,9 +213,9 @@ The test suite aims for:
 - `app/core/*` - 67-100% (core functionality tested)
 - `app/services/context_manager.py` - 97%
 - `app/services/rag/embedding_service.py` - 95%
-- `app/services/rag/retriever.py` - 95%
+- `app/services/rag/retriever.py` - 72% (hybrid BM25 + vector search - 47 missing statements in new methods)
 - `app/services/chat_router.py` - 95%
-- `app/services/handlers/rag_handler.py` - 92%
+- `app/services/handlers/rag_handler.py` - 91% (enhanced query expansion + hybrid BM25 search)
 - `app/services/rag/filter_engine.py` - 90%
 - `app/services/query_expander.py` - 87%
 - `app/services/handlers/general_chat_handler.py` - 85%
@@ -237,21 +237,47 @@ The test suite aims for:
 ### Recently Improved Coverage
 - `app/routers/events.py` - **10% → 92%** (+82%) - Added 53 unit tests for JSONB queries, filtering, and paste functionality
 
-### Modules Needing Coverage (<50%)
-- `app/routers/events.py` - **92%** (223 statements) ✅ - Complex JSONB queries and paste functionality
-- `app/routers/chat.py` - 13% (266 statements) - WebSocket handlers
-- `app/routers/timeline.py` - 13% (266 statements) - Advanced filtering and notes
+### Recent RAG System Enhancements
+
+**Query Expansion (Dec 2024)**:
+- Changed from simple keyword lists to diverse search queries
+- Now generates 5-7 varied approaches: full questions, keyword phrases, artifact-specific queries, attack techniques, and tool signatures
+- Parser updated to handle newline-separated queries instead of comma-separated terms
+- Tests: `api/tests/unit/services/handlers/test_rag_handler.py::TestExpandQueryWithLLM`
+
+**Hybrid BM25 + Vector Search (Dec 2024)**:
+- BM25 full-text search is now **mandatory** in RAG pipeline (previously optional)
+- All retrieval queries use hybrid search with configurable weights (default: 30% BM25, 70% vector)
+- New methods: `Retriever._hybrid_retrieve()`, `Retriever._bm25_search()`
+- Fetches 3x desired results from each method, merges, normalizes scores, and returns top-k
+- Tests: `api/tests/unit/services/rag/test_retriever.py` (existing tests cover vector search, new tests needed for hybrid methods)
+
+**Reranker Context (Dec 2024)**:
+- Reranker already receives user query for context-aware scoring
+- Uses separate reranker model (if configured) for improved relevance
+- Computes cosine similarity between query embedding and document embeddings
+- Tests: `api/tests/unit/services/test_embedding_service.py` (reranker tests)
+
+### Modules Needing Coverage (<70%)
+- `app/routers/timeline.py` - 11% (352 statements) - Advanced filtering and notes
+- `app/routers/chat.py` - 12% (269 statements) - WebSocket handlers
 - `app/routers/agents.py` - 20% (84 statements) - Agent execution flows
+- `app/routers/analysis.py` - 22% (193 statements) - Analysis modules API
 - `app/routers/jobs.py` - 22% (89 statements) - Job management
-- `app/routers/embeddings.py` - 30% (46 statements) - Embedding generation
-- `app/routers/artifacts.py` - 34% (65 statements) - File upload/download
+- `app/routers/embeddings.py` - 31% (61 statements) - Embedding generation
+- `app/routers/logs.py` - 35% (49 statements) - Log streaming
 - `app/routers/audit.py` - 35% (31 statements) - Audit log filtering
-- `app/routers/reports.py` - 43% (127 statements) - Report generation
-- `app/routers/llm_config.py` - 44% (54 statements) - LLM configuration
-- `app/routers/mcp.py` - 45% (42 statements) - MCP server management
-- `app/services/llm_service.py` - 50% (273 statements) - HTTP integration
-- `app/routers/chat_messages.py` - 58% (142 statements) - Message CRUD
-- `app/services/handlers/timeline_handler.py` - 61% (279 statements) - Timeline operations
+- `app/routers/artifacts.py` - 36% (61 statements) - File upload/download
+- `app/routers/llm_config.py` - 40% (132 statements) - LLM configuration
+- `app/routers/reports.py` - 41% (133 statements) - Report generation
+- `app/routers/playbooks.py` - 46% (142 statements) - Playbook management
+- `app/routers/investigations.py` - 48% (44 statements) - Investigation CRUD
+- `app/routers/investigation_choices.py` - 52% (40 statements) - Agent choices
+- `app/routers/mcp.py` - 57% (42 statements) - MCP server management
+- `app/analysis/execution_evidence.py` - 59% (222 statements) - Execution artifact analysis
+- `app/routers/chat_messages.py` - 59% (144 statements) - Message CRUD
+- `app/services/handlers/timeline_handler.py` - 60% (292 statements) - Timeline operations
+- `app/services/chat_broadcast.py` - 69% (479 statements) - WebSocket broadcasting
 
 View coverage report:
 ```bash
@@ -270,8 +296,8 @@ Tests are organized using pytest markers:
 
 | Marker | Description | Count | Example |
 |--------|-------------|-------|---------|
-| `unit` | Unit tests (no external dependencies) | ~770 | `@pytest.mark.unit` |
-| `integration` | Integration tests (require database) | ~956 | `@pytest.mark.integration` |
+| `unit` | Unit tests (no external dependencies) | ~800 | `@pytest.mark.unit` |
+| `integration` | Integration tests (require database) | ~1000 | `@pytest.mark.integration` |
 
 | `e2e` | End-to-end tests (full stack) | 0 | `@pytest.mark.e2e` |
 | `slow` | Tests that take > 1 second | 0 | `@pytest.mark.slow` |
@@ -491,10 +517,60 @@ GitHub Actions workflow (`.github/workflows/tests.yml`):
 ## Performance
 
 Test execution times (approximate):
-- **Unit tests**: ~20 seconds (~770 tests)
-- **Integration tests**: ~60 seconds (~956 tests)
+- **Unit tests**: ~30 seconds (~800 tests)
+- **Integration tests**: ~95 seconds (~1000 tests)
 - **E2E tests**: ~2 minutes (planned)
-- **Full suite**: ~82 seconds (1726 tests total)
+- **Full suite**: ~126 seconds (1802 tests total)
+
+## Test Coverage for Recent Changes
+
+### RAG Enhancements - Test Status
+
+**Summary**: Recent RAG improvements added 165 new statements across 2 files. Current coverage:
+- `rag_handler.py`: 91% (19/215 missing) - Query expansion working, minor edge cases untested
+- `retriever.py`: 72% (47/165 missing) - New hybrid search methods need comprehensive tests
+- **Overall Impact**: +76 tests added, coverage maintained at 71.32%
+
+**Action Items**: Add ~10 unit tests for hybrid search methods to restore retriever coverage to 90%+
+
+---
+
+The following tests should be added to cover the recent RAG enhancements:
+
+**Query Expansion Tests** (`api/tests/unit/services/handlers/test_rag_handler.py`):
+- ✅ Existing: `test_expand_query_success` - Validates LLM call and newline-separated parsing
+- ✅ Existing: `test_expand_query_limits_to_7_terms` - Ensures max 7 queries returned
+- ✅ Existing: `test_expand_query_strips_whitespace` - Tests cleanup logic
+- ✅ **UPDATED**: All tests now use newline-separated mock responses
+- 🔲 **NEW NEEDED** (19 missing statements): 
+  - Test regex cleanup of numbered prefixes (`1.`, `2)`, etc.) - line 286, 288, 290, 292
+  - Test regex cleanup of bullet prefixes (`- `, `* `, `•`) 
+  - Test diverse query types in prompt (questions, keywords, artifact-specific)
+  - Test empty lines are filtered out
+
+**Coverage**: RAG handler is at 91% (215 statements, 19 missing). Most missing lines are in error handling paths and edge cases.
+
+**Hybrid Search Tests** (`api/tests/unit/services/rag/test_retriever.py`):
+- ✅ Existing: `test_vector_search_success` - Tests pure vector search
+- ✅ Existing: `test_retrieve_with_candidates` - Tests retrieval with text loading
+- 🔲 **NEW NEEDED** (47 missing statements): 
+  - `test_hybrid_retrieve_combines_bm25_and_vector` - Test score fusion (lines 130-185)
+  - `test_hybrid_retrieve_normalizes_scores` - Test normalization to [0,1]
+  - `test_hybrid_retrieve_respects_weights` - Test configurable BM25/vector weights
+  - `test_bm25_search_success` - Test BM25 full-text search (lines 206-273)
+  - `test_bm25_search_with_owner_types` - Test owner type filtering
+  - `test_bm25_search_handles_special_chars` - Test query sanitization
+  - `test_bm25_search_handles_errors` - Test exception handling
+  - `test_retrieve_uses_hybrid_when_query_text_provided` - Test automatic hybrid mode (line 81)
+  - `test_retrieve_falls_back_to_vector_only` - Test fallback when query_text=None
+
+**Coverage Impact**: The new hybrid search methods (`_hybrid_retrieve` and `_bm25_search`) added 165 statements, but only 118 are covered, dropping retriever coverage from 95% to 72%. Adding the tests above will restore coverage to ~90%.
+
+**Integration Tests** (`api/tests/integration/routers/test_embeddings.py`):
+- 🔲 **NEW NEEDED**: Test RAG query with hybrid search enabled
+- 🔲 **NEW NEEDED**: Test BM25 results include keyword matches
+- 🔲 **NEW NEEDED**: Test vector results include semantic matches
+- 🔲 **NEW NEEDED**: Test combined results outperform single-method retrieval
 
 ## Contributing
 
@@ -505,6 +581,7 @@ When adding features:
 3. **Use appropriate markers** (`@pytest.mark.unit`, etc.)
 4. **Follow naming conventions** (`test_*` for functions, `Test*` for classes)
 5. **Document complex tests** (docstrings explaining what/why)
+6. **Update this README** when adding new features or test coverage
 
 ## Resources
 

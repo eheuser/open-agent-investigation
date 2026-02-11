@@ -382,7 +382,7 @@ class TestExpandQueryWithLLM:
             with patch("app.services.handlers.rag_handler.LLMService") as MockLLMService:
                 mock_service = AsyncMock()
                 mock_service.extract_text_response.return_value = (
-                    "lsass.exe, mimikatz, sam database, credential dumping"
+                    "lsass.exe\nmimikatz\nsam database\ncredential dumping"
                 )
                 MockLLMService.return_value = mock_service
 
@@ -406,7 +406,7 @@ class TestExpandQueryWithLLM:
                 mock_service = AsyncMock()
                 # Return 10 terms
                 mock_service.extract_text_response.return_value = (
-                    "term1, term2, term3, term4, term5, term6, term7, term8, term9, term10"
+                    "term1\nterm2\nterm3\nterm4\nterm5\nterm6\nterm7\nterm8\nterm9\nterm10"
                 )
                 MockLLMService.return_value = mock_service
 
@@ -465,7 +465,7 @@ class TestExpandQueryWithLLM:
         with patch("app.services.handlers.rag_handler.LLMConfig.from_db_config"):
             with patch("app.services.handlers.rag_handler.LLMService") as MockLLMService:
                 mock_service = AsyncMock()
-                mock_service.extract_text_response.return_value = "  term1  ,  term2  ,  term3  "
+                mock_service.extract_text_response.return_value = "  term1  \n  term2  \n  term3  "
                 MockLLMService.return_value = mock_service
 
                 terms = await _expand_query_with_llm("test", mock_config)

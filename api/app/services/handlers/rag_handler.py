@@ -44,20 +44,30 @@ async def _expand_query_with_llm(
     config = LLMConfig.from_db_config(llm_config)
     llm_service = LLMService(config)
 
-    # Build expansion prompt
-    expansion_prompt = f"""You are a digital forensics expert. Generate 5-7 specific search terms that would help find relevant evidence for this query in Windows forensic artifacts (EVTX logs, registry, MFT, prefetch, etc.).
+    # Build expansion prompt with richer output format
+    expansion_prompt = f"""You are a digital forensics expert. Generate 5-7 diverse search queries that would help find relevant evidence for this investigation question in Windows forensic artifacts.
 
-User Query: {user_query}
+User Question: {user_query}
 
-Generate specific terms like:
-- Process names (e.g., lsass.exe, powershell.exe)
-- File paths (e.g., C:\\Windows\\System32\\)
-- Registry keys (e.g., HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run)
-- Event IDs (e.g., 4624, 4688)
-- Attack techniques (e.g., credential dumping, lateral movement)
-- Tool names (e.g., mimikatz, psexec)
+Generate a variety of search approaches:
+1. **Full questions** - Rephrased versions of the original question from different angles
+   Example: "What processes were spawned by PowerShell?" → "Which child processes did powershell.exe create?"
 
-Respond with ONLY a comma-separated list of terms, no explanations."""
+2. **Keyword phrases** - Specific artifact combinations
+   Example: "credential access" → "lsass.exe process access mimikatz"
+
+3. **Artifact-specific queries** - Targeted searches for specific log types
+   Example: "logon events" → "Event ID 4624 network logon type 3"
+
+4. **Attack technique queries** - MITRE ATT&CK aligned searches
+   Example: "lateral movement" → "PsExec service installation remote execution"
+
+5. **Tool and indicator queries** - Known malware/tool signatures
+   Example: "suspicious PowerShell" → "powershell.exe encoded command bypass execution policy"
+
+**IMPORTANT**: Each query should be a complete, standalone search that could match different types of evidence. Mix short keyword phrases with longer natural language questions.
+
+Respond with ONE query per line, no numbering, no explanations. Generate 5-7 diverse queries."""
 
     try:
         # Call LLM via centralized service
@@ -75,9 +85,21 @@ Respond with ONLY a comma-separated list of terms, no explanations."""
         if not expanded_text:
             return []
 
-        # Parse comma-separated terms
-        terms = [term.strip() for term in expanded_text.split(",") if term.strip()]
-        return terms[:7]  # Limit to 7 terms max
+        # Parse newline-separated queries, clean up any numbering or bullets
+        lines = expanded_text.strip().split('\n')
+        queries = []
+        for line in lines:
+            # Remove common prefixes like "1.", "- ", "* ", etc.
+            cleaned = line.strip()
+            # Remove leading numbers and punctuation
+            import re
+            cleaned = re.sub(r'^\d+[\.\)]\s*', '', cleaned)
+            cleaned = re.sub(r'^[-*•]\s*', '', cleaned)
+            
+            if cleaned:
+                queries.append(cleaned)
+        
+        return queries[:7]  # Limit to 7 queries max
 
     except Exception as e:
         logger.warning(f"Query expansion error: {e}")
@@ -271,14 +293,18 @@ async def handle_rag_query(
         
         try:
             for i, query_vec in enumerate(query_vecs):
-                query_text = all_queries[i][:50]
-                logger.debug(f"Searching with query {i+1}/{len(query_vecs):,}: {query_text}...")
+                query_text = all_queries[i]
+                query_preview = query_text[:50]
+                logger.debug(f"Searching with query {i+1}/{len(query_vecs):,}: {query_preview}...")
 
+                # Use hybrid BM25 + vector search for all queries
                 chunks = await retriever.retrieve(
                     query_vec=query_vec,
                     investigation_id=str(investigation_id),
                     owner_types=["chat", "timeline", "note", "tool"],
                     k=query_k,
+                    query_text=query_text,  # Enable hybrid search
+                    bm25_weight=0.3,  # 30% BM25, 70% vector similarity
                 )
                 all_chunks.extend(chunks)
 
