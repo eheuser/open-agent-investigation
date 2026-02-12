@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 import uuid
 import zipfile
+import zipfile_deflate64  # noqa: F401  # Monkey-patches zipfile to support all compression methods
 import py7zr
 import subprocess
 import tempfile

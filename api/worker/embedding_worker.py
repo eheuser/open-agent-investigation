@@ -21,9 +21,13 @@ import json
 
 logger = get_logger(__name__)
 
-# Concurrency settings for embedding generation
-MAX_CONCURRENT_BATCHES = 8  # Number of simultaneous API calls
-EMBEDDING_BATCH_SIZE = 200  # Events per API call (within a job)
+# Concurrency settings for embedding generation (configurable via environment)
+from app.core.config import settings
+MAX_CONCURRENT_BATCHES = settings.max_concurrent_embedding_batches  # Number of simultaneous API calls
+EMBEDDING_BATCH_SIZE = settings.embedding_batch_size  # Events per API call (within a job)
+# Reduced from 200 to 100 for more granular progress updates
+# Trade-off: Slightly more API overhead, but much better UI responsiveness
+# Each batch completion triggers a progress update visible to the UI
 
 
 async def claim_embedding_job(db: AsyncSession, worker_id: uuid_pkg.UUID) -> Optional[EmbeddingJob]:
@@ -177,6 +181,32 @@ async def process_embedding_job(db: AsyncSession, job: EmbeddingJob):
         logger.debug(
             f"Embedding job {job_id} completed ({created_count:,}/{len(event_ids):,} embeddings created)"
         )
+        
+        # Check if there are any more pending/running embedding jobs for this investigation
+        # Only refresh caches after ALL embedding jobs complete to avoid excessive refreshes
+        try:
+            result = await db.execute(
+                text("""
+                    SELECT COUNT(*) 
+                    FROM jobs_embedding 
+                    WHERE investigation_id = CAST(:inv_id AS uuid)
+                    AND status IN ('pending', 'running')
+                """),
+                {"inv_id": str(investigation_id)}  # Bind parameter as string, cast in SQL
+            )
+            remaining_jobs = result.scalar() or 0
+            
+            if remaining_jobs == 0:
+                # All embedding jobs complete - refresh caches now
+                logger.debug(f"All embedding complete for investigation {investigation_id}, refreshing stats cache")
+                await db.execute(text("SELECT refresh_investigation_stats()"))
+                await db.execute(text("SELECT update_system_stats_cache()"))
+                await db.commit()
+            else:
+                logger.debug(f"Investigation {investigation_id} still has {remaining_jobs} embedding job(s) pending/running")
+        except Exception as cache_error:
+            logger.warning(f"Failed to refresh stats cache: {cache_error}")
+            # Don't fail the job if cache refresh fails
 
     except Exception as e:
         logger.error(f"Embedding job {job_id} failed: {e}", exc_info=True)
@@ -270,6 +300,10 @@ async def _batch_create_embeddings_concurrent(
     async def process_batch(batch_events: list[tuple[int, str, dict]], batch_num: int) -> int:
         """Process a single batch of events concurrently with its own DB session."""
         async with semaphore:
+            # Small delay to stagger batch starts for smoother progress updates
+            # This ensures UI polls can catch intermediate progress states
+            if batch_num > 1:
+                await asyncio.sleep(0.1 * (batch_num % MAX_CONCURRENT_BATCHES))
             # Create a new database session for this batch
             async with async_session_factory() as batch_db:
                 # Build text representations
@@ -320,19 +354,22 @@ async def _batch_create_embeddings_concurrent(
                     logger.debug(f"Batch {batch_num} completed: {batch_created:,} embeddings created")
                     
                     # Update job progress incrementally if job_id provided
+                    # Use a separate connection to avoid blocking other batches
                     if job_id is not None:
                         try:
-                            await batch_db.execute(
-                                text(
+                            # Use a fresh connection for progress update (non-blocking)
+                            async with async_session_factory() as progress_db:
+                                await progress_db.execute(
+                                    text(
+                                        """
+                                        UPDATE jobs_embedding 
+                                        SET events_processed = COALESCE(events_processed, 0) + :count
+                                        WHERE job_id = :job_id
                                     """
-                                    UPDATE jobs_embedding 
-                                    SET events_processed = events_processed + :count
-                                    WHERE job_id = :job_id
-                                """
-                                ),
-                                {"job_id": job_id, "count": batch_created},
-                            )
-                            await batch_db.commit()
+                                    ),
+                                    {"job_id": job_id, "count": batch_created},
+                                )
+                                await progress_db.commit()
                         except Exception as update_error:
                             logger.warning(f"Failed to update job progress: {update_error}")
                             # Don't fail the batch if progress update fails
@@ -348,11 +385,17 @@ async def _batch_create_embeddings_concurrent(
                     return 0
 
     # Split into batches and process concurrently
+    # Create tasks with slight staggering for smoother progress updates
     tasks = []
     for i in range(0, len(interesting_events), EMBEDDING_BATCH_SIZE):
         batch = interesting_events[i:i + EMBEDDING_BATCH_SIZE]
         batch_num = i // EMBEDDING_BATCH_SIZE + 1
         tasks.append(process_batch(batch, batch_num))
+    
+    logger.debug(
+        f"Split {len(interesting_events):,} events into {len(tasks)} batches "
+        f"(~{EMBEDDING_BATCH_SIZE} events/batch, max {MAX_CONCURRENT_BATCHES} concurrent)"
+    )
 
     # Wait for all batches to complete
     if tasks:

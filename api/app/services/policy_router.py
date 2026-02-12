@@ -47,17 +47,17 @@ def extract_policy_name(llm_response: str) -> str:
         return default_policy
 
     response_lower = llm_response.lower().strip()
-    logger.info(f"[POLICY_ROUTER] Parsing response: '{response_lower}'")
+    logger.debug(f"[POLICY_ROUTER] Parsing response: '{response_lower}'")
 
     # First, check if the response IS a valid policy (simple case)
     if response_lower in VALID_POLICIES:
-        logger.info(f"[POLICY_ROUTER] Exact match found: '{response_lower}'")
+        logger.debug(f"[POLICY_ROUTER] Exact match found: '{response_lower}'")
         return response_lower
 
     # Check if response starts with a valid policy name
     for policy in VALID_POLICIES:
         if response_lower.startswith(policy):
-            logger.info(
+            logger.debug(
                 f"[POLICY_ROUTER] Extracted policy '{policy}' from response: {llm_response[:100]}"
             )
             return policy
@@ -65,14 +65,14 @@ def extract_policy_name(llm_response: str) -> str:
     # Search for valid policy names anywhere in the response
     for policy in VALID_POLICIES:
         if policy in response_lower:
-            logger.info(
+            logger.debug(
                 f"[POLICY_ROUTER] Found policy '{policy}' in response: {llm_response[:100]}"
             )
             return policy
 
     # No valid policy found - log and use default (first available policy)
     default_policy = VALID_POLICIES[0] if VALID_POLICIES else "event_search"
-    logger.warning(
+    logger.info(
         f"[POLICY_ROUTER] Could not extract valid policy from LLM response: '{llm_response[:200]}'. "
         f"Using default '{default_policy}'"
     )
@@ -192,12 +192,12 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
         # Log payload (truncate if too large)
         payload_str = json.dumps(payload, indent=2)
         if len(payload_str) > 1000:
-            logger.info(f"[POLICY_ROUTER] Sending payload (truncated): {payload_str[:1000]}...")
+            logger.debug(f"[POLICY_ROUTER] Sending payload (truncated): {payload_str[:1000]}...")
         else:
-            logger.info(f"[POLICY_ROUTER] Sending payload: {payload_str}")
+            logger.debug(f"[POLICY_ROUTER] Sending payload: {payload_str}")
 
         try:
-            logger.info(f"[POLICY_ROUTER] Calling LLM at {api_endpoint} with model {model_name}")
+            logger.debug(f"[POLICY_ROUTER] Calling LLM at {api_endpoint} with model {model_name}")
             async with session.post(
                 api_endpoint, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)
             ) as resp:
@@ -212,11 +212,11 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
                 # Log response structure (truncate if too large)
                 response_str = json.dumps(data, indent=2)
                 if len(response_str) > 2000:
-                    logger.info(
+                    logger.debug(
                         f"[POLICY_ROUTER] LLM raw response (truncated): {response_str[:2000]}..."
                     )
                 else:
-                    logger.info(f"[POLICY_ROUTER] LLM raw response: {response_str}")
+                    logger.debug(f"[POLICY_ROUTER] LLM raw response: {response_str}")
 
                 # Extract content from response - try multiple formats
                 content = None
@@ -224,20 +224,20 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
                 # Format 1: OpenAI format - {"choices": [{"message": {"content": "..."}}]}
                 if "choices" in data and len(data["choices"]) > 0:
                     choice = data["choices"][0]
-                    logger.info(f"[POLICY_ROUTER] First choice keys: {list(choice.keys())}")
+                    logger.debug(f"[POLICY_ROUTER] First choice keys: {list(choice.keys())}")
 
                     if "message" in choice:
                         message = choice["message"]
-                        logger.info(f"[POLICY_ROUTER] Message keys: {list(message.keys())}")
+                        logger.debug(f"[POLICY_ROUTER] Message keys: {list(message.keys())}")
                         content = message.get("content")
                         content_type = type(content).__name__ if content is not None else "None"
-                        logger.info(
+                        logger.debug(
                             f"[POLICY_ROUTER] Content from message.content: {repr(content)} (type: {content_type})"
                         )
                     elif "text" in choice:
                         content = choice["text"]
                         content_type = type(content).__name__ if content is not None else "None"
-                        logger.info(
+                        logger.debug(
                             f"[POLICY_ROUTER] Content from choice.text: {repr(content)} (type: {content_type})"
                         )
                     else:
@@ -248,17 +248,17 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
                 # Format 2: Direct response field (some providers)
                 if content is None and "response" in data:
                     content = data["response"]
-                    logger.info(f"[POLICY_ROUTER] Extracted from response field: '{content}'")
+                    logger.debug(f"[POLICY_ROUTER] Extracted from response field: '{content}'")
 
                 # Format 3: Direct content field (some providers)
                 if content is None and "content" in data:
                     content = data["content"]
-                    logger.info(f"[POLICY_ROUTER] Extracted from content field: '{content}'")
+                    logger.debug(f"[POLICY_ROUTER] Extracted from content field: '{content}'")
 
                 # Format 4: Text field (some providers)
                 if content is None and "text" in data:
                     content = data["text"]
-                    logger.info(f"[POLICY_ROUTER] Extracted from text field: '{content}'")
+                    logger.debug(f"[POLICY_ROUTER] Extracted from text field: '{content}'")
 
                 # Check if we got valid content
                 if content is None:
@@ -291,7 +291,7 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
                     return {"policy": default_policy, "raw_response": "(empty string)"}
 
                 # Extract valid policy name from response
-                logger.info(f"[POLICY_ROUTER] Final content to parse: '{content_str}'")
+                logger.debug(f"[POLICY_ROUTER] Final content to parse: '{content_str}'")
                 policy_name = extract_policy_name(content_str)
                 return {"policy": policy_name, "raw_response": content_str}
 
@@ -438,23 +438,25 @@ Answer with ONLY ONE policy name from the list above:"""
 
     # Step 6: Check for active parsing jobs before creating agent job
     active_parsing_jobs = await get_active_parsing_jobs(db, investigation_id)
-    
+
     if active_parsing_jobs:
         job_count = len(active_parsing_jobs)
-        logger.info(
+        logger.debug(
             f"[POLICY_ROUTER] Delaying agent job creation for investigation {investigation_id}: "
             f"{job_count} parsing job(s) still active (IDs: {[j.job_id for j in active_parsing_jobs]})"
         )
         return {
             "type": "parsing_in_progress",
             "message": f"Waiting for {job_count} parsing job{'s' if job_count > 1 else ''} to complete before starting analysis. "
-                      f"Please wait a moment and try again.",
+            f"Please wait a moment and try again.",
             "active_jobs": job_count,
             "suggestion": "The system will automatically retry once parsing is complete.",
         }
-    
+
     # Step 7: Create agent job (only if no parsing jobs are active)
-    logger.info(f"[POLICY_ROUTER] No active parsing jobs, creating agent job for investigation {investigation_id}")
+    logger.debug(
+        f"[POLICY_ROUTER] No active parsing jobs, creating agent job for investigation {investigation_id}"
+    )
     job = await enqueue_agent_job(
         db,
         investigation_id=investigation_id,

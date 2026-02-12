@@ -57,4 +57,5 @@ libesedb-python==20240420  # ESE databases (SRUM, Windows Search, Legacy Edge)
 
 # Archive Extraction
 py7zr==0.21.*  # 7z archive support
+zipfile-deflate64==0.2.*  # Extended ZIP compression support (Deflate64, LZMA, PPMd, etc.)
 # RAR extraction uses system 'unar' command (installed via apt-get install unar)

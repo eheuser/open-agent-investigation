@@ -19,6 +19,7 @@ Open Agent Investigation (OAI) provides an end‑to‑end workflow for Windows h
 * **Hybrid retrieval** – Event data is indexed with both BM25 keyword search and vector embeddings (PGVector) enabling fast semantic lookup.
 * **Playbook engine** – Over 20 built‑in MITRE ATT&CK‑aligned playbooks; users can clone and customize them in Markdown.
 * **Timeline construction** – Chronological aggregation of deduplicated events, with support for manual annotation and export to PDF/Markdown.
+* **Performance optimization** – Materialized views, aggregate caches, and statistical sampling provide <200ms status modal loading (25-50x faster); automatically refreshed after jobs complete.
 * **Extensible architecture** – Workers run as asynchronous multiprocess tasks; new parsers or tools are added via a plugin interface.
 
 ## Visual Overview
@@ -119,8 +120,42 @@ Routing is performed by an LLM‑based intent classifier; manual selection is al
 
 ### Deployment
 ```bash
-docker compose up -d          # Start nginx, API, worker, PostgreSQL
+docker compose up -d          # Start nginx, API, workers, PostgreSQL
 ```
+
+#### Worker Concurrency Configuration
+
+Control worker concurrency via environment variables:
+
+```bash
+# Main workers (parsing/agent jobs)
+NUM_WORKERS=8 docker compose up -d worker
+
+# Embedding workers (background embedding generation)
+NUM_EMBEDDING_WORKERS=4 docker compose up -d embedding-worker
+
+# Embedding API concurrency (per job)
+MAX_CONCURRENT_EMBEDDING_BATCHES=16 docker compose up -d embedding-worker
+EMBEDDING_BATCH_SIZE=100 docker compose up -d embedding-worker
+
+# Or set in .env file:
+# NUM_WORKERS=8
+# NUM_EMBEDDING_WORKERS=4
+# MAX_CONCURRENT_EMBEDDING_BATCHES=16
+# EMBEDDING_BATCH_SIZE=100
+```
+
+**Defaults**:
+- `NUM_WORKERS=8` - Main worker processes for parsing and agent jobs
+- `NUM_EMBEDDING_WORKERS=4` - Dedicated embedding worker processes
+- `MAX_CONCURRENT_EMBEDDING_BATCHES=16` - Concurrent API calls per embedding job
+- `EMBEDDING_BATCH_SIZE=100` - Events per API call (smaller = more frequent progress updates)
+
+**Tuning Guidelines**:
+- **High CPU, slow I/O**: Increase `NUM_WORKERS` (more parallelism)
+- **Fast embedding API**: Increase `MAX_CONCURRENT_EMBEDDING_BATCHES` (more concurrent calls)
+- **Slow embedding API**: Increase `NUM_EMBEDDING_WORKERS` (more parallel jobs)
+- **Rate-limited API**: Decrease `MAX_CONCURRENT_EMBEDDING_BATCHES` (avoid hitting limits)
 
 #### Post‑deployment configuration
 1. **Login** with the default credentials.
@@ -149,11 +184,13 @@ docker compose -f docker-compose.test.yml run --rm test-runner pytest tests/unit
 ```
 User Browser <--HTTPS/WSS--> nginx (443) <--HTTP--> FastAPI (8000)
                                    |                     |
-                               Static UI          Worker (asyncio)
-                                                    |
+                               Static UI          Worker Pool (parsing/agents)
+                                                          |
+                                                  Embedding Worker (background)
+                                                          |
                                                 PostgreSQL 15 + PGVector
-                                                    |
-                                               LLM Inference Endpoint
+                                                          |
+                                                  LLM Inference Endpoint
 ```
 
 * **UI:** React 18, TypeScript, TailwindCSS  

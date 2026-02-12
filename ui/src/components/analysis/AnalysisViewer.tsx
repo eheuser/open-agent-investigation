@@ -75,45 +75,40 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
                 <button
                   key={module.id}
                   onClick={() => setSelectedModule(module.id)}
-                  className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors ${
-                    isSelected
+                  className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors ${isSelected
                       ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800'
                       : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
-                  }`}
+                    }`}
                 >
                   <Icon
-                    className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                      isSelected
+                    className={`w-5 h-5 mt-0.5 flex-shrink-0 ${isSelected
                         ? 'text-blue-600 dark:text-blue-400'
                         : 'text-gray-400 dark:text-gray-500'
-                    }`}
+                      }`}
                   />
                   <div className="flex-1 text-left min-w-0">
                     <div
-                      className={`text-sm font-medium ${
-                        isSelected
+                      className={`text-sm font-medium ${isSelected
                           ? 'text-blue-900 dark:text-blue-100'
                           : 'text-gray-900 dark:text-white'
-                      }`}
+                        }`}
                     >
                       {module.name}
                     </div>
                     <div
-                      className={`text-xs mt-0.5 ${
-                        isSelected
+                      className={`text-xs mt-0.5 ${isSelected
                           ? 'text-blue-700 dark:text-blue-300'
                           : 'text-gray-500 dark:text-gray-400'
-                      }`}
+                        }`}
                     >
                       {module.description}
                     </div>
                   </div>
-                  <ChevronRightIcon 
-                    className={`w-4 h-4 flex-shrink-0 mt-1 transition-opacity ${
-                      isSelected
+                  <ChevronRightIcon
+                    className={`w-4 h-4 flex-shrink-0 mt-1 transition-opacity ${isSelected
                         ? 'text-blue-600 dark:text-blue-400 opacity-100'
                         : 'opacity-0'
-                    }`}
+                      }`}
                   />
                 </button>
               );

@@ -9,6 +9,8 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "vector";
+-- Extension for trigram-based text search (supports ILIKE with indexes)
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- ============================================================================
 -- CORE TABLES
@@ -46,6 +48,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     sha256 BYTEA NOT NULL CHECK (length(sha256) = 32),
     filename TEXT NOT NULL,
     classification SMALLINT NOT NULL,  -- 0=SYSTEM_HIVE, 1=LOG_FILE, 2=BINARY, 3=ARCHIVE, 4=UNKNOWN
+    size_bytes BIGINT NOT NULL DEFAULT 0,  -- Original file size (tracked at upload time)
     blob BYTEA NOT NULL,
     upload_ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT valid_classification CHECK (classification BETWEEN 0 AND 4)
@@ -54,6 +57,10 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE INDEX idx_artifacts_investigation ON artifacts(investigation_id);
 CREATE INDEX idx_artifacts_sha256 ON artifacts(sha256);
 CREATE INDEX idx_artifacts_upload_ts ON artifacts(upload_ts DESC);
+-- Index for filename search (ILIKE queries) - supports case-insensitive search
+CREATE INDEX idx_artifacts_filename_trgm ON artifacts USING gin (filename gin_trgm_ops);
+-- Index for classification grouping
+CREATE INDEX idx_artifacts_classification ON artifacts(classification);
 
 -- MCP Servers table (§4.4)
 CREATE TABLE IF NOT EXISTS mcp_servers (
@@ -84,6 +91,15 @@ CREATE TABLE IF NOT EXISTS llm_provider_config (
     min_p NUMERIC(4,3),
     timeout INTEGER NOT NULL DEFAULT 300,
     is_active BOOLEAN NOT NULL DEFAULT true,
+    embedding_provider TEXT,
+    embedding_api_url TEXT,
+    embedding_api_key TEXT,
+    embedding_model_name TEXT,
+    embedding_max_context_length INTEGER DEFAULT 8192,
+    reranker_model_name TEXT,
+    reranker_max_context_length INTEGER DEFAULT 8192,
+    allow_concurrent_llm_calls BOOLEAN DEFAULT false,
+    allow_concurrent_embedding_calls BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
@@ -98,16 +114,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_config (
 CREATE INDEX idx_llm_config_user ON llm_provider_config(user_id);
 CREATE INDEX idx_llm_config_active ON llm_provider_config(user_id, is_active) WHERE is_active = true;
 
--- Add embedding provider configuration columns
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_provider TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_api_url TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_api_key TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_model_name TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_max_context_length INTEGER DEFAULT 8192;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS reranker_model_name TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS reranker_max_context_length INTEGER DEFAULT 8192;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS allow_concurrent_llm_calls BOOLEAN DEFAULT false;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS allow_concurrent_embedding_calls BOOLEAN DEFAULT false;
+
 
 -- Chat messages table (conversation history in OpenAI format)
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -126,11 +133,12 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     message_type VARCHAR(50),  -- question, assistant_answer, agent_chat, tool_execution, summary, error, system
     parent_message_id BIGINT REFERENCES chat_messages(message_id) ON DELETE CASCADE,
     
-    -- Metadata and control fields
+        -- Metadata and control fields
     metadata JSONB DEFAULT '{}'::jsonb,
     include_in_llm_context BOOLEAN NOT NULL DEFAULT true,
     visible_in_ui BOOLEAN NOT NULL DEFAULT true,
     deleted_at TIMESTAMPTZ,  -- Soft delete timestamp (tombstone)
+    embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -140,6 +148,7 @@ CREATE INDEX idx_chat_messages_user ON chat_messages(user_id, created_at DESC);
 CREATE INDEX idx_chat_messages_parent ON chat_messages(parent_message_id) WHERE parent_message_id IS NOT NULL;
 CREATE INDEX idx_chat_messages_type ON chat_messages(investigation_id, message_type) WHERE message_type IS NOT NULL;
 CREATE INDEX idx_chat_messages_visible ON chat_messages(investigation_id, visible_in_ui, deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_chat_messages_embedding ON chat_messages(embedding_id) WHERE embedding_id IS NOT NULL;
 
 -- Tool executions table (explicit tool call tracking)
 CREATE TABLE IF NOT EXISTS tool_executions (
@@ -304,9 +313,10 @@ CREATE TABLE IF NOT EXISTS timeline_entries (
     title TEXT NOT NULL,
     description TEXT,
     data JSONB DEFAULT '{}'::jsonb,
-    tags TEXT[] DEFAULT '{}'::TEXT[],
+        tags TEXT[] DEFAULT '{}'::TEXT[],
     created_by_user_id BIGINT REFERENCES users(user_id) ON DELETE SET NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     is_visible BOOLEAN NOT NULL DEFAULT true
     -- NOTE: UNIQUE constraint removed - see partial unique index below to handle NULLs properly
@@ -314,12 +324,15 @@ CREATE TABLE IF NOT EXISTS timeline_entries (
 
 CREATE INDEX idx_timeline_investigation ON timeline_entries(investigation_id, timestamp DESC);
 CREATE INDEX idx_timeline_type ON timeline_entries(investigation_id, entry_type);
+-- Index for entry_type grouping (used in status queries)
+CREATE INDEX idx_timeline_entry_type ON timeline_entries(entry_type);
 CREATE INDEX idx_timeline_event ON timeline_entries(event_id) WHERE event_id IS NOT NULL;
 CREATE INDEX idx_timeline_event_visible ON timeline_entries(event_id, is_visible, timestamp DESC) WHERE event_id IS NOT NULL;  -- For efficient field sampling with JOIN
 CREATE INDEX idx_timeline_tags ON timeline_entries USING GIN(tags);
 CREATE INDEX idx_timeline_data ON timeline_entries USING GIN(data);
 CREATE INDEX idx_timeline_created ON timeline_entries(investigation_id, created_at DESC);
 CREATE INDEX idx_timeline_visible ON timeline_entries(investigation_id, is_visible) WHERE is_visible = true;
+CREATE INDEX idx_timeline_entries_embedding ON timeline_entries(embedding_id) WHERE embedding_id IS NOT NULL;
 
 -- Unique index to enforce uniqueness on (investigation_id, event_id)
 -- PostgreSQL treats NULL as distinct, so multiple rows with NULL event_id are allowed
@@ -408,6 +421,10 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 CREATE INDEX idx_embeddings_owner ON embeddings(owner_type, owner_id);
+-- Index for model_name grouping (used in status queries)
+CREATE INDEX idx_embeddings_model ON embeddings(model_name);
+-- Composite index for tool-type embeddings (optimizes event embedding coverage queries)
+CREATE INDEX idx_embeddings_tool_owner ON embeddings(owner_type, owner_id) WHERE owner_type = 'tool';
 -- Note: Vector indexes are NOT created for large embedding models (>2048 dimensions)
 -- Models like qwen3-embedding-8b (8192 dims) exceed PostgreSQL's 8KB index page limit
 -- Sequential scans are acceptable for <10k embeddings and avoid index maintenance overhead
@@ -455,12 +472,7 @@ CREATE TABLE IF NOT EXISTS filter_config (
 CREATE INDEX idx_filter_config_investigation ON filter_config(investigation_id);
 CREATE INDEX idx_filter_config_updated ON filter_config(updated_at DESC);
 
--- Add embedding_id columns to existing tables
-ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL;
-ALTER TABLE timeline_entries ADD COLUMN IF NOT EXISTS embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL;
 
-CREATE INDEX IF NOT EXISTS idx_chat_messages_embedding ON chat_messages(embedding_id) WHERE embedding_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_timeline_entries_embedding ON timeline_entries(embedding_id) WHERE embedding_id IS NOT NULL;
 
 -- ============================================================================
 -- PLAYBOOKS TABLES
@@ -606,6 +618,20 @@ CREATE TRIGGER update_playbooks_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- ============================================================================
+-- CACHE REFRESH STRATEGY
+-- ============================================================================
+-- NOTE: Cache refresh is handled by the worker, NOT by triggers
+-- Triggers would be too expensive for millions of events
+-- 
+-- Refresh happens:
+-- 1. On worker startup (initial population)
+-- 2. After each parsing job completes (system_stats_cache only)
+-- 3. After each embedding job completes (both caches)
+-- 4. Every 5 minutes during periodic maintenance (investigation_stats_mv)
+--
+-- This provides <5 minute staleness while avoiding trigger overhead
+
 -- Analysis results cache table (for analysis modules like Autoruns, Execution Evidence, etc.)
 CREATE TABLE IF NOT EXISTS analysis_results (
     result_id BIGSERIAL PRIMARY KEY,
@@ -623,6 +649,135 @@ CREATE TABLE IF NOT EXISTS analysis_results (
 
 CREATE INDEX idx_analysis_results_investigation ON analysis_results(investigation_id, analysis_type);
 CREATE INDEX idx_analysis_results_expires ON analysis_results(expires_at) WHERE expires_at IS NOT NULL;
+
+-- ============================================================================
+-- PERFORMANCE OPTIMIZATION: MATERIALIZED VIEWS & AGGREGATES
+-- ============================================================================
+
+-- Materialized view for investigation statistics (refreshed on-demand)
+-- Pre-computes expensive event/timeline embedding coverage calculations
+CREATE MATERIALIZED VIEW IF NOT EXISTS investigation_stats_mv AS
+SELECT 
+    i.investigation_id,
+    i.title,
+    u.username as owner,
+    i.created_at,
+    COUNT(DISTINCT e.event_id) AS total_events,
+    COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NOT NULL) AS events_with_embeddings,
+    COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NULL) AS events_without_embeddings,
+    ROUND(
+        100.0 * COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NOT NULL) / 
+        NULLIF(COUNT(DISTINCT e.event_id), 0), 
+        2
+    ) AS event_embedding_coverage_percent,
+    COUNT(DISTINCT te.entry_id) AS total_timeline_entries,
+    COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NOT NULL) AS timeline_with_embeddings,
+    COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NULL) AS timeline_without_embeddings,
+    ROUND(
+        100.0 * COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NOT NULL) / 
+        NULLIF(COUNT(DISTINCT te.entry_id), 0), 
+        2
+    ) AS timeline_embedding_coverage_percent
+FROM investigations i
+LEFT JOIN users u ON u.user_id = i.owner_user_id
+LEFT JOIN events e ON e.investigation_id = i.investigation_id
+LEFT JOIN embeddings emb_e ON emb_e.owner_type = 'tool' AND emb_e.owner_id = e.event_id
+LEFT JOIN timeline_entries te ON te.investigation_id = i.investigation_id
+GROUP BY i.investigation_id, i.title, u.username, i.created_at;
+
+-- Index on materialized view for fast lookups
+CREATE UNIQUE INDEX IF NOT EXISTS idx_investigation_stats_mv_id ON investigation_stats_mv(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_investigation_stats_mv_created ON investigation_stats_mv(created_at DESC);
+
+-- Function to refresh investigation stats (call after parsing/embedding jobs)
+CREATE OR REPLACE FUNCTION refresh_investigation_stats()
+RETURNS void AS $$
+BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY investigation_stats_mv;
+END;
+$$ LANGUAGE plpgsql;
+
+-- System-wide aggregate statistics table (updated via trigger)
+-- Avoids expensive COUNT(*) queries on large tables
+CREATE TABLE IF NOT EXISTS system_stats_cache (
+    stat_key TEXT PRIMARY KEY,
+    stat_value BIGINT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Initialize cache with zero values
+INSERT INTO system_stats_cache (stat_key, stat_value) VALUES
+    ('total_events', 0),
+    ('events_with_embeddings', 0),
+    ('total_timeline_entries', 0),
+    ('timeline_with_embeddings', 0),
+    ('total_embeddings', 0),
+    ('total_artifacts', 0),
+    ('total_artifact_bytes', 0),
+    ('jobs_parsing_pending', 0),
+    ('jobs_parsing_running', 0),
+    ('jobs_parsing_completed', 0),
+    ('jobs_parsing_failed', 0),
+    ('jobs_agents_pending', 0),
+    ('jobs_agents_running', 0),
+    ('jobs_agents_completed', 0),
+    ('jobs_agents_failed', 0),
+    ('jobs_embedding_pending', 0),
+    ('jobs_embedding_running', 0),
+    ('jobs_embedding_completed', 0),
+    ('jobs_embedding_failed', 0)
+ON CONFLICT (stat_key) DO NOTHING;
+
+-- Function to update system stats cache (called periodically or on-demand)
+CREATE OR REPLACE FUNCTION update_system_stats_cache()
+RETURNS void AS $$
+BEGIN
+    -- Update event counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM events), updated_at = NOW() WHERE stat_key = 'total_events';
+    UPDATE system_stats_cache SET stat_value = (
+        SELECT COUNT(DISTINCT e.event_id) 
+        FROM events e 
+        INNER JOIN embeddings emb ON emb.owner_type = 'tool' AND emb.owner_id = e.event_id
+    ), updated_at = NOW() WHERE stat_key = 'events_with_embeddings';
+    
+    -- Update timeline counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM timeline_entries), updated_at = NOW() WHERE stat_key = 'total_timeline_entries';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM timeline_entries WHERE embedding_id IS NOT NULL), updated_at = NOW() WHERE stat_key = 'timeline_with_embeddings';
+    
+    -- Update embedding counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM embeddings), updated_at = NOW() WHERE stat_key = 'total_embeddings';
+    
+        -- Update artifact counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM artifacts), updated_at = NOW() WHERE stat_key = 'total_artifacts';
+    UPDATE system_stats_cache SET stat_value = (SELECT COALESCE(SUM(size_bytes), 0) FROM artifacts), updated_at = NOW() WHERE stat_key = 'total_artifact_bytes';
+    
+    -- Update job counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'pending'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_pending';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'running'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_running';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'completed'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_completed';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'failed'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_failed';
+    
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_agents WHERE status = 'pending'), updated_at = NOW() WHERE stat_key = 'jobs_agents_pending';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_agents WHERE status = 'running'), updated_at = NOW() WHERE stat_key = 'jobs_agents_running';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_agents WHERE status = 'completed'), updated_at = NOW() WHERE stat_key = 'jobs_agents_completed';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_agents WHERE status = 'failed'), updated_at = NOW() WHERE stat_key = 'jobs_agents_failed';
+    
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_embedding WHERE status = 'pending'), updated_at = NOW() WHERE stat_key = 'jobs_embedding_pending';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_embedding WHERE status = 'running'), updated_at = NOW() WHERE stat_key = 'jobs_embedding_running';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_embedding WHERE status = 'completed'), updated_at = NOW() WHERE stat_key = 'jobs_embedding_completed';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_embedding WHERE status = 'failed'), updated_at = NOW() WHERE stat_key = 'jobs_embedding_failed';
+END;
+$$ LANGUAGE plpgsql;
+
+-- Composite indexes for faster aggregation queries
+CREATE INDEX IF NOT EXISTS idx_events_investigation_id_only ON events(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_timeline_entries_investigation_id_only ON timeline_entries(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_tool_type_only ON embeddings(owner_type) WHERE owner_type = 'tool';
+
+-- Index for job status aggregations (covers all status values)
+CREATE INDEX IF NOT EXISTS idx_jobs_parsing_status_all ON jobs_parsing(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_agents_status_all ON jobs_agents(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_embedding_status_all ON jobs_embedding(status);
 
 -- ============================================================================
 -- DEFAULT DATA

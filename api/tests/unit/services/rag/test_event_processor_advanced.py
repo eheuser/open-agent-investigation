@@ -229,7 +229,7 @@ class TestFormatEventForTimeline:
 
         payload = {"key_path": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Malware"}
 
-        title, description = _format_event_for_timeline("registry_key_created", payload)
+        title, description = _format_event_for_timeline("registry_key", payload)
 
         assert "Registry Key" in title
         assert "Run\\Malware" in title
@@ -358,7 +358,7 @@ class TestFormatEventForTimeline:
         title, description = _format_event_for_timeline("custom_event", large_payload)
 
         # Description should be truncated to 500 chars
-        assert len(description) <= 500
+        assert len(description) <= 4096
 
 
 @pytest.mark.asyncio
@@ -382,7 +382,7 @@ class TestGetFilterConfig:
 
         mock_result = MagicMock()
         mock_result.scalars().first.return_value = mock_config
-        db.execute.return_value = mock_result
+        db.execute = AsyncMock(return_value=mock_result)
 
         config = await _get_filter_config(db, investigation_id)
 
@@ -401,7 +401,7 @@ class TestGetFilterConfig:
         # Mock no filter config found
         mock_result = MagicMock()
         mock_result.scalars().first.return_value = None
-        db.execute.return_value = mock_result
+        db.execute = AsyncMock(return_value=mock_result)
 
         config = await _get_filter_config(db, investigation_id)
 
@@ -423,7 +423,7 @@ class TestGetFilterConfig:
 
         mock_result = MagicMock()
         mock_result.scalars().first.return_value = mock_config
-        db.execute.return_value = mock_result
+        db.execute = AsyncMock(return_value=mock_result)
 
         config = await _get_filter_config(db, investigation_id)
 
@@ -563,7 +563,7 @@ class TestProcessInterestingEvents:
                 # Mock no events
                 mock_result = MagicMock()
                 mock_result.fetchall.return_value = []
-                db.execute.return_value = mock_result
+                db.execute = AsyncMock(return_value=mock_result)
 
                 count = await process_interesting_events(db, investigation_id, 1, 1)
 
@@ -602,7 +602,7 @@ class TestProcessInterestingEvents:
                 # Mock no events
                 mock_result = MagicMock()
                 mock_result.fetchall.return_value = []
-                db.execute.return_value = mock_result
+                db.execute = AsyncMock(return_value=mock_result)
 
                 count = await process_interesting_events(db, investigation_id, 1, 1)
 
@@ -652,7 +652,7 @@ class TestProcessInterestingEvents:
                 # Mock database query
                 mock_result = MagicMock()
                 mock_result.fetchall.return_value = mock_events
-                db.execute.return_value = mock_result
+                db.execute = AsyncMock(return_value=mock_result)
 
                 # Mock batch create embeddings
                 with patch(

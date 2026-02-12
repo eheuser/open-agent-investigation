@@ -40,15 +40,6 @@ This document outlines planned enhancements and future directions for the projec
 
 ### Expanded Windows Artifacts
 
-**Already Implemented** (via `windows_artifacts_parser.py`):
-- Program Compatibility Assistant (PCA)
-- Scheduled Tasks (legacy .job and modern .xml)
-- SRUM Database (network/resource usage)
-- Windows Search Database (Windows.edb)
-- Bitmap Cache (thumbcache, iconcache)
-- Windows Notifications (wpndatabase.db)
-- CryptNetUrlCache (certificate validation)
-
 **Priority:** Artifacts with existing Python libraries.
 
 - **BAM/DAM** - Background Activity Moderator (Windows 10+ execution via Registry)
@@ -91,6 +82,8 @@ This document outlines planned enhancements and future directions for the projec
 - **ELF Analysis** - pyelftools (Linux binaries)
 - **Mach-O Analysis** - macholib (macOS binaries)
 - **Disassembly** - Capstone integration (cross-platform)
+- **YARA-X** - Scan files with YARA
+- **CAPA** - Analyze executables with CAPA
 
 **Lower Priority:** Advanced analysis requiring external tools.
 
@@ -102,10 +95,11 @@ This document outlines planned enhancements and future directions for the projec
 
 **Priority:** Standard formats with Python support.
 
-- **PCAP/PCAPNG** - Scapy or dpkt (network traffic analysis)
+- **PCAP/PCAPNG** - Scapy or dpkt (network traffic analysis) + YARA-X support
 - **Apache/Nginx Logs** - Line-by-line parsing (access/error logs)
 - **Windows Firewall Logs** - pfirewall.log parsing
 - **DNS Logs** - Query/response analysis
+
 
 ### Forensic Image Support
 
@@ -181,6 +175,7 @@ This document outlines planned enhancements and future directions for the projec
 - **Registry Viewer** - Tree navigation, search, value inspection
 - **MFT Explorer** - File system timeline, path reconstruction
 - **Network Traffic Viewer** - PCAP analysis with filters (future)
+- **Executable/File Viewer** - View detailed analysis results from CAPA, YARA-X and Disassembly (headless Ghidra docker)
 
 ### User Management
 

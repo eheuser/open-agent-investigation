@@ -30,6 +30,7 @@ from .routers import (
     logs,
     playbooks,
     analysis,
+    system,
 )
 from .utils.log_setup import get_logger
 from .services.log_streaming import setup_log_streaming
@@ -71,6 +72,7 @@ app.include_router(reports.router, tags=["reports"])
 app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
 app.include_router(playbooks.router, tags=["playbooks"])
 app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
+app.include_router(system.router, prefix="/api/v1", tags=["system"])
 
 
 @app.get("/health")
@@ -125,32 +127,32 @@ async def startup_event():
 
     No return value. Raises any exception propagated from logging or settings access.
     """
-        # Initialize log streaming before any other logging
+    # Initialize log streaming before any other logging
     setup_log_streaming()
-    
+
     logger.info("Starting Open Agent Investigation API...")
     logger.info(
         f"Database: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'configured'}"
     )
     logger.info(f"JWT Secret: {'configured' if settings.jwt_secret else 'missing'}")
     # Note: Tables are created by bootstrap.sql, not by SQLAlchemy
-    
+
     # Clean up any running/pending jobs from previous service instances
     await cleanup_stale_jobs()
-    
+
     # Start the embedding pool background flusher
     # Wrap get_db generator in a context manager for the pool flusher
     from contextlib import asynccontextmanager
-    
+
     @asynccontextmanager
     async def get_db_session():
         async for db in get_db():
             yield db
             break
-    
+
     await start_pool_flusher(get_db_session)
     logger.info("Embedding pool flusher started")
-    
+
     logger.info("Chat router enabled")
     logger.info("Log streaming enabled")
     logger.info("API ready")
@@ -159,20 +161,20 @@ async def startup_event():
 async def cleanup_stale_jobs():
     """
     Cancel or mark as failed any jobs that are in PENDING or RUNNING state.
-    
+
     This function is called on application startup to handle jobs that may have been
     left in an incomplete state due to service crashes or restarts. It:
-    
+
     * Marks all RUNNING jobs as FAILED with an appropriate error message
     * Marks all PENDING jobs as FAILED with an appropriate error message
     * Sets the finished_at timestamp to the current time
     * Logs the number of jobs cleaned up for both parsing and agent jobs
-    
+
     This prevents jobs from hanging indefinitely and cluttering the job queue.
-    
+
     Returns:
         None
-    
+
     Raises:
         May raise database exceptions if the update operations fail.
     """
@@ -185,95 +187,95 @@ async def cleanup_stale_jobs():
                     select(ParsingJob).where(
                         or_(
                             ParsingJob.status == JobStatus.RUNNING,
-                            ParsingJob.status == JobStatus.PENDING
+                            ParsingJob.status == JobStatus.PENDING,
                         )
                     )
                 )
                 stale_parsing_jobs = parsing_result.scalars().all()
-                
+
                 if stale_parsing_jobs:
                     await db.execute(
                         update(ParsingJob)
                         .where(
                             or_(
                                 ParsingJob.status == JobStatus.RUNNING,
-                                ParsingJob.status == JobStatus.PENDING
+                                ParsingJob.status == JobStatus.PENDING,
                             )
                         )
                         .values(
                             status=JobStatus.FAILED,
                             finished_at=datetime.utcnow(),
-                            error_message="Job cancelled due to service restart"
+                            error_message="Job cancelled due to service restart",
                         )
                     )
                     logger.info(f"Cleaned up {len(stale_parsing_jobs)} stale parsing job(s)")
-                
+
                 # Clean up agent jobs
                 agent_result = await db.execute(
                     select(AgentJob).where(
                         or_(
                             AgentJob.status == JobStatus.RUNNING,
-                            AgentJob.status == JobStatus.PENDING
+                            AgentJob.status == JobStatus.PENDING,
                         )
                     )
                 )
                 stale_agent_jobs = agent_result.scalars().all()
-                
+
                 if stale_agent_jobs:
                     await db.execute(
                         update(AgentJob)
                         .where(
                             or_(
                                 AgentJob.status == JobStatus.RUNNING,
-                                AgentJob.status == JobStatus.PENDING
+                                AgentJob.status == JobStatus.PENDING,
                             )
                         )
                         .values(
                             status=JobStatus.FAILED,
                             finished_at=datetime.utcnow(),
-                            error_message="Job cancelled due to service restart"
+                            error_message="Job cancelled due to service restart",
                         )
                     )
                     logger.info(f"Cleaned up {len(stale_agent_jobs)} stale agent job(s)")
-                
+
                 # Clean up embedding jobs
                 embedding_result = await db.execute(
                     select(EmbeddingJob).where(
                         or_(
                             EmbeddingJob.status == JobStatus.RUNNING,
-                            EmbeddingJob.status == JobStatus.PENDING
+                            EmbeddingJob.status == JobStatus.PENDING,
                         )
                     )
                 )
                 stale_embedding_jobs = embedding_result.scalars().all()
-                
+
                 if stale_embedding_jobs:
                     await db.execute(
                         update(EmbeddingJob)
                         .where(
                             or_(
                                 EmbeddingJob.status == JobStatus.RUNNING,
-                                EmbeddingJob.status == JobStatus.PENDING
+                                EmbeddingJob.status == JobStatus.PENDING,
                             )
                         )
                         .values(
                             status=JobStatus.FAILED,
                             finished_at=datetime.utcnow(),
-                            error_message="Job cancelled due to service restart"
+                            error_message="Job cancelled due to service restart",
                         )
                     )
                     logger.info(f"Cleaned up {len(stale_embedding_jobs)} stale embedding job(s)")
-                
+
                 # Commit the changes
                 await db.commit()
-                
+
                 if not stale_parsing_jobs and not stale_agent_jobs and not stale_embedding_jobs:
                     logger.info("No stale jobs found")
-                    
+
             finally:
                 await db.close()
             break  # Exit after first iteration
-            
+
     except Exception as e:
         logger.error(f"Error cleaning up stale jobs: {e}")
         # Don't raise - we don't want to prevent startup
@@ -285,7 +287,7 @@ async def shutdown_event():
     Performs cleanup actions when the FastAPI application is shutting down. Logs a shutdown message and can be extended to close resources such as database connections or background tasks. Returns nothing.
     """
     logger.info("Shutting down Open Agent Investigation API...")
-    
+
     # Flush any remaining pooled events
     try:
         async for db in get_db():
@@ -298,7 +300,7 @@ async def shutdown_event():
             break
     except Exception as e:
         logger.error(f"Error flushing embedding pool on shutdown: {e}")
-    
+
     # Stop the background flusher
     await stop_pool_flusher()
     logger.info("Embedding pool flusher stopped")

@@ -25,7 +25,7 @@ instance.interceptors.response.use(
     if (error.response?.status === 401) {
       // Don't auto-redirect if this is the initial auth check (useAuth handles it)
       const isAuthCheck = error.config?.url?.includes('/api/v1/auth/me');
-      
+
       if (!isAuthCheck) {
         // Clear token and redirect to login (but not if already on login page)
         localStorage.removeItem('token');

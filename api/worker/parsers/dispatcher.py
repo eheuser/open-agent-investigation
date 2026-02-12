@@ -8,7 +8,7 @@ from app.models.artifact import Artifact
 from app.models.filter_config import FilterConfig
 from app.core.config import settings
 from app.services.rag.filter_engine import FilterEngine
-from app.services.embedding_pool import add_events_to_pool
+from app.services.embedding_batcher import queue_events_for_embedding
 from app.utils.log_setup import get_logger
 import json
 
@@ -187,7 +187,7 @@ async def parse_artifact(
                     WHERE e.artifact_id = :artifact_id
                     AND e.investigation_id = :investigation_id
                     AND emb.id IS NULL
-                    ORDER BY e.event_ts
+                    ORDER BY e.event_ts, e.event_id
                 """
                 ),
                 {
@@ -216,7 +216,7 @@ async def parse_artifact(
                         path = payload.get("path", payload.get("file_path", ""))
                         extension = payload.get("extension", "")
                         is_interesting = filter_engine.is_interesting_mft(path, extension)
-                    elif event_type.startswith("registry_"):
+                    elif event_type in ( "registry_key", "registry_value" ):
                         key_path = payload.get("key_path", payload.get("path", ""))
                         is_interesting = filter_engine.is_interesting_registry(key_path)
                     elif event_type.startswith("prefetch_"):
@@ -225,28 +225,40 @@ async def parse_artifact(
                     elif event_type.startswith("lnk_"):
                         target = payload.get("target_path", payload.get("target", ""))
                         is_interesting = filter_engine.is_interesting_lnk(target)
-                    
+                    elif event_type in (
+                        "cryptnet_cache",
+                        "pca_execution",
+                        "scheduled_task",
+                        "srum_data",
+                        "windows_search",
+                        "notification",
+                        "browser_history",
+                        "registry_amcache",
+                        "registry_userassist",
+                        "registry_bam",
+                        "registry_shellbags_ntuser",
+                        "registry_shimcache"
+
+                    ):
+                        is_interesting = True
+                        
                     if is_interesting:
                         interesting_event_ids.append(event_id)
                 except Exception as e:
                     logger.debug(f"Failed to filter event {event_id}: {e}")
                     continue
             
-            # Add interesting events to pool for batched embedding
+            # Queue events for background batching (thread-safe, works across processes)
             if interesting_event_ids:
-                jobs_created = await add_events_to_pool(
-                    db, investigation_id, user_id, interesting_event_ids
+                queue_events_for_embedding(
+                    investigation_id=investigation_id,
+                    user_id=user_id,
+                    event_ids=interesting_event_ids,
                 )
-                if jobs_created > 0:
-                    logger.debug(
-                        f"Added {len(interesting_event_ids):,} events to pool and flushed "
-                        f"({jobs_created} jobs created)"
-                    )
-                else:
-                    logger.debug(
-                        f"Added {len(interesting_event_ids):,} events to embedding pool "
-                        f"(pooling for larger batch)"
-                    )
+                logger.debug(
+                    f"Queued {len(interesting_event_ids):,} events for embedding "
+                    f"(artifact {artifact_id}, investigation {investigation_id})"
+                )
         except Exception as e:
             logger.warning(f"Event queueing failed for artifact {artifact_id}: {e}")
             # Don't rollback - parsing succeeded, queueing is optional

@@ -1,9 +1,9 @@
 // ui/src/pages/Playbooks.tsx
 import React, { useState, useEffect } from 'react';
-import { 
-  BookOpenIcon, 
-  PlusIcon, 
-  PencilIcon, 
+import {
+  BookOpenIcon,
+  PlusIcon,
+  PencilIcon,
   TrashIcon,
   DocumentDuplicateIcon,
   MagnifyingGlassIcon,
@@ -147,7 +147,7 @@ const Playbooks: React.FC = () => {
   // Filter playbooks based on search query
   const filterPlaybooks = (items: AnyPlaybook[]) => {
     if (!searchQuery.trim()) return items;
-    
+
     const query = searchQuery.toLowerCase();
     return items.filter(
       (p) =>
@@ -173,7 +173,7 @@ const Playbooks: React.FC = () => {
   if (viewMode === 'view' && selectedPlaybook) {
     const handleEditClick = !isBasePlaybook(selectedPlaybook) ? () => handleEdit(selectedPlaybook as Playbook) : undefined;
     const handleCloneClick = isBasePlaybook(selectedPlaybook) ? () => handleClone(selectedPlaybook.name) : undefined;
-    
+
     return (
       <PlaybookViewer
         playbook={selectedPlaybook}
@@ -392,9 +392,8 @@ const PlaybookCard: React.FC<PlaybookCardProps> = ({
   const isEnabled = isBase ? true : (playbook as Playbook).is_enabled;
 
   return (
-    <div className={`bg-white dark:bg-gray-800 border rounded-lg p-4 hover:shadow-lg transition-shadow ${
-      !isEnabled ? 'opacity-60' : ''
-    } ${isBase ? 'border-blue-200 dark:border-blue-800' : 'border-gray-200 dark:border-gray-700'}`}>
+    <div className={`bg-white dark:bg-gray-800 border rounded-lg p-4 hover:shadow-lg transition-shadow ${!isEnabled ? 'opacity-60' : ''
+      } ${isBase ? 'border-blue-200 dark:border-blue-800' : 'border-gray-200 dark:border-gray-700'}`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
@@ -459,11 +458,10 @@ const PlaybookCard: React.FC<PlaybookCardProps> = ({
         {onToggleEnabled && (
           <button
             onClick={onToggleEnabled}
-            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm ${
-              isEnabled
+            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm ${isEnabled
                 ? 'bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50 text-green-700 dark:text-green-300'
                 : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-            }`}
+              }`}
             title={isEnabled ? 'Disable playbook' : 'Enable playbook'}
           >
             {isEnabled ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}

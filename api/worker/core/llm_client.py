@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -19,6 +20,54 @@ from app.utils.log_setup import get_logger
 logger = get_logger(__name__)
 
 DEBUG = False
+
+
+def _strip_thinking_tags(text: str) -> str:
+    """
+    Remove thinking/reasoning tags from LLM output.
+    
+    Handles various thinking tag formats:
+    - <think>...</think>
+    - <thinking>...</thinking>
+    - <thought>...</thought>
+    - <reflection>...</reflection>
+    - <reasoning>...</reasoning>
+    - Malformed closing tags like </think> without opening
+    - Self-closing tags
+    
+    Parameters
+    ----------
+    text : str
+        Raw text potentially containing thinking tags.
+    
+    Returns
+    -------
+    str
+        Cleaned text with thinking tags removed and excess whitespace normalized.
+    """
+    if not text:
+        return text
+    
+    # Remove matched opening/closing tag pairs (case-insensitive, multiline)
+    cleaned = re.sub(
+        r"<(think|thinking|thought|reflection|reasoning)>.*?</\1>",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+    
+    # Remove any remaining orphaned opening or closing tags
+    cleaned = re.sub(
+        r"</?(?:think|thinking|thought|reflection|reasoning)/?>",
+        "",
+        cleaned,
+        flags=re.IGNORECASE
+    )
+    
+    # Normalize excessive newlines (3+ consecutive newlines -> 2)
+    cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned).strip()
+    
+    return cleaned
 
 
 class LLMClient:
@@ -309,9 +358,17 @@ class LLMClient:
                             ]
 
         # Build AssistantMessage
+        # Strip thinking tags from content
+        cleaned_content = None
+        if accumulated_content:
+            cleaned_content = _strip_thinking_tags(accumulated_content)
+            # If cleaning removed everything, set to None
+            if not cleaned_content:
+                cleaned_content = None
+        
         msg_dict = {
             "role": "assistant",
-            "content": accumulated_content if accumulated_content else None,
+            "content": cleaned_content,
         }
 
         if accumulated_tool_calls:

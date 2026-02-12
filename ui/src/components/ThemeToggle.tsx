@@ -13,7 +13,7 @@ const ThemeToggle: React.FC = () => {
   const toggle = () => {
     const root = document.documentElement;
     const newIsDark = !isDark;
-    
+
     if (newIsDark) {
       root.classList.add('dark');
       localStorage.setItem('theme', 'dark');
@@ -21,7 +21,7 @@ const ThemeToggle: React.FC = () => {
       root.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
-    
+
     setIsDark(newIsDark);
   };
 

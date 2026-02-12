@@ -29,7 +29,7 @@ const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isStreaming,
   };
   // Infer message type for legacy messages
   let messageType = message.message_type;
-  
+
   if (!messageType) {
     // Legacy message - infer type from role and metadata
     if (message.role === 'user') {
@@ -52,7 +52,7 @@ const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isStreaming,
       return null;
     }
   }
-  
+
   switch (messageType) {
     case 'question':
       return (

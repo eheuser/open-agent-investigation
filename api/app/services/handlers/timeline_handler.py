@@ -178,7 +178,7 @@ async def handle_timeline_query(
     Raises:
         No exceptions are propagated to callers; all errors are caught, logged, and translated into an error-type dictionary. Transaction rollbacks are attempted on failure.
     """
-    logger.info(f"[TIMELINE_HANDLER] Processing query: {user_query[:100]}")
+    logger.debug(f"[TIMELINE_HANDLER] Processing query: {user_query[:100]}")
 
     try:
         # Get user's active LLM configuration
@@ -275,10 +275,11 @@ async def _execute_timeline_llm_loop(
             iteration += 1
 
             # Call LLM with tools via centralized service
+            # Use None for max_tokens and temperature to respect user's DB configuration
             data = await llm_service.call_llm(
                 messages=messages,
-                max_tokens=2000,
-                temperature=0.1,
+                max_tokens=None,  # Use user's configured default
+                temperature=None,  # Use user's configured temperature
                 tools=TIMELINE_TOOLS,
                 tool_choice="auto",
                 enforce_context_limit=True,
@@ -321,7 +322,7 @@ async def _execute_timeline_llm_loop(
                 # Generate micro-summary
                 summary = _generate_timeline_summary(tools_used)
 
-                logger.info(
+                logger.debug(
                     f"[TIMELINE_HANDLER] Completed in {iteration} iterations with {len(tools_used):,} tools"
                 )
 
@@ -335,7 +336,7 @@ async def _execute_timeline_llm_loop(
                     operation_types.append("update")
                 if any(t["name"] == "delete_timeline_entry" for t in tools_used):
                     operation_types.append("delete")
-                
+
                 operation_type = "/".join(operation_types) if operation_types else "query"
 
                 return {
@@ -364,7 +365,7 @@ async def _execute_timeline_llm_loop(
                 except json.JSONDecodeError:
                     arguments = {}
 
-                logger.info(f"[TIMELINE_HANDLER] Calling tool: {tool_name} with args: {arguments}")
+                logger.debug(f"[TIMELINE_HANDLER] Calling tool: {tool_name} with args: {arguments}")
 
                 # Execute tool with retry - wrap in try/except to ensure transaction stays clean
                 try:
@@ -714,7 +715,7 @@ async def _tool_query_timeline(
                 "data": row[6] or {},
                 "tags": row[7] or [],
             }
-            
+
             # Include full event data if available (from LEFT JOIN)
             if row[1] and row[8]:  # event_id exists and event_type exists
                 entry["event"] = {
@@ -724,7 +725,7 @@ async def _tool_query_timeline(
                     "payload": row[10],
                     "artifact_id": row[11],
                 }
-            
+
             entries.append(entry)
 
         return {

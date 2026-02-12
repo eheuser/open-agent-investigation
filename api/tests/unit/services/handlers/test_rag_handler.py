@@ -351,8 +351,9 @@ class TestPersistRAGToolExecutions:
         # Verify expansion tool
         assert len(added_tools) == 2
         assert added_tools[0].tool_name == "expand_query"
-        assert "3 search terms" in added_tools[0].result_summary
-        assert "lsass.exe" in added_tools[0].result_summary
+        assert "3 search queries" in added_tools[0].result_summary
+        assert added_tools[0].result["total_queries"] == 3
+        assert "formatted_queries" in added_tools[0].result
 
         # Verify retrieval tool
         assert added_tools[1].tool_name == "retrieve_sources"
@@ -382,7 +383,7 @@ class TestExpandQueryWithLLM:
             with patch("app.services.handlers.rag_handler.LLMService") as MockLLMService:
                 mock_service = AsyncMock()
                 mock_service.extract_text_response.return_value = (
-                    "lsass.exe, mimikatz, sam database, credential dumping"
+                    "lsass.exe\nmimikatz\nsam database\ncredential dumping"
                 )
                 MockLLMService.return_value = mock_service
 
@@ -406,7 +407,7 @@ class TestExpandQueryWithLLM:
                 mock_service = AsyncMock()
                 # Return 10 terms
                 mock_service.extract_text_response.return_value = (
-                    "term1, term2, term3, term4, term5, term6, term7, term8, term9, term10"
+                    "term1\nterm2\nterm3\nterm4\nterm5\nterm6\nterm7\nterm8\nterm9\nterm10"
                 )
                 MockLLMService.return_value = mock_service
 
@@ -465,7 +466,7 @@ class TestExpandQueryWithLLM:
         with patch("app.services.handlers.rag_handler.LLMConfig.from_db_config"):
             with patch("app.services.handlers.rag_handler.LLMService") as MockLLMService:
                 mock_service = AsyncMock()
-                mock_service.extract_text_response.return_value = "  term1  ,  term2  ,  term3  "
+                mock_service.extract_text_response.return_value = "  term1  \n  term2  \n  term3  "
                 MockLLMService.return_value = mock_service
 
                 terms = await _expand_query_with_llm("test", mock_config)

@@ -55,6 +55,7 @@ class Artifact(Base):
     sha256: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False, index=True)
     filename: Mapped[str] = mapped_column(Text, nullable=False)
     classification: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     blob: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     upload_ts: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True

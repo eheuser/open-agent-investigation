@@ -235,22 +235,13 @@ async def classify_intent(
         embedding_status = await get_embedding_status(db, investigation_id)
         if not embedding_status["is_complete"]:
             allow_rag = False
-            logger.debug(f"[CHAT_ROUTER] RAG mode disabled - embeddings pending ({embedding_status['total_pending_events']} events)")
-    
+            logger.debug(
+                f"[CHAT_ROUTER] RAG mode disabled - embeddings pending ({embedding_status['total_pending_events']} events)"
+            )
+
     # Fetch chat history if not provided
     if chat_history is None:
         chat_history = await _fetch_recent_chat_history(db, investigation_id, limit=10)
-
-    # Format chat history for prompt
-    if chat_history:
-        history_text = "\n".join(
-            [
-                f"{msg['role'].upper()}: {msg['content'][:200]}{'...' if len(msg['content']) > 200 else ''}"
-                for msg in chat_history[-5:]  # Last 5 messages for context
-            ]
-        )
-    else:
-        history_text = "(No previous conversation)"
 
     # Create LLM service from user config
     llm_service = await LLMService.from_user_config(db, user_id)
@@ -269,10 +260,12 @@ async def classify_intent(
         )
 
         # Call LLM via centralized service
+        # Note: Use None for max_tokens and temperature to respect user's DB configuration
+        # Classification is a short task, so we rely on the model's default behavior
         data = await llm_service.call_llm(
             messages=messages,
-            max_tokens=150,  # Fixed for classification
-            temperature=0.1,  # Low temperature for consistent classification
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
             enforce_context_limit=False,  # Already managed by context manager
         )
 
@@ -445,11 +438,11 @@ async def route_chat_message(
     Raises:
         No exceptions are propagated to the caller; all errors are captured, logged, and yielded as an "error" message with optional diagnostic information.
     """
-    logger.info(f"[CHAT_ROUTER] Routing query: {user_query[:100]}... (mode={router_mode})")
+    logger.debug(f"[CHAT_ROUTER] Routing query: {user_query[:100]}... (mode={router_mode})")
 
     # Step 0: Handle router mode override
     if router_mode == "augmented":
-        logger.info("[CHAT_ROUTER] → Route OVERRIDE: Augmented Chat Handler (user-selected)")
+        logger.debug("[CHAT_ROUTER] → Route OVERRIDE: Augmented Chat Handler (user-selected)")
         # Check if embeddings are configured
         llm_config = await get_active_llm_config(db, user_id)
         if not llm_config or not getattr(llm_config, "embedding_provider", None):
@@ -458,7 +451,7 @@ async def route_chat_message(
                 "message": "Augmented Chat mode requires embedding configuration. Please configure an embedding provider in LLM settings or use 'Auto', 'Agent', or 'Timeline' mode.",
             }
             return
-        
+
         # Check if embeddings are still being generated
         embedding_status = await get_embedding_status(db, investigation_id)
         if not embedding_status["is_complete"]:
@@ -468,20 +461,20 @@ async def route_chat_message(
                 "message": f"Augmented Chat mode is unavailable while embeddings are being generated ({pending_events:,} events pending). Please wait for embedding to complete or use 'Auto', 'Agent', or 'Timeline' mode.",
             }
             return
-        
+
         # The chat handler will persist tool executions after the message is created
         async for chunk in handle_rag_query(db, investigation_id, user_query, user_id):
             yield chunk
         return
     elif router_mode == "agent":
-        logger.info("[CHAT_ROUTER] → Route OVERRIDE: Agent Handler (user-selected)")
+        logger.debug("[CHAT_ROUTER] → Route OVERRIDE: Agent Handler (user-selected)")
         result = await handle_policy_execution(
             db, investigation_id, user_query, user_id, effort=effort
         )
         yield result
         return
     elif router_mode == "timeline":
-        logger.info("[CHAT_ROUTER] → Route OVERRIDE: Timeline Handler (user-selected)")
+        logger.debug("[CHAT_ROUTER] → Route OVERRIDE: Timeline Handler (user-selected)")
         result = await handle_timeline_query(db, investigation_id, user_query, user_id)
         if result.get("success"):
             message = result.get("message", "")
@@ -489,9 +482,9 @@ async def route_chat_message(
             if summary:
                 message += f"\n\n---\n📊 {summary}"
             yield {
-                "type": "answer_chunk", 
-                "content": message, 
-                "chunk_id": 0, 
+                "type": "answer_chunk",
+                "content": message,
+                "chunk_id": 0,
                 "is_final": True,
                 "metadata": {
                     "routing_metadata": result.get("routing_metadata"),
@@ -504,12 +497,12 @@ async def route_chat_message(
     # Step 1: Fetch chat history for context (if not provided)
     if chat_history is None:
         chat_history = await _fetch_recent_chat_history(db, investigation_id, limit=10)
-        logger.info(f"[CHAT_ROUTER] Fetched {len(chat_history):,} messages for context")
+        logger.debug(f"[CHAT_ROUTER] Fetched {len(chat_history):,} messages for context")
 
     # Step 2: Expand query with context (for short/curt queries)
     expanded_query = await expand_query(db, investigation_id, user_query, user_id)
     if expanded_query != user_query:
-        logger.info(
+        logger.debug(
             f"[CHAT_ROUTER] Query expanded: {user_query[:50]}... -> {expanded_query[:100]}..."
         )
         yield {
@@ -528,7 +521,9 @@ async def route_chat_message(
         embedding_status = await get_embedding_status(db, investigation_id)
         if not embedding_status["is_complete"]:
             allow_rag = False
-            logger.debug(f"[CHAT_ROUTER] RAG mode disabled for auto classification - embeddings pending ({embedding_status['total_pending_events']} events)")
+            logger.debug(
+                f"[CHAT_ROUTER] RAG mode disabled for auto classification - embeddings pending ({embedding_status['total_pending_events']} events)"
+            )
 
     # Step 3: Classify intent with conversation context
     classification = await classify_intent(
@@ -539,7 +534,7 @@ async def route_chat_message(
         chat_history=chat_history,
         allow_rag=allow_rag,
     )
-    logger.info(
+    logger.debug(
         f"[CHAT_ROUTER] Classified as: {classification.intent.value} (confidence: {classification.confidence})"
     )
 
@@ -556,7 +551,7 @@ async def route_chat_message(
     # Step 4: Route to appropriate handler (EXPLICIT ROUTING)
     try:
         if classification.intent == IntentType.INSERT_EVENTS:
-            logger.info(f"[CHAT_ROUTER] → Route 1: Event Insertion Handler")
+            logger.debug(f"[CHAT_ROUTER] → Route 1: Event Insertion Handler")
             result = await handle_event_insertion(db, investigation_id, processing_query, user_id)
 
             if result.get("success"):
@@ -570,7 +565,7 @@ async def route_chat_message(
                 yield result
 
         elif classification.intent == IntentType.TIMELINE_QUERY:
-            logger.info(f"[CHAT_ROUTER] → Route 2: Timeline Handler")
+            logger.debug(f"[CHAT_ROUTER] → Route 2: Timeline Handler")
             result = await handle_timeline_query(db, investigation_id, processing_query, user_id)
 
             # Send result as answer with summary
@@ -583,9 +578,9 @@ async def route_chat_message(
                     message += f"\n\n---\n📊 {summary}"
 
                 yield {
-                    "type": "answer_chunk", 
-                    "content": message, 
-                    "chunk_id": 0, 
+                    "type": "answer_chunk",
+                    "content": message,
+                    "chunk_id": 0,
                     "is_final": True,
                     "metadata": {
                         "routing_metadata": result.get("routing_metadata"),
@@ -595,7 +590,7 @@ async def route_chat_message(
                 yield result
 
         elif classification.intent == IntentType.GENERAL_CHAT:
-            logger.info(f"[CHAT_ROUTER] → Route 3: General Chat Handler")
+            logger.debug(f"[CHAT_ROUTER] → Route 3: General Chat Handler")
             result = await handle_general_chat(db, investigation_id, processing_query, user_id)
 
             if result.get("success"):
@@ -612,14 +607,14 @@ async def route_chat_message(
                 yield result
 
         elif classification.intent == IntentType.EXECUTE_POLICY:
-            logger.info(f"[CHAT_ROUTER] → Route 4: Agent Handler (effort={effort})")
+            logger.debug(f"[CHAT_ROUTER] → Route 4: Agent Handler (effort={effort})")
             result = await handle_policy_execution(
                 db, investigation_id, processing_query, user_id, effort=effort
             )
-            
+
             # Check if parsing is in progress
             if result.get("type") == "parsing_in_progress":
-                logger.info(f"[CHAT_ROUTER] Parsing in progress, delaying agent execution")
+                logger.debug(f"[CHAT_ROUTER] Parsing in progress, delaying agent execution")
                 yield {
                     "type": "answer_chunk",
                     "content": result.get("message", "Waiting for parsing to complete..."),
@@ -674,7 +669,7 @@ async def route_chat_message(
             "details": classification.reasoning,
         }
 
-    logger.info(f"[CHAT_ROUTER] Routing complete")
+    logger.debug(f"[CHAT_ROUTER] Routing complete")
 
 
 async def handle_clarification_response(

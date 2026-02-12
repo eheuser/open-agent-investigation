@@ -182,7 +182,11 @@ Dashboard → Click "Create Investigation"
 
 **Features**:
 - Ask natural language questions
-- **Embedding progress indicator** - Shows background embedding status with event count
+- **Embedding progress indicator** - Shows background embedding status with layered progress bar:
+  - **Solid blue bar**: Completed embeddings
+  - **Animated striped bar**: Events currently being processed (visible activity)
+  - **Event counts**: Shows completed, processing, and total events
+  - Updates every 1 second for responsive feedback
 - **Mode selector** - Choose routing mode (Auto/Agent/Timeline/Augmented Chat)
   - Augmented Chat mode automatically disabled while embeddings are being generated
 - **Effort selector** - Choose investigation depth (Quick/Standard/Thorough)
@@ -394,7 +398,37 @@ Authentication event analysis:
 - Automatic parsing job creation
 - Supported formats: `.evtx`, `.pf`, `.lnk`, `$MFT`, registry hives
 
-### 7. Playbook Manager
+### 7. Server Status Modal
+
+**Location**: Header icon (chart icon)
+
+**Features**:
+- On-demand system statistics (click to load, not automatic)
+- Investigation statistics with embedding coverage
+- Artifact storage and classification breakdown
+- Event and embedding statistics
+- Job queue status (parsing, agents, embedding)
+- Database health check
+- Manual refresh button
+
+**Performance Optimizations**:
+- **Materialized Views**: Investigation statistics pre-computed for fast loading
+- **Aggregate Cache**: System-wide stats cached to avoid expensive COUNT(*) queries
+- **Statistical Sampling**: GROUP BY queries use TABLESAMPLE for 25-50x speedup
+- **Lazy Loading**: Statistics only fetched when modal is opened
+- **Pagination**: Artifact list paginated (20 per page) to reduce payload size
+
+**Typical Load Time**:
+- **Before Optimization**: 5-10 seconds (multiple complex JOINs + GROUP BY)
+- **After Optimization**: <200ms (cached aggregates + materialized view + sampling)
+
+**Cache Refresh**:
+- Statistics are cached in the database and refreshed:
+  - Automatically after parsing/embedding jobs complete
+  - Manually via refresh button in modal
+  - Periodically via background scheduler (recommended: every 5 minutes)
+
+### 8. Playbook Manager
 
 **Location**: `/playbooks`
 
@@ -441,7 +475,7 @@ playbook: |
 5. (Optional) Enable/disable per investigation via API
 ```
 
-### 8. Settings Panel
+### 9. Settings Panel
 
 **Location**: `/settings`
 
@@ -1154,7 +1188,11 @@ Replicate agent queries to the Events tab for manual exploration:
 - `search_events_by_content` - Replicates search text and event_type
 
 **RAG Tool Executions** (Augmented Chat mode):
-- `expand_query` - Shows LLM-generated search terms with full expansion details
+- `expand_query` - Shows LLM-generated search queries with formatted display:
+  - Numbered list (1, 2, 3...)
+  - Color-coded type badges (Question, Keywords, Artifact, Technique)
+  - Clean card layout with readable text (not JSON blobs)
+  - Fallback to simple list for legacy format
 - `retrieve_sources` - Shows all retrieved sources with scores, owner types, and full text (expandable)
 
 ### Dynamic Field Suggestions
@@ -1310,10 +1348,16 @@ To enable Augmented Chat mode, configure embedding provider in Settings:
 RAG results are displayed as expandable tool execution cards:
 
 **Query Expansion**:
-- Collapsed: "Query Expansion - Complete"
-- Expanded: Shows all generated search terms with count
-- Arguments displayed as key-value pairs (blue labels)
-- Results shown in structured format
+- Collapsed: "Query Expansion - Complete" with summary
+- Expanded: Shows formatted search queries with:
+  - Numbered list (1, 2, 3...)
+  - Color-coded type badges:
+    - **Question** (purple) - Rephrased questions from different angles
+    - **Keywords** (blue) - Keyword phrases and artifact combinations
+    - **Artifact** (green) - Specific log types and Event IDs
+    - **Technique** (orange) - MITRE ATT&CK aligned searches
+  - Clean card layout (not JSON arrays)
+  - Total query count displayed
 
 **Retrieved Sources (X results)**:
 - Collapsed: "Retrieved Sources (50 results) - Complete"

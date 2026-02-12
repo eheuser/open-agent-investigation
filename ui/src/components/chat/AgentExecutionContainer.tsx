@@ -49,17 +49,17 @@ const AgentExecutionContainer: React.FC<AgentExecutionContainerProps> = ({
       if (t.status !== 'completed' || !t.result || typeof t.result !== 'object') {
         return false;
       }
-      
+
       // register_timeline_entry: check for entry_id AND is_duplicate === false
       if (t.tool_name === 'register_timeline_entry') {
         return t.result.entry_id && t.result.is_duplicate === false;
       }
-      
+
       // register_finding: always counts if it has entry_id (no is_duplicate field)
       if (t.tool_name === 'register_finding') {
         return !!t.result.entry_id;
       }
-      
+
       return false;
     }
   ).length;
@@ -86,7 +86,7 @@ const AgentExecutionContainer: React.FC<AgentExecutionContainerProps> = ({
         return total + eventSources.length;
       }
     }
-    
+
     // Fallback: Parse result_summary for "Found X events" pattern
     if (t.result_summary && typeof t.result_summary === 'string') {
       const match = t.result_summary.match(/Found (\d+) events?/i);
@@ -94,7 +94,7 @@ const AgentExecutionContainer: React.FC<AgentExecutionContainerProps> = ({
         return total + parseInt(match[1], 10);
       }
     }
-    
+
     return total;
   }, 0);
 
@@ -110,11 +110,10 @@ const AgentExecutionContainer: React.FC<AgentExecutionContainerProps> = ({
     <div className="my-4">
       {/* Collapsible header - matches event parsing banner style */}
       <div
-        className={`border rounded-lg transition-all ${
-          isStreaming
+        className={`border rounded-lg transition-all ${isStreaming
             ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20'
             : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'
-        }`}
+          }`}
       >
         <div
           className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
@@ -132,16 +131,14 @@ const AgentExecutionContainer: React.FC<AgentExecutionContainerProps> = ({
 
             {/* Agent icon */}
             <div className="flex-shrink-0">
-              <div className={`p-2 rounded-full ${
-                isStreaming
+              <div className={`p-2 rounded-full ${isStreaming
                   ? 'bg-blue-100 dark:bg-blue-800'
                   : 'bg-gray-200 dark:bg-gray-700'
-              }`}>
-                <CpuChipIcon className={`w-5 h-5 ${
-                  isStreaming
+                }`}>
+                <CpuChipIcon className={`w-5 h-5 ${isStreaming
                     ? 'text-blue-600 dark:text-blue-400'
                     : 'text-gray-600 dark:text-gray-400'
-                }`} />
+                  }`} />
               </div>
             </div>
 

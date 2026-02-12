@@ -3,9 +3,9 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
-import { 
-  ArrowLeftIcon, 
-  PencilIcon, 
+import {
+  ArrowLeftIcon,
+  PencilIcon,
   DocumentDuplicateIcon,
   CalendarIcon,
 } from '@heroicons/react/24/outline';

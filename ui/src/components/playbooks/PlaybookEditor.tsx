@@ -26,23 +26,23 @@ const PlaybookEditor: React.FC<PlaybookEditorProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     if (!name.trim()) {
       setError('Name is required');
       return;
     }
-    
+
     if (!description.trim()) {
       setError('Description is required');
       return;
     }
-    
+
     if (!playbook.trim()) {
       setError('Playbook content is required');
       return;
     }
-    
+
     try {
       setSaving(true);
       setError(null);

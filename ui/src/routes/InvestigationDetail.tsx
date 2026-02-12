@@ -8,12 +8,12 @@ import LogsViewer from '../components/LogsViewer';
 import JobsModal from '../components/JobsModal';
 import UploadModal from '../components/chat/UploadModal';
 import AnalysisViewer from '../components/analysis/AnalysisViewer';
-import EmbeddingProgressBar from '../components/EmbeddingProgressBar';
+
 import { useInvestigation } from '../hooks/useInvestigations';
 import { useJobs } from '../contexts/JobsContext';
 import { WebSocketProvider } from '../contexts/WebSocketContext';
 import { useInvestigationCounts } from '../hooks/useInvestigationCounts';
-import { 
+import {
   ClockIcon,
   DocumentTextIcon,
   ChatBubbleLeftRightIcon,
@@ -53,15 +53,15 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
       }
     },
   });
-  
+
   // Handle query replication from chat
   const handleReplicateQuery = useCallback((queryParams: any) => {
     // Set the replicated query
     setReplicatedQuery(queryParams);
-    
+
     // Switch to Events tab
     setActiveTab('events');
-    
+
     // Trigger flash animation
     setEventsTabFlash(true);
     setTimeout(() => setEventsTabFlash(false), 1000);
@@ -94,7 +94,7 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingOver(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
       setDroppedFiles(files);
@@ -125,7 +125,7 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
   }
 
   return (
-    <div 
+    <div
       className="flex flex-col h-full relative"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -162,166 +162,153 @@ const InvestigationDetailContent: React.FC<{ investigationId: string }> = ({ inv
         {/* Tabs - aligned with sidebar header */}
         <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 relative" style={{ height: '52px' }}>
           <div className="px-3 flex items-center gap-0 h-full">
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'chat'
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <ChatBubbleLeftRightIcon className="w-4 h-4" />
-            Chat
-            {activeTab === 'chat' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
-            )}
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('events')}
-            className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'events'
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <TableCellsIcon className="w-4 h-4" />
-            Events
-            {eventCount > 0 && (
-              <span className={`inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none rounded-full transition-all duration-500 ${
-                eventsTabFlash
-                  ? 'text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-400 dark:ring-blue-500'
-                  : 'text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-700'
-              }`}>
-                {eventCount.toLocaleString()}
-              </span>
-            )}
-            {activeTab === 'events' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
-            )}
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('analysis')}
-            className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'analysis'
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <BeakerIcon className="w-4 h-4" />
-            Analysis
-            {activeTab === 'analysis' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
-            )}
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveTab('timeline');
-              // If timeline needs refresh, do it when switching to the tab
-              if (timelineNeedsRefresh) {
-                setTimelineKey(prev => prev + 1);
-                setTimelineNeedsRefresh(false);
-              }
-            }}
-            className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'timeline'
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <ClockIcon className="w-4 h-4" />
-            Timeline
-            {timelineEntryCount > 0 && (
-              <span className={`inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none rounded-full transition-all duration-300 ${
-                timelineCountChanged 
-                  ? 'text-white bg-green-500 dark:bg-green-600 scale-110 animate-pulse' 
-                  : 'text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-700'
-              }`}>
-                {timelineEntryCount.toLocaleString()}
-              </span>
-            )}
-            {activeTab === 'timeline' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
-            )}
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('report')}
-            className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'report'
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <DocumentChartBarIcon className="w-4 h-4" />
-            Report
-            {activeTab === 'report' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
-            )}
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('logs')}
-            className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'logs'
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <RectangleStackIcon className="w-4 h-4" />
-            Logs
-            {activeTab === 'logs' && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
-            )}
-          </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${activeTab === 'chat'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                }`}
+            >
+              <ChatBubbleLeftRightIcon className="w-4 h-4" />
+              Chat
+              {activeTab === 'chat' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('events')}
+              className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${activeTab === 'events'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                }`}
+            >
+              <TableCellsIcon className="w-4 h-4" />
+              Events
+              {eventCount > 0 && (
+                <span className={`inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none rounded-full transition-all duration-500 ${eventsTabFlash
+                    ? 'text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-400 dark:ring-blue-500'
+                    : 'text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-700'
+                  }`}>
+                  {eventCount.toLocaleString()}
+                </span>
+              )}
+              {activeTab === 'events' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('analysis')}
+              className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${activeTab === 'analysis'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                }`}
+            >
+              <BeakerIcon className="w-4 h-4" />
+              Analysis
+              {activeTab === 'analysis' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('timeline');
+                // If timeline needs refresh, do it when switching to the tab
+                if (timelineNeedsRefresh) {
+                  setTimelineKey(prev => prev + 1);
+                  setTimelineNeedsRefresh(false);
+                }
+              }}
+              className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${activeTab === 'timeline'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                }`}
+            >
+              <ClockIcon className="w-4 h-4" />
+              Timeline
+              {timelineEntryCount > 0 && (
+                <span className={`inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none rounded-full transition-all duration-300 ${timelineCountChanged
+                    ? 'text-white bg-green-500 dark:bg-green-600 scale-110 animate-pulse'
+                    : 'text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-700'
+                  }`}>
+                  {timelineEntryCount.toLocaleString()}
+                </span>
+              )}
+              {activeTab === 'timeline' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('report')}
+              className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${activeTab === 'report'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                }`}
+            >
+              <DocumentChartBarIcon className="w-4 h-4" />
+              Report
+              {activeTab === 'report' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`flex items-center gap-2 px-4 text-sm font-medium transition-colors relative ${activeTab === 'logs'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                }`}
+            >
+              <RectangleStackIcon className="w-4 h-4" />
+              Logs
+              {activeTab === 'logs' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" style={{ bottom: '-1px' }} />
+              )}
+            </button>
           </div>
         </div>
 
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden bg-white dark:bg-gray-900">
           {/* ChatBox key is stable for this investigation but changes when navigating to different investigation */}
-          <div className={`h-full flex flex-col ${activeTab === 'chat' ? '' : 'hidden'}`}>
-            <div className="px-4 pt-4">
-              <EmbeddingProgressBar investigationId={investigationId} />
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <SimplifiedChatBox 
-                key={chatKey}
-                investigationId={investigationId} 
-                onGraphUpdated={() => {
-                  // Increment key to force TimelineViewer to refresh
-                  setTimelineKey(prev => prev + 1);
-                }}
-                onReplicateQuery={handleReplicateQuery}
-              />
-            </div>
+          <div className={`h-full ${activeTab === 'chat' ? '' : 'hidden'}`}>
+            <SimplifiedChatBox
+              key={chatKey}
+              investigationId={investigationId}
+              onGraphUpdated={() => {
+                // Increment key to force TimelineViewer to refresh
+                setTimelineKey(prev => prev + 1);
+              }}
+              onReplicateQuery={handleReplicateQuery}
+            />
           </div>
-          
+
           <div className={`h-full ${activeTab === 'events' ? '' : 'hidden'}`}>
-            <EventsViewer 
+            <EventsViewer
               investigationId={investigationId}
               replicatedQuery={replicatedQuery}
               onQueryApplied={() => setReplicatedQuery(null)}
             />
           </div>
-          
+
           <div className={`h-full ${activeTab === 'analysis' ? '' : 'hidden'}`}>
             <AnalysisViewer investigationId={investigationId} />
           </div>
-          
+
           <div className={`h-full bg-white dark:bg-gray-900 ${activeTab === 'timeline' ? '' : 'hidden'}`}>
-            <TimelineViewer 
-              key={timelineKey} 
+            <TimelineViewer
+              key={timelineKey}
               investigationId={investigationId}
             />
           </div>
-          
+
           <div className={`h-full ${activeTab === 'report' ? '' : 'hidden'}`}>
             <ReportGenerator investigationId={investigationId} />
           </div>
-          
+
           <div className={`h-full ${activeTab === 'logs' ? '' : 'hidden'}`}>
             <LogsViewer investigationId={investigationId} />
           </div>

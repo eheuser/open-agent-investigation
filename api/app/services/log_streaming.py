@@ -25,10 +25,10 @@ class StreamingLogHandler(logging.Handler):
         """
         try:
             log_entry = self.format_log_entry(record)
-            
+
             # Add to circular buffer (thread-safe via deque)
             self.log_buffer.append(log_entry)
-            
+
             # Send to all connected clients (non-blocking)
             # We use asyncio.create_task to avoid blocking the logging thread
             for queue in self.queues[:]:  # Create a copy to avoid modification during iteration
@@ -39,7 +39,7 @@ class StreamingLogHandler(logging.Handler):
                 except Exception:
                     # Queue might be closed or client disconnected
                     pass
-                    
+
         except Exception:
             # Don't let logging errors crash the application
             self.handleError(record)
@@ -76,10 +76,10 @@ class StreamingLogHandler(logging.Handler):
     def get_recent_logs(self, limit: Optional[int] = None) -> List[Dict]:
         """
         Get recent logs from the circular buffer.
-        
+
         Args:
             limit: Maximum number of logs to return. If None, returns all buffered logs.
-        
+
         Returns:
             List of log entries, most recent last.
         """
@@ -95,8 +95,7 @@ streaming_handler = StreamingLogHandler(max_logs=1000)
 
 # Configure the handler with a formatter
 formatter = logging.Formatter(
-    "%(asctime)s %(levelname)s %(name)s %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    "%(asctime)s %(levelname)s %(name)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
 )
 streaming_handler.setFormatter(formatter)
 
@@ -107,7 +106,7 @@ def setup_log_streaming():
     This should be called during application startup.
     """
     root_logger = logging.getLogger()
-    
+
     # Check if already added
     if streaming_handler not in root_logger.handlers:
         root_logger.addHandler(streaming_handler)

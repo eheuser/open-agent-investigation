@@ -21,10 +21,10 @@ from app.core.config import settings
 from app.crud import investigation as inv_crud
 from app.crud.investigation_choice import create_investigation_choices_bulk
 from app.schemas.investigation_choice import InvestigationChoiceCreate
+from app.services.embedding_batcher import initialize_event_queue, start_embedding_batcher, stop_embedding_batcher
 from worker.parsers import parse_artifact
 from worker.agents.assistant_agent import AssistantAgent
 from worker.core.llm_client import LLMClient
-from worker.embedding_worker import claim_embedding_job, process_embedding_job
 
 from app.utils.log_setup import get_logger
 from app.utils.http_log_handler import setup_worker_logging
@@ -33,7 +33,8 @@ logger = get_logger(__name__)
 
 MAIN_WORKER_ID = uuid_pkg.uuid4()
 
-NUM_WORKERS = min(mp.cpu_count(), 4)
+# Get number of workers from environment (default: min of CPU count or 4)
+NUM_WORKERS = settings.num_workers or min(mp.cpu_count(), 4)
 
 
 # Database engine for main process
@@ -320,21 +321,6 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
             user_id=user_id,
         )
 
-        # Mark job as completed using raw SQL to avoid session issues
-        await db.execute(
-            text(
-                """
-                UPDATE jobs_parsing 
-                SET status = 'completed', 
-                    finished_at = NOW(), 
-                    error_message = NULL
-                WHERE job_id = :job_id
-            """
-            ),
-            {"job_id": job_id},
-        )
-        await db.commit()
-
         logger.debug(f"Job {job_id} completed successfully. " f"Inserted {events_inserted} events.")
 
         # Notify WebSocket clients that new events were inserted (silent refresh)
@@ -350,9 +336,83 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
                 },
             )
 
-        # Check if there are any more pending/running parsing jobs for this investigation
-        # If not, clear the parsing lock
-        await check_and_clear_parsing_lock(db, investigation_id)
+        # Mark job as completed
+        await db.execute(
+            text(
+                """
+                UPDATE jobs_parsing 
+                SET status = 'completed', 
+                    finished_at = NOW(), 
+                    error_message = NULL
+                WHERE job_id = :job_id
+            """
+            ),
+            {"job_id": job_id},
+        )
+        await db.commit()
+        
+        # Check if this was the last job using an atomic query
+        # This avoids deadlocks from SELECT FOR UPDATE
+        result = await db.execute(
+            text(
+                """
+                SELECT COUNT(*) 
+                FROM jobs_parsing 
+                WHERE investigation_id = :investigation_id 
+                AND status IN ('pending', 'running')
+                """
+            ),
+            {"investigation_id": str(investigation_id)},
+        )
+        remaining_count = result.scalar()
+        
+        if remaining_count == 0:
+            # All parsing complete - try to acquire investigation lock and flush pool
+            # Use advisory lock to prevent race conditions (non-blocking)
+            # Convert UUID to integer using hash (advisory locks require bigint)
+            lock_key = hash(investigation_id) % (2**63 - 1)  # Ensure positive bigint
+            
+            result = await db.execute(
+                text("SELECT pg_try_advisory_xact_lock(:lock_key)"),
+                {"lock_key": lock_key}
+            )
+            got_lock = result.scalar()
+            
+            if got_lock:
+                # We got the lock - check parsing_locked flag and flush pool
+                result = await db.execute(
+                    select(Investigation)
+                    .where(Investigation.investigation_id == investigation_id)
+                )
+                investigation = result.scalar_one_or_none()
+                
+                if investigation and investigation.parsing_locked:
+                    # We are the first worker to reach this point - clear lock
+                    await inv_crud.set_parsing_lock(db, investigation_id, locked=False)
+                    logger.info(f"All parsing complete for investigation {investigation_id}")
+                    
+                    # Note: Embedding jobs are created immediately during parsing (no pool flush needed)
+                    
+                    # Notify WebSocket clients that parsing is complete
+                    await notify_websocket_clients(
+                        investigation_id=investigation_id,
+                        message={
+                            "type": "parsing_complete",
+                            "investigation_id": str(investigation_id),
+                        },
+                    )
+                else:
+                    logger.debug(
+                        f"Investigation {investigation_id} parsing lock already cleared by another worker"
+                    )
+            else:
+                logger.debug(
+                    f"Another worker is handling completion for investigation {investigation_id}"
+                )
+        else:
+            logger.debug(
+                f"Investigation {investigation_id} still has {remaining_count:,} parsing job(s) pending/running"
+            )
 
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
@@ -735,7 +795,7 @@ async def recover_stale_jobs(db: AsyncSession):
         logger.debug("No stale jobs found")
 
 
-def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_index: int):
+def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_index: int, event_queue: mp.Queue):
     """
     Worker process entry point that runs in its own subprocess.
 
@@ -767,6 +827,10 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
         process_name=f"Worker-{worker_index}"
     )
 
+    # Set event queue for this worker process
+    from app.services.embedding_batcher import set_event_queue
+    set_event_queue(event_queue)
+
     # Configure logging for this process
     logger.info(f"Worker process {worker_index} starting with ID {worker_id}")
 
@@ -787,9 +851,9 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
         expire_on_commit=False,
     )
 
-    # Track when we last checked for stale jobs
+    # Track when we last checked for stale jobs and refreshed caches
     last_stale_check = datetime.utcnow()
-    stale_check_interval_minutes = 5
+    stale_check_interval_minutes = 10  # Increased from 5 to reduce cache refresh frequency
 
     async def async_worker_loop():
         """
@@ -867,23 +931,8 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
                             await db.commit()
                         continue
 
-                    # Try to claim an embedding job (lowest priority)
-                    embedding_job = await claim_embedding_job(db, worker_id)
-
-                    if embedding_job:
-                        # Process embedding job
-                        try:
-                            await process_embedding_job(db, embedding_job)
-                        except asyncio.CancelledError:
-                            logger.info(f"Worker {worker_index} embedding job cancelled")
-                            # Mark job as failed
-                            embedding_job.status = JobStatus.FAILED
-                            embedding_job.finished_at = datetime.utcnow()
-                            embedding_job.error_message = "Job cancelled by user"
-                            await db.commit()
-                        continue
-
                     # No jobs available, wait before polling again
+                    # Note: Embedding jobs are handled by dedicated embedding-worker service
                     await asyncio.sleep(1.0)
 
                     # Periodically check for stale jobs (every 5 minutes)
@@ -892,8 +941,19 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
                     if (now - last_stale_check).total_seconds() > (
                         stale_check_interval_minutes * 60
                     ):
-                        logger.debug(f"Worker {worker_index} running periodic stale job check...")
+                        logger.debug(f"Worker {worker_index} running periodic maintenance...")
                         await recover_stale_jobs(db)
+                        
+                        # Also refresh investigation stats materialized view (only if worker 0)
+                        # This prevents multiple workers from refreshing simultaneously
+                        if worker_index == 0:
+                            try:
+                                logger.debug(f"Worker {worker_index} refreshing investigation stats cache...")
+                                await db.execute(text("SELECT refresh_investigation_stats()"))
+                                await db.commit()
+                            except Exception as cache_error:
+                                logger.warning(f"Failed to refresh investigation stats: {cache_error}")
+                        
                         last_stale_check = now
 
             except Exception as e:
@@ -1067,20 +1127,43 @@ def main():
     """
     logger.info(f"Worker manager starting with {NUM_WORKERS} worker processes...")
 
-    # Recover stale jobs on startup
-    async def recover():
+    # Initialize event queue (must be done before starting workers)
+    initialize_event_queue()
+    logger.info("Embedding event queue initialized")
+    
+    # Start embedding batcher process
+    start_embedding_batcher()
+    logger.info("Embedding batcher process started")
+
+    # Recover stale jobs and initialize caches on startup
+    async def recover_and_init_caches():
         """
-        Recover any stale jobs in the database.
+        Recover any stale jobs in the database and initialize statistics caches.
 
         This coroutine opens an asynchronous session with the configured database engine and invokes
         `recover_stale_jobs` to detect jobs that were claimed but not completed (e.g., due to worker crashes or timeouts) and resets them so they can be reassigned.
+        
+        It also initializes the system statistics caches (materialized view and aggregate cache)
+        to ensure the status modal has data available immediately.
 
         The function does not take any parameters and returns `None`. It should be called during application startup or shutdown to ensure the job queue remains consistent.
         """
         async with AsyncSessionLocal() as db:
+            # Recover stale jobs
             await recover_stale_jobs(db)
+            
+            # Initialize statistics caches
+            try:
+                logger.info("Initializing statistics caches on startup...")
+                await db.execute(text("SELECT refresh_investigation_stats()"))
+                await db.execute(text("SELECT update_system_stats_cache()"))
+                await db.commit()
+                logger.info("Statistics caches initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize statistics caches: {e}")
+                # Don't fail startup if cache initialization fails
 
-    asyncio.run(recover())
+    asyncio.run(recover_and_init_caches())
 
     # Create control queues for each worker
     control_queues = [mp.Queue() for _ in range(NUM_WORKERS)]
@@ -1089,12 +1172,16 @@ def main():
     workers = []
     worker_ids = []
 
+    # Get the event queue for passing to workers
+    from app.services.embedding_batcher import get_event_queue
+    event_queue = get_event_queue()
+    
     for i in range(NUM_WORKERS):
         worker_id = uuid_pkg.uuid4()
         worker_ids.append(worker_id)
 
         p = mp.Process(
-            target=worker_process, args=(worker_id, control_queues[i], i), name=f"Worker-{i}"
+            target=worker_process, args=(worker_id, control_queues[i], i, event_queue), name=f"Worker-{i}"
         )
         p.start()
         workers.append(p)
@@ -1152,6 +1239,9 @@ def main():
         for worker_id in worker_ids:
             asyncio.run(cleanup_worker_jobs(worker_id))
 
+        # Stop embedding batcher
+        stop_embedding_batcher()
+        
         # Dispose engine
         asyncio.run(engine.dispose())
 
@@ -1177,7 +1267,7 @@ def main():
 
                     new_worker = mp.Process(
                         target=worker_process,
-                        args=(worker_id, control_queues[i], i),
+                        args=(worker_id, control_queues[i], i, event_queue),
                         name=f"Worker-{i}",
                     )
                     new_worker.start()
@@ -1188,6 +1278,8 @@ def main():
             time.sleep(5)
 
     except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received, stopping batcher...")
+        stop_embedding_batcher()
         signal_handler(signal.SIGINT, None)
 
 

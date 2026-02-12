@@ -27,11 +27,11 @@ const Investigations: React.FC = () => {
     fetch();
   }, []);
 
-    return (
+  return (
     <div className="dark:text-white">
       <h2 className="text-2xl mb-4">Investigations</h2>
       <div className="mb-4 flex">
-                <input
+        <input
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder="New investigation title"

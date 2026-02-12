@@ -115,6 +115,8 @@ async def test_playbook_cascade_delete_on_user(db_session: AsyncSession, test_us
 @pytest.mark.asyncio
 async def test_update_playbook(db_session: AsyncSession, test_user: User):
     """Test updating a playbook."""
+    import asyncio
+    
     playbook = Playbook(
         user_id=test_user.user_id,
         name="test_playbook",
@@ -128,6 +130,10 @@ async def test_update_playbook(db_session: AsyncSession, test_user: User):
     await db_session.refresh(playbook)
     
     original_created_at = playbook.created_at
+    original_updated_at = playbook.updated_at
+    
+    # Sleep briefly to ensure timestamp difference
+    await asyncio.sleep(0.01)
     
     # Update playbook
     playbook.description = "Updated description"  # type: ignore
@@ -139,7 +145,7 @@ async def test_update_playbook(db_session: AsyncSession, test_user: User):
     assert playbook.description == "Updated description"
     assert playbook.is_enabled == False  # type: ignore
     assert playbook.created_at == original_created_at
-    assert playbook.updated_at > original_created_at
+    assert playbook.updated_at > original_updated_at
 
 
 @pytest.mark.asyncio

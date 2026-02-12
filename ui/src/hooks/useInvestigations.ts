@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  getInvestigations, 
+import {
+  getInvestigations,
   getInvestigation,
   createInvestigation as createInvestigationAPI,
   updateInvestigation as updateInvestigationAPI,
@@ -46,7 +46,7 @@ export const useInvestigations = () => {
   const updateInvestigation = useCallback(async (id: string, data: InvestigationUpdate) => {
     try {
       const updated = await updateInvestigationAPI(id, data);
-      setInvestigations(prev => 
+      setInvestigations(prev =>
         prev.map(inv => inv.investigation_id === id ? updated : inv)
       );
       return updated;
@@ -91,7 +91,7 @@ export const useInvestigation = (id: string | undefined) => {
 
   const loadInvestigation = useCallback(async () => {
     if (!id) return;
-    
+
     setIsLoading(true);
     setError(null);
     try {

@@ -54,3 +54,8 @@ prefetch2es==2.2.2
 LnkParse3==1.5.2
 olefile==0.47  # Jump Lists (OLE compound files)
 libesedb-python==20240420  # ESE databases (SRUM, Windows Search, Legacy Edge)
+
+# Archive Extraction
+py7zr==0.21.*  # 7z archive support
+zipfile-deflate64==0.2.*  # Extended ZIP compression support (Deflate64, LZMA, PPMd, etc.)
+# RAR extraction uses system 'unar' command (installed via apt-get install unar)

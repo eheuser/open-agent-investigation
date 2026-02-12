@@ -15,6 +15,74 @@ from app.utils.log_setup import get_logger
 logger = get_logger(__name__)
 
 
+def _classify_query_type(query: str) -> str:
+    """
+    Classify a query into a type based on its structure.
+
+    Args:
+        query: The search query text
+
+    Returns:
+        Query type: 'question', 'keyword_phrase', 'artifact_specific', or 'technique'
+    """
+    query_lower = query.lower()
+
+    # Check for question indicators
+    question_words = [
+        "what",
+        "which",
+        "where",
+        "when",
+        "who",
+        "how",
+        "why",
+        "did",
+        "was",
+        "were",
+        "is",
+        "are",
+    ]
+    if any(query_lower.startswith(word) for word in question_words) or query.endswith("?"):
+        return "question"
+
+    # Check for artifact-specific indicators (Event IDs, file extensions, registry paths)
+    artifact_indicators = [
+        "event id",
+        "event",
+        "registry",
+        "hklm",
+        "hkcu",
+        ".exe",
+        ".dll",
+        ".sys",
+        "prefetch",
+        "mft",
+        "evtx",
+    ]
+    if any(indicator in query_lower for indicator in artifact_indicators):
+        return "artifact_specific"
+
+    # Check for technique indicators (MITRE ATT&CK style)
+    technique_indicators = [
+        "execution",
+        "persistence",
+        "privilege escalation",
+        "defense evasion",
+        "credential access",
+        "discovery",
+        "lateral movement",
+        "collection",
+        "exfiltration",
+        "impact",
+        "initial access",
+    ]
+    if any(technique in query_lower for technique in technique_indicators):
+        return "technique"
+
+    # Default to keyword phrase
+    return "keyword_phrase"
+
+
 async def _expand_query_with_llm(
     user_query: str,
     llm_config: Any,
@@ -44,27 +112,38 @@ async def _expand_query_with_llm(
     config = LLMConfig.from_db_config(llm_config)
     llm_service = LLMService(config)
 
-    # Build expansion prompt
-    expansion_prompt = f"""You are a digital forensics expert. Generate 5-7 specific search terms that would help find relevant evidence for this query in Windows forensic artifacts (EVTX logs, registry, MFT, prefetch, etc.).
+    # Build expansion prompt with richer output format
+    expansion_prompt = f"""You are a digital forensics expert. Generate 5-7 diverse search queries that would help find relevant evidence for this investigation question in Windows forensic artifacts.
 
-User Query: {user_query}
+User Question: {user_query}
 
-Generate specific terms like:
-- Process names (e.g., lsass.exe, powershell.exe)
-- File paths (e.g., C:\\Windows\\System32\\)
-- Registry keys (e.g., HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run)
-- Event IDs (e.g., 4624, 4688)
-- Attack techniques (e.g., credential dumping, lateral movement)
-- Tool names (e.g., mimikatz, psexec)
+Generate a variety of search approaches:
+1. **Full questions** - Rephrased versions of the original question from different angles
+   Example: "What processes were spawned by PowerShell?" → "Which child processes did powershell.exe create?"
 
-Respond with ONLY a comma-separated list of terms, no explanations."""
+2. **Keyword phrases** - Specific artifact combinations
+   Example: "credential access" → "lsass.exe process access mimikatz"
+
+3. **Artifact-specific queries** - Targeted searches for specific log types
+   Example: "logon events" → "Event ID 4624 network logon type 3"
+
+4. **Attack technique queries** - MITRE ATT&CK aligned searches
+   Example: "lateral movement" → "PsExec service installation remote execution"
+
+5. **Tool and indicator queries** - Known malware/tool signatures
+   Example: "suspicious PowerShell" → "powershell.exe encoded command bypass execution policy"
+
+**IMPORTANT**: Each query should be a complete, standalone search that could match different types of evidence. Mix short keyword phrases with longer natural language questions.
+
+Respond with ONE query per line, no numbering, no explanations. Generate 5-7 diverse queries."""
 
     try:
         # Call LLM via centralized service
+        # Use None for max_tokens and temperature to respect user's DB configuration
         data = await llm_service.call_llm(
             messages=[{"role": "user", "content": expansion_prompt}],
-            max_tokens=4096,
-            temperature=0.3,  # Lower temp for focused expansion
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
             enforce_context_limit=False,
         )
 
@@ -74,9 +153,22 @@ Respond with ONLY a comma-separated list of terms, no explanations."""
         if not expanded_text:
             return []
 
-        # Parse comma-separated terms
-        terms = [term.strip() for term in expanded_text.split(",") if term.strip()]
-        return terms[:7]  # Limit to 7 terms max
+        # Parse newline-separated queries, clean up any numbering or bullets
+        lines = expanded_text.strip().split("\n")
+        queries = []
+        for line in lines:
+            # Remove common prefixes like "1.", "- ", "* ", etc.
+            cleaned = line.strip()
+            # Remove leading numbers and punctuation
+            import re
+
+            cleaned = re.sub(r"^\d+[\.\)]\s*", "", cleaned)
+            cleaned = re.sub(r"^[-*•]\s*", "", cleaned)
+
+            if cleaned:
+                queries.append(cleaned)
+
+        return queries[:7]  # Limit to 7 queries max
 
     except Exception as e:
         logger.warning(f"Query expansion error: {e}")
@@ -205,7 +297,9 @@ async def handle_rag_query(
 
         # Get embedding max context length
         embedding_max_context_val = getattr(llm_config, "embedding_max_context_length", None)
-        embedding_max_context_length = int(embedding_max_context_val) if embedding_max_context_val else 8192
+        embedding_max_context_length = (
+            int(embedding_max_context_val) if embedding_max_context_val else 8192
+        )
 
         # Get reranker model (optional, falls back to embedding model)
         reranker_model_name_val = getattr(llm_config, "reranker_model_name", None)
@@ -215,11 +309,15 @@ async def handle_rag_query(
 
         # Get reranker max context length
         reranker_max_context_val = getattr(llm_config, "reranker_max_context_length", None)
-        reranker_max_context_length = int(reranker_max_context_val) if reranker_max_context_val else 8192
+        reranker_max_context_length = (
+            int(reranker_max_context_val) if reranker_max_context_val else 8192
+        )
 
         # Get concurrent calls flag
         allow_concurrent_val = getattr(llm_config, "allow_concurrent_embedding_calls", None)
-        allow_concurrent_embedding_calls = bool(allow_concurrent_val) if allow_concurrent_val is not None else False
+        allow_concurrent_embedding_calls = (
+            bool(allow_concurrent_val) if allow_concurrent_val is not None else False
+        )
 
         # Step 1: Use LLM to expand query with contextual search terms
         logger.debug(f"Expanding query: {user_query[:100]}")
@@ -267,21 +365,27 @@ async def handle_rag_query(
             query_k = 30
         elif len(query_vecs) > 5:
             query_k = 40
-        
+
         try:
             for i, query_vec in enumerate(query_vecs):
-                query_text = all_queries[i][:50]
-                logger.debug(f"Searching with query {i+1}/{len(query_vecs):,}: {query_text}...")
+                query_text = all_queries[i]
+                query_preview = query_text[:50]
+                logger.debug(f"Searching with query {i+1}/{len(query_vecs):,}: {query_preview}...")
 
+                # Use hybrid BM25 + vector search for all queries
                 chunks = await retriever.retrieve(
                     query_vec=query_vec,
                     investigation_id=str(investigation_id),
                     owner_types=["chat", "timeline", "note", "tool"],
                     k=query_k,
+                    query_text=query_text,  # Enable hybrid search
+                    bm25_weight=0.3,  # 30% BM25, 70% vector similarity
                 )
                 all_chunks.extend(chunks)
 
-            logger.debug(f"Retrieved {len(all_chunks):,} total chunks from {len(query_vecs):,} queries")
+            logger.debug(
+                f"Retrieved {len(all_chunks):,} total chunks from {len(query_vecs):,} queries"
+            )
         except Exception as retrieval_error:
             logger.error(f"Retrieval error: {retrieval_error}", exc_info=True)
             # Rollback the transaction to clean up state
@@ -302,38 +406,44 @@ async def handle_rag_query(
         if reranker_model_name_val and reranker_model_name != embedding_model_name:
             try:
                 logger.debug(f"Reranking {len(chunks):,} chunks with model: {reranker_model_name}")
-                
+
                 # Prepare documents for reranking
                 documents = [chunk.text for chunk in chunks]
-                
+
                 # Call reranker
                 reranked_results = await embedder.rerank(
                     query=user_query,
                     documents=documents,
                     top_k=50,  # Final top-k after reranking
                 )
-                
+
                 # Map reranked results back to chunks
                 reranked_chunks = []
                 for result in reranked_results:
                     idx = result.get("index", result.get("document_index", 0))
                     score = result.get("score", result.get("relevance_score", 0.0))
-                    
+
                     # Update chunk with new reranker score
                     chunk = chunks[idx]
                     chunk.score = score
                     reranked_chunks.append(chunk)
-                
+
                 chunks = reranked_chunks
-                logger.debug(f"After reranking: {len(chunks):,} chunks (using {reranker_model_name})")
+                logger.debug(
+                    f"After reranking: {len(chunks):,} chunks (using {reranker_model_name})"
+                )
             except Exception as rerank_error:
-                logger.warning(f"Reranking failed, falling back to vector similarity: {rerank_error}")
+                logger.warning(
+                    f"Reranking failed, falling back to vector similarity: {rerank_error}"
+                )
                 # Fall back to original deduplication/ranking
                 chunks = _deduplicate_and_rerank(all_chunks, top_k=50)
         else:
             # No reranker configured, use vector similarity only
             chunks = chunks[:50]  # Take top 50 from deduplicated results
-            logger.debug(f"No reranker configured, using vector similarity only: {len(chunks):,} chunks")
+            logger.debug(
+                f"No reranker configured, using vector similarity only: {len(chunks):,} chunks"
+            )
 
         # Build context from chunks
         context_parts = []
@@ -366,13 +476,14 @@ async def handle_rag_query(
 
         # Call LLM with context
         try:
+            # Use None for max_tokens and temperature to respect user's DB configuration
             data = await llm_service.call_llm(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prepared_query},
                 ],
-                max_tokens=4096,
-                temperature=0.7,
+                max_tokens=None,  # Use user's configured default
+                temperature=None,  # Use user's configured temperature
                 enforce_context_limit=True,  # Enforce limit (context manager already trimmed if needed)
             )
 
@@ -411,8 +522,8 @@ async def handle_rag_query(
                 chunk_dict["event_data"] = chunk.event_data
                 events_with_data += 1
             chunks_data.append(chunk_dict)
-        
-        logger.info(f"Serialized {len(chunks_data)} chunks, {events_with_data} with event_data")
+
+        logger.debug(f"Serialized {len(chunks_data)} chunks, {events_with_data} with event_data")
 
         # Build event_sequence placeholders (actual tool executions will be persisted later)
         event_sequence = []
@@ -563,13 +674,25 @@ async def persist_rag_tool_executions(
         # Create query expansion tool execution
         if expanded_terms:
             current_tool += 1
+
+            # Format expanded terms as a numbered list for better readability
+            formatted_terms = []
+            for i, term in enumerate(expanded_terms, 1):
+                formatted_terms.append(
+                    {"number": i, "query": term, "type": _classify_query_type(term)}
+                )
+
             expansion_tool = ToolExecution(
                 chat_message_id=message_id,
                 tool_name="expand_query",
                 display_name="Query Expansion",
                 arguments={},
-                result={"expanded_terms": expanded_terms},
-                result_summary=f"Generated {len(expanded_terms):,} search terms: {', '.join(expanded_terms[:3])}{'...' if len(expanded_terms) > 3 else ''}",
+                result={
+                    "expanded_terms": expanded_terms,  # Keep original for compatibility
+                    "formatted_queries": formatted_terms,  # New formatted version
+                    "total_queries": len(expanded_terms),
+                },
+                result_summary=f"Generated {len(expanded_terms):,} search queries from original question",
                 status="completed",
                 execution_number=current_tool,
                 max_tools=total_tools,
@@ -610,7 +733,9 @@ async def persist_rag_tool_executions(
                             "text_preview": chunk["text"][:200]
                             + ("..." if len(chunk["text"]) > 200 else ""),
                             "text_full": chunk["text"],
-                            "event": chunk.get("event_data"),  # Include full event object if available
+                            "event": chunk.get(
+                                "event_data"
+                            ),  # Include full event object if available
                         }
                         for i, chunk in enumerate(chunks_data)
                     ]
@@ -625,7 +750,9 @@ async def persist_rag_tool_executions(
             await db.flush()
             execution_ids.append(sources_tool.execution_id)
 
-        logger.debug(f"Persisted {len(execution_ids):,} RAG tool executions for message {message_id}")
+        logger.debug(
+            f"Persisted {len(execution_ids):,} RAG tool executions for message {message_id}"
+        )
         return execution_ids
 
     except Exception as e:

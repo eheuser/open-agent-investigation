@@ -16,7 +16,7 @@ const EmptyState: React.FC = () => {
         <p className="text-gray-600 dark:text-gray-400 text-sm mb-6">
           Ask the forensic assistant questions about your evidence to begin analysis.
         </p>
-        
+
         {/* Upload Instructions */}
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-left">
           <div className="flex items-start gap-3">
@@ -31,7 +31,7 @@ const EmptyState: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         {/* Example Questions */}
         <div className="mt-6 text-left">
           <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">

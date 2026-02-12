@@ -29,11 +29,11 @@ const ConfigurationErrorModal: React.FC<ConfigurationErrorModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-black bg-opacity-50"
         onClick={onClose}
       />
-      
+
       {/* Modal */}
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
         <div className="flex items-start gap-4">

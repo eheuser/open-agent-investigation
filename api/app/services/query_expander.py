@@ -61,7 +61,7 @@ async def expand_query(
     """
     Expand a short user query by adding relevant contextual information.
 
-    If the supplied query already contains sufficient detail (more than 30 words) or matches a known simple command, the function returns the original query unchanged. Otherwise it gathers recent chat history, a summary of the knowledge-graph state, and investigation metadata, builds an expansion prompt, and invokes the configured LLM for the user to produce a richer query.
+    If the supplied query already contains sufficient detail (more than 30 words) or matches a known simple command, the function returns the original query unchanged. Otherwise it gathers recent chat history, a summary of the timeline state, and investigation metadata, builds an expansion prompt, and invokes the configured LLM for the user to produce a richer query.
 
     Args:
         db: An active asynchronous SQLAlchemy session used to fetch context data.
@@ -120,10 +120,11 @@ async def expand_query(
             return user_query
 
         # Call LLM via centralized service
+        # Use None for max_tokens and temperature to respect user's DB configuration
         data = await llm_service.call_llm(
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,  # Limit expansion length
-            temperature=0.3,  # Low temperature for consistent expansion
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
             enforce_context_limit=False,
         )
 

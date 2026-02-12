@@ -204,10 +204,11 @@ Respond with ONLY the JSON array, no other text."""
 
     try:
         # Call LLM via centralized service
+        # Use None for max_tokens and temperature to respect user's DB configuration
         data = await llm_service.call_llm(
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1000,
-            temperature=0.1,
+            max_tokens=None,  # Use user's configured default
+            temperature=None,  # Use user's configured temperature
             enforce_context_limit=False,
         )
 

@@ -7,10 +7,10 @@ interface MutationConfirmationProps {
   isLoading: boolean;
 }
 
-const MutationConfirmation: React.FC<MutationConfirmationProps> = ({ 
-  preview, 
-  onConfirm, 
-  isLoading 
+const MutationConfirmation: React.FC<MutationConfirmationProps> = ({
+  preview,
+  onConfirm,
+  isLoading
 }) => {
   return (
     <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/10 animate-pulse-slow">

@@ -57,9 +57,9 @@ function App() {
                       {/* Left sidebar - collapsible */}
                       <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
 
-                                                                                                                                                  {/* Central content area */}
+                      {/* Central content area */}
                       <section className="flex-1 overflow-hidden">
-                                                <Routes>
+                        <Routes>
                           <Route path="/" element={<Dashboard />} />
                           <Route
                             path="/investigation/:id"

@@ -227,7 +227,7 @@ class FilterEngine:
                     timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
             except Exception:
                 pass
-        
+
         # Check if event matches configured channel + event_id
         is_interesting_event = False
         channels = evtx_config.get("channels", [])
@@ -242,9 +242,12 @@ class FilterEngine:
             return (False, timestamp)
 
         # Carve out for null IP events
-        if event_dict.get("event_data.IpAddress", "") == "-" or event_dict.get("event_data.IpAddress", "") == "127.0.0.1":
+        if (
+            event_dict.get("event_data.IpAddress", "") == "-"
+            or event_dict.get("event_data.IpAddress", "") == "127.0.0.1"
+        ):
             return (False, timestamp)
-        
+
         # TODO This is slow
         if evtx_config.get("lol_bins", False):
             for v in event_dict.values():
