@@ -371,7 +371,7 @@ def _format_event_for_timeline(event_type: str, payload: Dict[str, Any]) -> tupl
     elif event_type.startswith("mft_"):
         return _format_mft_event(payload)
 
-    elif event_type.startswith("registry_"):
+    elif event_type in ( "registry_key", "registry_value" ):
         return _format_registry_event(payload)
 
     elif event_type.startswith("prefetch_"):
@@ -852,7 +852,7 @@ async def process_interesting_events(
                     path = payload.get("path", payload.get("file_path", ""))
                     extension = payload.get("extension", "")
                     is_interesting = filter_engine.is_interesting_mft(path, extension)
-                elif event_type.startswith("registry_"):
+                elif event_type in ( "registry_key", "registry_value" ):
                     key_path = payload.get("key_path", payload.get("path", ""))
                     is_interesting = filter_engine.is_interesting_registry(key_path)
                 elif event_type.startswith("prefetch_"):
@@ -861,16 +861,23 @@ async def process_interesting_events(
                 elif event_type.startswith("lnk_"):
                     target = payload.get("target_path", payload.get("target", ""))
                     is_interesting = filter_engine.is_interesting_lnk(target)
-                # Low value and noisy
-                #elif event_type in (
-                #    "cryptnet_cache",
-                #    "pca_execution",
-                #    "scheduled_task",
-                #    "srum_data",
-                #    "windows_search",
-                #    "notification",
-                #):
-                #    is_interesting = True
+                elif event_type in (
+                    "cryptnet_cache",
+                    "pca_execution",
+                    "scheduled_task",
+                    "srum_data",
+                    "windows_search",
+                    "notification",
+                    "browser_history",
+                    "registry_amcache",
+                    "registry_userassist",
+                    "registry_bam",
+                    "registry_shellbags_ntuser",
+                    "registry_shimcache"
+
+                ):
+                    is_interesting = True
+                
                 if is_interesting:
                     interesting_events.append((event_id, event_type, payload))
             except Exception as e:

@@ -158,8 +158,8 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({ message, toolExec
               {/* Show timeline-specific message or result summary */}
               {isTimelineTool && timelineMessage ? (
                 <div className={`text-xs mt-0.5 font-medium truncate ${isDuplicate
-                    ? 'text-amber-700 dark:text-amber-300'
-                    : 'text-green-700 dark:text-green-300'
+                  ? 'text-amber-700 dark:text-amber-300'
+                  : 'text-green-700 dark:text-green-300'
                   }`}>
                   {timelineMessage}
                 </div>
@@ -276,190 +276,257 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({ message, toolExec
                   </button>
                 </div>
 
-                {/* Check if result contains events array (agent tools) */}
-                {/* Handle both direct result.events and nested result.result.events */}
-                {typeof result === 'object' && (
-                  (result.events && Array.isArray(result.events)) ||
-                  (result.result?.events && Array.isArray(result.result.events))
-                ) ? (
-                  (() => {
-                    // Handle both direct and nested result structures
-                    const events = result.events || result.result?.events || [];
-                    const count = result.count || result.result?.count || events.length;
-
-                    return (
+                {/* Check if this is query expansion result */}
+                {typeof result === 'object' && (result.formatted_queries || result.expanded_terms) ? (
+                  <div className="space-y-2">
+                    {result.formatted_queries && Array.isArray(result.formatted_queries) ? (
+                      /* New formatted display */
                       <div className="space-y-2">
                         <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                          {count} event{count !== 1 ? 's' : ''} found
+                          Generated {result.total_queries || result.formatted_queries.length} search queries
                         </div>
-                        {events.map((event: any, idx: number) => (
-                          <EventCard key={`event-${idx}`} event={event} isQueryResult={true} />
-                        ))}
-                      </div>
-                    );
-                  })()
-                ) : /* Check if result contains entries array (analysis module results) */
-                  typeof result === 'object' && result.entries && Array.isArray(result.entries) ? (
-                    (() => {
-                      const entries = result.entries;
-                      const total = result.total || entries.length;
-                      const page = result.page || 1;
-                      const totalPages = result.total_pages || 1;
+                        {result.formatted_queries.map((item: any, idx: number) => {
+                          const typeColors: Record<string, string> = {
+                            'question': 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
+                            'keyword_phrase': 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
+                            'artifact_specific': 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
+                            'technique': 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300',
+                          };
+                          const typeLabels: Record<string, string> = {
+                            'question': 'Question',
+                            'keyword_phrase': 'Keywords',
+                            'artifact_specific': 'Artifact',
+                            'technique': 'Technique',
+                          };
+                          const colorClass = typeColors[item.type] || 'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-300';
+                          const typeLabel = typeLabels[item.type] || 'Query';
 
-                      return (
-                        <div className="space-y-2">
-                          <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                            {total} entr{total !== 1 ? 'ies' : 'y'} found (page {page}/{totalPages})
-                          </div>
-                          {entries.map((entry: any, idx: number) => {
-                            // Analysis module entries have an event_id field that links to the full event
-                            // We need to convert them to event format for EventCard
-                            if (entry.event_id) {
-                              // Create a pseudo-event from the entry
-                              const pseudoEvent = {
-                                event_id: entry.event_id,
-                                event_type: entry.event_type || 'analysis_entry',
-                                timestamp: entry.timestamp || entry.last_modified || entry.last_visit_time || entry.created,
-                                artifact_id: entry.artifact_id,
-                                payload: entry,
-                              };
-                              return <EventCard key={`entry-${idx}`} event={pseudoEvent} isQueryResult={true} />;
-                            }
-
-                            // Fallback: render as simple card
-                            return (
-                              <div key={`entry-${idx}`} className="bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-800 p-3">
-                                <div className="text-sm text-gray-700 dark:text-gray-300">
-                                  {JSON.stringify(entry, null, 2)}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()
-                  ) : /* Check if result contains RAG sources */
-                    typeof result === 'object' && result.sources && Array.isArray(result.sources) ? (
-                      <div className="space-y-2">
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                          {result.sources.length} source{result.sources.length !== 1 ? 's' : ''} retrieved
-                        </div>
-                        {result.sources.map((source: any, idx: number) => {
-                          // RAG sources contain:
-                          // - owner_type: 'tool' (for events), 'timeline', 'chat', etc.
-                          // - owner_id: event_id for tool-type sources
-                          // - text_preview: Short preview text
-                          // - text_full: Full formatted text
-                          // - event: Full event object (for tool-type sources)
-                          // - score: Similarity score
-
-                          const isEventSource = source.owner_type === 'tool';
-                          const eventId = isEventSource ? source.owner_id : null;
-
-                          // Check if we have full event data
-                          const hasEventData = source.event &&
-                            typeof source.event === 'object' &&
-                            source.event !== null &&
-                            (source.event.event_id || source.event.event_type);
-
-                          // Log first source to debug
-                          if (idx === 0) {
-                            console.log('First RAG source:', {
-                              has_event: !!source.event,
-                              event_type: typeof source.event,
-                              event_value: source.event,
-                              hasEventData
-                            });
-                          }
-
-                          // If we have full event data, use EventCard
-                          if (hasEventData) {
-                            return (
-                              <div key={`source-${idx}`} className="space-y-1">
-                                {/* Score header */}
-                                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 px-1">
-                                  <span className="font-medium">#{source.index || idx + 1}</span>
-                                  {source.score !== undefined && (
-                                    <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 font-medium">
-                                      Score: {source.score.toFixed(3)}
-                                    </span>
-                                  )}
-                                </div>
-                                {/* Event card */}
-                                <EventCard event={source.event} isQueryResult={true} />
-                              </div>
-                            );
-                          }
-
-                          // Fallback: Render as a simple source card
                           return (
-                            <div key={`source-${idx}`} className="bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-800 p-3">
-                              {/* Header with badges */}
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                                    #{source.index || idx + 1}
-                                  </span>
-                                  <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                                    {source.owner_type}
-                                  </span>
-                                  {isEventSource && eventId && (
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                                      Event #{eventId}
+                            <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                              <div className="flex items-start gap-3">
+                                <span className="text-xs font-bold text-gray-400 dark:text-gray-500 flex-shrink-0 w-6">
+                                  {item.number}.
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${colorClass}`}>
+                                      {typeLabel}
                                     </span>
-                                  )}
-                                </div>
-                                {source.score !== undefined && (
-                                  <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 font-medium">
-                                    Score: {source.score.toFixed(3)}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Preview text */}
-                              <div className="text-sm text-gray-700 dark:text-gray-300">
-                                {source.text_preview || source.text_full?.substring(0, 200) || 'No preview available'}
-                              </div>
-
-                              {/* Show full details - either event data or raw text */}
-                              {source.text_full && source.text_full.length > (source.text_preview?.length || 0) && (
-                                <details className="mt-2">
-                                  <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer hover:underline">
-                                    ▶ Show full details
-                                  </summary>
-                                  <div className="mt-2 text-xs bg-gray-50 dark:bg-gray-900 p-3 rounded max-h-96 overflow-y-auto">
-                                    <pre className="font-mono whitespace-pre-wrap break-all text-gray-600 dark:text-gray-400 text-xs leading-relaxed">
-                                      {source.text_full}
-                                    </pre>
                                   </div>
-                                </details>
-                              )}
+                                  <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                                    {item.query}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
                       </div>
-                    ) : typeof result === 'object' && !Array.isArray(result) && Object.keys(result).length <= 10 ? (
-                      /* Simple object result - use key-value display */
-                      <div className="bg-white dark:bg-gray-900 rounded p-3 space-y-1.5">
-                        {Object.entries(result).map(([key, value]) => (
-                          <div key={key} className="flex items-start gap-2 text-xs">
-                            <span className="font-medium text-green-600 dark:text-green-400 min-w-[120px] flex-shrink-0">
-                              {key}:
-                            </span>
-                            <span className="text-gray-800 dark:text-gray-200 font-mono break-all">
-                              {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
-                            </span>
+                    ) : (
+                      /* Fallback for old format (just expanded_terms array) */
+                      <div className="space-y-2">
+                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                          Generated {result.expanded_terms.length} search queries
+                        </div>
+                        {result.expanded_terms.map((term: string, idx: number) => (
+                          <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                            <div className="flex items-start gap-3">
+                              <span className="text-xs font-bold text-gray-400 dark:text-gray-500 flex-shrink-0 w-6">
+                                {idx + 1}.
+                              </span>
+                              <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                                {term}
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      /* Fallback to JSON display for complex results */
-                      <div className="bg-white dark:bg-gray-900 rounded p-2 text-xs font-mono overflow-x-auto max-h-96">
-                        <pre className="text-gray-800 dark:text-gray-200">
-                          {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-                        </pre>
-                      </div>
                     )}
+                  </div>
+                ) : /* Check if result contains events array (agent tools) */
+                  /* Handle both direct result.events and nested result.result.events */
+                  typeof result === 'object' && (
+                    (result.events && Array.isArray(result.events)) ||
+                    (result.result?.events && Array.isArray(result.result.events))
+                  ) ? (
+                    (() => {
+                      // Handle both direct and nested result structures
+                      const events = result.events || result.result?.events || [];
+                      const count = result.count || result.result?.count || events.length;
+
+                      return (
+                        <div className="space-y-2">
+                          <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                            {count} event{count !== 1 ? 's' : ''} found
+                          </div>
+                          {events.map((event: any, idx: number) => (
+                            <EventCard key={`event-${idx}`} event={event} isQueryResult={true} />
+                          ))}
+                        </div>
+                      );
+                    })()
+                  ) : /* Check if result contains entries array (analysis module results) */
+                    typeof result === 'object' && result.entries && Array.isArray(result.entries) ? (
+                      (() => {
+                        const entries = result.entries;
+                        const total = result.total || entries.length;
+                        const page = result.page || 1;
+                        const totalPages = result.total_pages || 1;
+
+                        return (
+                          <div className="space-y-2">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                              {total} entr{total !== 1 ? 'ies' : 'y'} found (page {page}/{totalPages})
+                            </div>
+                            {entries.map((entry: any, idx: number) => {
+                              // Analysis module entries have an event_id field that links to the full event
+                              // We need to convert them to event format for EventCard
+                              if (entry.event_id) {
+                                // Create a pseudo-event from the entry
+                                const pseudoEvent = {
+                                  event_id: entry.event_id,
+                                  event_type: entry.event_type || 'analysis_entry',
+                                  timestamp: entry.timestamp || entry.last_modified || entry.last_visit_time || entry.created,
+                                  artifact_id: entry.artifact_id,
+                                  payload: entry,
+                                };
+                                return <EventCard key={`entry-${idx}`} event={pseudoEvent} isQueryResult={true} />;
+                              }
+
+                              // Fallback: render as simple card
+                              return (
+                                <div key={`entry-${idx}`} className="bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-800 p-3">
+                                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                                    {JSON.stringify(entry, null, 2)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()
+                    ) : /* Check if result contains RAG sources */
+                      typeof result === 'object' && result.sources && Array.isArray(result.sources) ? (
+                        <div className="space-y-2">
+                          <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                            {result.sources.length} source{result.sources.length !== 1 ? 's' : ''} retrieved
+                          </div>
+                          {result.sources.map((source: any, idx: number) => {
+                            // RAG sources contain:
+                            // - owner_type: 'tool' (for events), 'timeline', 'chat', etc.
+                            // - owner_id: event_id for tool-type sources
+                            // - text_preview: Short preview text
+                            // - text_full: Full formatted text
+                            // - event: Full event object (for tool-type sources)
+                            // - score: Similarity score
+
+                            const isEventSource = source.owner_type === 'tool';
+                            const eventId = isEventSource ? source.owner_id : null;
+
+                            // Check if we have full event data
+                            const hasEventData = source.event &&
+                              typeof source.event === 'object' &&
+                              source.event !== null &&
+                              (source.event.event_id || source.event.event_type);
+
+                            // Log first source to debug
+                            if (idx === 0) {
+                              console.log('First RAG source:', {
+                                has_event: !!source.event,
+                                event_type: typeof source.event,
+                                event_value: source.event,
+                                hasEventData
+                              });
+                            }
+
+                            // If we have full event data, use EventCard
+                            if (hasEventData) {
+                              return (
+                                <div key={`source-${idx}`} className="space-y-1">
+                                  {/* Score header */}
+                                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 px-1">
+                                    <span className="font-medium">#{source.index || idx + 1}</span>
+                                    {source.score !== undefined && (
+                                      <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 font-medium">
+                                        Score: {source.score.toFixed(3)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {/* Event card */}
+                                  <EventCard event={source.event} isQueryResult={true} />
+                                </div>
+                              );
+                            }
+
+                            // Fallback: Render as a simple source card
+                            return (
+                              <div key={`source-${idx}`} className="bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-800 p-3">
+                                {/* Header with badges */}
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                      #{source.index || idx + 1}
+                                    </span>
+                                    <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                                      {source.owner_type}
+                                    </span>
+                                    {isEventSource && eventId && (
+                                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                                        Event #{eventId}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {source.score !== undefined && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 font-medium">
+                                      Score: {source.score.toFixed(3)}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Preview text */}
+                                <div className="text-sm text-gray-700 dark:text-gray-300">
+                                  {source.text_preview || source.text_full?.substring(0, 200) || 'No preview available'}
+                                </div>
+
+                                {/* Show full details - either event data or raw text */}
+                                {source.text_full && source.text_full.length > (source.text_preview?.length || 0) && (
+                                  <details className="mt-2">
+                                    <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer hover:underline">
+                                      ▶ Show full details
+                                    </summary>
+                                    <div className="mt-2 text-xs bg-gray-50 dark:bg-gray-900 p-3 rounded max-h-96 overflow-y-auto">
+                                      <pre className="font-mono whitespace-pre-wrap break-all text-gray-600 dark:text-gray-400 text-xs leading-relaxed">
+                                        {source.text_full}
+                                      </pre>
+                                    </div>
+                                  </details>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : typeof result === 'object' && !Array.isArray(result) && Object.keys(result).length <= 10 ? (
+                        /* Simple object result - use key-value display */
+                        <div className="bg-white dark:bg-gray-900 rounded p-3 space-y-1.5">
+                          {Object.entries(result).map(([key, value]) => (
+                            <div key={key} className="flex items-start gap-2 text-xs">
+                              <span className="font-medium text-green-600 dark:text-green-400 min-w-[120px] flex-shrink-0">
+                                {key}:
+                              </span>
+                              <span className="text-gray-800 dark:text-gray-200 font-mono break-all">
+                                {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        /* Fallback to JSON display for complex results */
+                        <div className="bg-white dark:bg-gray-900 rounded p-2 text-xs font-mono overflow-x-auto max-h-96">
+                          <pre className="text-gray-800 dark:text-gray-200">
+                            {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+                          </pre>
+                        </div>
+                      )}
               </div>
             )}
           </div>

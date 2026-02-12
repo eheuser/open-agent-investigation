@@ -687,18 +687,24 @@ class EmbeddingService:
         self.timeout = timeout
 
         logger.debug(f"EmbeddingService initialized: {provider} at {api_url}")
-        logger.debug(f"Embedding model: {self.model_name} (max {self.embedding_max_context_length} tokens)")
-        logger.debug(f"Reranker model: {self.reranker_model_name} (max {self.reranker_max_context_length} tokens)")
-        logger.debug(f"Concurrent calls: {'enabled' if self.allow_concurrent_calls else 'disabled'}")
+        logger.debug(
+            f"Embedding model: {self.model_name} (max {self.embedding_max_context_length} tokens)"
+        )
+        logger.debug(
+            f"Reranker model: {self.reranker_model_name} (max {self.reranker_max_context_length} tokens)"
+        )
+        logger.debug(
+            f"Concurrent calls: {'enabled' if self.allow_concurrent_calls else 'disabled'}"
+        )
 
     def _estimate_tokens(self, text: str) -> int:
         """
         Estimate the number of tokens in a text string.
         Uses the same approximation as LLMService (1 token ≈ 4 characters).
-        
+
         Args:
             text (str): The text to estimate tokens for.
-            
+
         Returns:
             int: Estimated token count.
         """
@@ -711,11 +717,11 @@ class EmbeddingService:
     ) -> List[List[float]]:
         """
         Internal method to embed a single batch of texts.
-        
+
         Args:
             texts: List of texts to embed.
             headers: HTTP headers for the request.
-            
+
         Returns:
             List of embedding vectors.
         """
@@ -742,9 +748,7 @@ class EmbeddingService:
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    raise RuntimeError(
-                        f"Embedding API error {response.status}: {error_text}"
-                    )
+                    raise RuntimeError(f"Embedding API error {response.status}: {error_text}")
 
                 result = await response.json()
 
@@ -807,19 +811,19 @@ class EmbeddingService:
         # If concurrent calls enabled, batch and parallelize
         if self.allow_concurrent_calls and len(texts) > 50:
             logger.info(f"Concurrent embedding enabled: batching {len(texts):,} texts")
-            
+
             # Split into batches of 50
             batch_size = 50
-            batches = [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
-            
+            batches = [texts[i : i + batch_size] for i in range(0, len(texts), batch_size)]
+
             # Process batches in parallel
             tasks = []
             for batch in batches:
                 tasks.append(self._embed_batch_with_retry(batch, headers))
-            
+
             # Wait for all batches
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             # Combine results and handle errors
             all_embeddings: List[List[float]] = []
             for i, result in enumerate(batch_results):
@@ -828,14 +832,14 @@ class EmbeddingService:
                     raise result
                 # Type narrowing: result is List[List[float]] here
                 all_embeddings.extend(result)
-            
+
             logger.debug(
                 f"Concurrent embedding successful: {len(texts):,} texts in {len(batches):,} parallel batches, "
                 f"{len(all_embeddings):,} embeddings generated"
             )
-            
+
             return all_embeddings
-        
+
         # Sequential processing (default)
         return await self._embed_batch_with_retry(texts, headers)
 
@@ -846,11 +850,11 @@ class EmbeddingService:
     ) -> List[List[float]]:
         """
         Embed a batch of texts with retry logic.
-        
+
         Args:
             texts: List of texts to embed.
             headers: HTTP headers for the request.
-            
+
         Returns:
             List of embedding vectors.
         """
@@ -936,20 +940,20 @@ class EmbeddingService:
 
         # If concurrent calls enabled and many documents, batch and parallelize
         if self.allow_concurrent_calls and len(documents) > 100:
-            logger.info(f"Concurrent reranking enabled: batching {len(documents):,} documents")
-            
+            logger.debug(f"Concurrent reranking enabled: batching {len(documents):,} documents")
+
             # Split into batches of 100
             batch_size = 100
-            batches = [documents[i:i + batch_size] for i in range(0, len(documents), batch_size)]
-            
+            batches = [documents[i : i + batch_size] for i in range(0, len(documents), batch_size)]
+
             # Process batches in parallel
             tasks = []
             for batch_idx, batch in enumerate(batches):
                 tasks.append(self._rerank_batch_with_retry(query, batch, headers, top_k, batch_idx))
-            
+
             # Wait for all batches
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             # Combine results and handle errors
             all_reranked: List[Dict[str, Any]] = []
             for i, result in enumerate(batch_results):
@@ -958,19 +962,21 @@ class EmbeddingService:
                     raise result
                 # Type narrowing: result is List[Dict[str, Any]] here
                 all_reranked.extend(result)
-            
+
             # Re-sort combined results by score and apply top_k
-            all_reranked.sort(key=lambda x: x.get("score", x.get("relevance_score", 0.0)), reverse=True)
+            all_reranked.sort(
+                key=lambda x: x.get("score", x.get("relevance_score", 0.0)), reverse=True
+            )
             if top_k:
                 all_reranked = all_reranked[:top_k]
-            
+
             logger.debug(
                 f"Concurrent reranking successful: {len(documents):,} documents in {len(batches):,} parallel batches, "
                 f"{len(all_reranked):,} results returned"
             )
-            
+
             return all_reranked
-        
+
         # Sequential processing (default)
         return await self._rerank_batch_with_retry(query, documents, headers, top_k, 0)
 
@@ -984,14 +990,14 @@ class EmbeddingService:
     ) -> List[Dict[str, Any]]:
         """
         Rerank a batch of documents with retry logic.
-        
+
         Args:
             query: The search query.
             documents: List of document texts.
             headers: HTTP headers.
             top_k: Maximum results to return.
             batch_idx: Batch index for logging.
-            
+
         Returns:
             List of reranked results.
         """
@@ -999,16 +1005,16 @@ class EmbeddingService:
         # For OpenAI-compatible endpoints: use same format as embeddings but with reranker model
         # The reranker model will compute similarity scores between query and documents
         # Format: {"model": "reranker-model", "input": [query, doc1, doc2, ...]}
-        
+
         # Combine query and documents into single input list
         # Query goes first, then all documents
         combined_input = [query] + documents
-        
+
         payload = {
             "model": self.reranker_model_name,
             "input": combined_input,
         }
-        
+
         # Note: top_k filtering will be done post-processing since OpenAI format doesn't support top_n
 
         # Retry loop
@@ -1017,11 +1023,10 @@ class EmbeddingService:
             try:
                 async with aiohttp.ClientSession() as session:
                     # Use rerank endpoint (OpenAI-compatible format)
-                    #rerank_url = self.api_url.replace("/embeddings", "/rerank")
+                    # rerank_url = self.api_url.replace("/embeddings", "/rerank")
 
-                    
                     async with session.post(
-                        #rerank_url,
+                        # rerank_url,
                         self.api_url,
                         json=payload,
                         headers=headers,
@@ -1048,45 +1053,53 @@ class EmbeddingService:
                 # Response format: {"data": [{"embedding": [...]}, {"embedding": [...]}, ...]}
                 if "data" in result:
                     embeddings_data = result["data"]
-                    
+
                     if len(embeddings_data) < 2:
-                        raise ValueError(f"Expected at least 2 embeddings (query + documents), got {len(embeddings_data)}")
-                    
+                        raise ValueError(
+                            f"Expected at least 2 embeddings (query + documents), got {len(embeddings_data)}"
+                        )
+
                     # First embedding is the query
                     query_embedding = embeddings_data[0]["embedding"]
-                    
+
                     # Remaining embeddings are the documents
                     doc_embeddings = [item["embedding"] for item in embeddings_data[1:]]
-                    
+
                     # Compute cosine similarity between query and each document
                     query_vec = np.array(query_embedding)
                     reranked = []
-                    
+
                     for idx, doc_emb in enumerate(doc_embeddings):
                         doc_vec = np.array(doc_emb)
-                        
+
                         # Cosine similarity: dot(a, b) / (norm(a) * norm(b))
-                        similarity = np.dot(query_vec, doc_vec) / (np.linalg.norm(query_vec) * np.linalg.norm(doc_vec))
-                        
-                        reranked.append({
-                            "index": idx,
-                            "score": float(similarity),
-                            "relevance_score": float(similarity),
-                            "document": documents[idx],
-                        })
-                    
+                        similarity = np.dot(query_vec, doc_vec) / (
+                            np.linalg.norm(query_vec) * np.linalg.norm(doc_vec)
+                        )
+
+                        reranked.append(
+                            {
+                                "index": idx,
+                                "score": float(similarity),
+                                "relevance_score": float(similarity),
+                                "document": documents[idx],
+                            }
+                        )
+
                     # Sort by score (descending)
                     reranked.sort(key=lambda x: x["score"], reverse=True)
-                    
+
                     # Apply top_k filtering
                     if top_k is not None:
                         reranked = reranked[:top_k]
-                    
+
                 elif "results" in result:
                     # Native reranking API format (Cohere, Jina)
                     reranked = result["results"]
                 else:
-                    raise ValueError(f"Unexpected rerank response format: {result.keys()}. Full response: {result}")
+                    raise ValueError(
+                        f"Unexpected rerank response format: {result.keys()}. Full response: {result}"
+                    )
 
                 logger.debug(
                     f"Reranking successful (batch {batch_idx}): {len(documents):,} documents, "
@@ -1108,7 +1121,9 @@ class EmbeddingService:
                     await asyncio.sleep(wait_time)
 
         # All retries failed
-        raise RuntimeError(f"Reranking batch {batch_idx} failed after {self.max_retries} attempts: {last_error}")
+        raise RuntimeError(
+            f"Reranking batch {batch_idx} failed after {self.max_retries} attempts: {last_error}"
+        )
 
     def get_embedding_dimension(self) -> int:
         """

@@ -1154,7 +1154,11 @@ Replicate agent queries to the Events tab for manual exploration:
 - `search_events_by_content` - Replicates search text and event_type
 
 **RAG Tool Executions** (Augmented Chat mode):
-- `expand_query` - Shows LLM-generated search terms with full expansion details
+- `expand_query` - Shows LLM-generated search queries with formatted display:
+  - Numbered list (1, 2, 3...)
+  - Color-coded type badges (Question, Keywords, Artifact, Technique)
+  - Clean card layout with readable text (not JSON blobs)
+  - Fallback to simple list for legacy format
 - `retrieve_sources` - Shows all retrieved sources with scores, owner types, and full text (expandable)
 
 ### Dynamic Field Suggestions
@@ -1310,10 +1314,16 @@ To enable Augmented Chat mode, configure embedding provider in Settings:
 RAG results are displayed as expandable tool execution cards:
 
 **Query Expansion**:
-- Collapsed: "Query Expansion - Complete"
-- Expanded: Shows all generated search terms with count
-- Arguments displayed as key-value pairs (blue labels)
-- Results shown in structured format
+- Collapsed: "Query Expansion - Complete" with summary
+- Expanded: Shows formatted search queries with:
+  - Numbered list (1, 2, 3...)
+  - Color-coded type badges:
+    - **Question** (purple) - Rephrased questions from different angles
+    - **Keywords** (blue) - Keyword phrases and artifact combinations
+    - **Artifact** (green) - Specific log types and Event IDs
+    - **Technique** (orange) - MITRE ATT&CK aligned searches
+  - Clean card layout (not JSON arrays)
+  - Total query count displayed
 
 **Retrieved Sources (X results)**:
 - Collapsed: "Retrieved Sources (50 results) - Complete"

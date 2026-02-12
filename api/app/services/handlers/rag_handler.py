@@ -15,6 +15,39 @@ from app.utils.log_setup import get_logger
 logger = get_logger(__name__)
 
 
+def _classify_query_type(query: str) -> str:
+    """
+    Classify a query into a type based on its structure.
+    
+    Args:
+        query: The search query text
+        
+    Returns:
+        Query type: 'question', 'keyword_phrase', 'artifact_specific', or 'technique'
+    """
+    query_lower = query.lower()
+    
+    # Check for question indicators
+    question_words = ['what', 'which', 'where', 'when', 'who', 'how', 'why', 'did', 'was', 'were', 'is', 'are']
+    if any(query_lower.startswith(word) for word in question_words) or query.endswith('?'):
+        return 'question'
+    
+    # Check for artifact-specific indicators (Event IDs, file extensions, registry paths)
+    artifact_indicators = ['event id', 'event', 'registry', 'hklm', 'hkcu', '.exe', '.dll', '.sys', 'prefetch', 'mft', 'evtx']
+    if any(indicator in query_lower for indicator in artifact_indicators):
+        return 'artifact_specific'
+    
+    # Check for technique indicators (MITRE ATT&CK style)
+    technique_indicators = ['execution', 'persistence', 'privilege escalation', 'defense evasion', 
+                           'credential access', 'discovery', 'lateral movement', 'collection', 
+                           'exfiltration', 'impact', 'initial access']
+    if any(technique in query_lower for technique in technique_indicators):
+        return 'technique'
+    
+    # Default to keyword phrase
+    return 'keyword_phrase'
+
+
 async def _expand_query_with_llm(
     user_query: str,
     llm_config: Any,
@@ -591,13 +624,27 @@ async def persist_rag_tool_executions(
         # Create query expansion tool execution
         if expanded_terms:
             current_tool += 1
+            
+            # Format expanded terms as a numbered list for better readability
+            formatted_terms = []
+            for i, term in enumerate(expanded_terms, 1):
+                formatted_terms.append({
+                    "number": i,
+                    "query": term,
+                    "type": _classify_query_type(term)
+                })
+            
             expansion_tool = ToolExecution(
                 chat_message_id=message_id,
                 tool_name="expand_query",
                 display_name="Query Expansion",
                 arguments={},
-                result={"expanded_terms": expanded_terms},
-                result_summary=f"Generated {len(expanded_terms):,} search terms: {', '.join(expanded_terms[:3])}{'...' if len(expanded_terms) > 3 else ''}",
+                result={
+                    "expanded_terms": expanded_terms,  # Keep original for compatibility
+                    "formatted_queries": formatted_terms,  # New formatted version
+                    "total_queries": len(expanded_terms)
+                },
+                result_summary=f"Generated {len(expanded_terms):,} search queries from original question",
                 status="completed",
                 execution_number=current_tool,
                 max_tools=total_tools,
