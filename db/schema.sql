@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     sha256 BYTEA NOT NULL CHECK (length(sha256) = 32),
     filename TEXT NOT NULL,
     classification SMALLINT NOT NULL,  -- 0=SYSTEM_HIVE, 1=LOG_FILE, 2=BINARY, 3=ARCHIVE, 4=UNKNOWN
+    size_bytes BIGINT NOT NULL DEFAULT 0,  -- Original file size (tracked at upload time)
     blob BYTEA NOT NULL,
     upload_ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT valid_classification CHECK (classification BETWEEN 0 AND 4)
@@ -90,6 +91,15 @@ CREATE TABLE IF NOT EXISTS llm_provider_config (
     min_p NUMERIC(4,3),
     timeout INTEGER NOT NULL DEFAULT 300,
     is_active BOOLEAN NOT NULL DEFAULT true,
+    embedding_provider TEXT,
+    embedding_api_url TEXT,
+    embedding_api_key TEXT,
+    embedding_model_name TEXT,
+    embedding_max_context_length INTEGER DEFAULT 8192,
+    reranker_model_name TEXT,
+    reranker_max_context_length INTEGER DEFAULT 8192,
+    allow_concurrent_llm_calls BOOLEAN DEFAULT false,
+    allow_concurrent_embedding_calls BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
@@ -104,16 +114,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_config (
 CREATE INDEX idx_llm_config_user ON llm_provider_config(user_id);
 CREATE INDEX idx_llm_config_active ON llm_provider_config(user_id, is_active) WHERE is_active = true;
 
--- Add embedding provider configuration columns
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_provider TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_api_url TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_api_key TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_model_name TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS embedding_max_context_length INTEGER DEFAULT 8192;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS reranker_model_name TEXT;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS reranker_max_context_length INTEGER DEFAULT 8192;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS allow_concurrent_llm_calls BOOLEAN DEFAULT false;
-ALTER TABLE llm_provider_config ADD COLUMN IF NOT EXISTS allow_concurrent_embedding_calls BOOLEAN DEFAULT false;
+
 
 -- Chat messages table (conversation history in OpenAI format)
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -132,11 +133,12 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     message_type VARCHAR(50),  -- question, assistant_answer, agent_chat, tool_execution, summary, error, system
     parent_message_id BIGINT REFERENCES chat_messages(message_id) ON DELETE CASCADE,
     
-    -- Metadata and control fields
+        -- Metadata and control fields
     metadata JSONB DEFAULT '{}'::jsonb,
     include_in_llm_context BOOLEAN NOT NULL DEFAULT true,
     visible_in_ui BOOLEAN NOT NULL DEFAULT true,
     deleted_at TIMESTAMPTZ,  -- Soft delete timestamp (tombstone)
+    embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -146,6 +148,7 @@ CREATE INDEX idx_chat_messages_user ON chat_messages(user_id, created_at DESC);
 CREATE INDEX idx_chat_messages_parent ON chat_messages(parent_message_id) WHERE parent_message_id IS NOT NULL;
 CREATE INDEX idx_chat_messages_type ON chat_messages(investigation_id, message_type) WHERE message_type IS NOT NULL;
 CREATE INDEX idx_chat_messages_visible ON chat_messages(investigation_id, visible_in_ui, deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_chat_messages_embedding ON chat_messages(embedding_id) WHERE embedding_id IS NOT NULL;
 
 -- Tool executions table (explicit tool call tracking)
 CREATE TABLE IF NOT EXISTS tool_executions (
@@ -310,9 +313,10 @@ CREATE TABLE IF NOT EXISTS timeline_entries (
     title TEXT NOT NULL,
     description TEXT,
     data JSONB DEFAULT '{}'::jsonb,
-    tags TEXT[] DEFAULT '{}'::TEXT[],
+        tags TEXT[] DEFAULT '{}'::TEXT[],
     created_by_user_id BIGINT REFERENCES users(user_id) ON DELETE SET NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     is_visible BOOLEAN NOT NULL DEFAULT true
     -- NOTE: UNIQUE constraint removed - see partial unique index below to handle NULLs properly
@@ -328,6 +332,7 @@ CREATE INDEX idx_timeline_tags ON timeline_entries USING GIN(tags);
 CREATE INDEX idx_timeline_data ON timeline_entries USING GIN(data);
 CREATE INDEX idx_timeline_created ON timeline_entries(investigation_id, created_at DESC);
 CREATE INDEX idx_timeline_visible ON timeline_entries(investigation_id, is_visible) WHERE is_visible = true;
+CREATE INDEX idx_timeline_entries_embedding ON timeline_entries(embedding_id) WHERE embedding_id IS NOT NULL;
 
 -- Unique index to enforce uniqueness on (investigation_id, event_id)
 -- PostgreSQL treats NULL as distinct, so multiple rows with NULL event_id are allowed
@@ -467,12 +472,7 @@ CREATE TABLE IF NOT EXISTS filter_config (
 CREATE INDEX idx_filter_config_investigation ON filter_config(investigation_id);
 CREATE INDEX idx_filter_config_updated ON filter_config(updated_at DESC);
 
--- Add embedding_id columns to existing tables
-ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL;
-ALTER TABLE timeline_entries ADD COLUMN IF NOT EXISTS embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL;
 
-CREATE INDEX IF NOT EXISTS idx_chat_messages_embedding ON chat_messages(embedding_id) WHERE embedding_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_timeline_entries_embedding ON timeline_entries(embedding_id) WHERE embedding_id IS NOT NULL;
 
 -- ============================================================================
 -- PLAYBOOKS TABLES
@@ -747,9 +747,9 @@ BEGIN
     -- Update embedding counts
     UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM embeddings), updated_at = NOW() WHERE stat_key = 'total_embeddings';
     
-    -- Update artifact counts
+        -- Update artifact counts
     UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM artifacts), updated_at = NOW() WHERE stat_key = 'total_artifacts';
-    UPDATE system_stats_cache SET stat_value = (SELECT COALESCE(SUM(length(blob)), 0) FROM artifacts), updated_at = NOW() WHERE stat_key = 'total_artifact_bytes';
+    UPDATE system_stats_cache SET stat_value = (SELECT COALESCE(SUM(size_bytes), 0) FROM artifacts), updated_at = NOW() WHERE stat_key = 'total_artifact_bytes';
     
     -- Update job counts
     UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'pending'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_pending';

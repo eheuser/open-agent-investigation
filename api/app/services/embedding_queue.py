@@ -85,7 +85,7 @@ async def queue_events_for_embedding(
 
     await db.commit()
 
-    logger.info(
+    logger.debug(
         f"Queued {len(event_ids):,} events for embedding in {jobs_created} jobs "
         f"(batch_size={batch_size}, queue_depth={pending_count}, investigation {investigation_id})"
     )

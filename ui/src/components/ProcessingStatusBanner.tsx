@@ -68,6 +68,7 @@ const ProcessingStatusBanner: React.FC<ProcessingStatusBannerProps> = ({
   const [everHadRunning, setEverHadRunning] = useState(false);
   const [everHadCompleted, setEverHadCompleted] = useState(false);
   const [everHadFailed, setEverHadFailed] = useState(false);
+  const [waitingForEmbedding, setWaitingForEmbedding] = useState(false);
 
   // Embedding state
   const [embeddingStatus, setEmbeddingStatus] = useState<EmbeddingStatus | null>(null);
@@ -76,6 +77,8 @@ const ProcessingStatusBanner: React.FC<ProcessingStatusBannerProps> = ({
   const [displayEmbeddingCompleted, setDisplayEmbeddingCompleted] = useState(0);
   const [displayEmbeddingProcessing, setDisplayEmbeddingProcessing] = useState(0);
   const [hasEmbeddingConfig, setHasEmbeddingConfig] = useState(false);
+  const [waitingStartTime, setWaitingStartTime] = useState<number | null>(null);
+  const [bannerEverShown, setBannerEverShown] = useState(false);
 
   // Shared state
   const [isLoading, setIsLoading] = useState(true);
@@ -120,8 +123,18 @@ const ProcessingStatusBanner: React.FC<ProcessingStatusBannerProps> = ({
         (job) => job.status === 'completed' || job.status === 'failed'
       );
 
-      if (allComplete && fetchedJobs.length > 0 && onParsingComplete) {
-        onParsingComplete();
+      if (allComplete && fetchedJobs.length > 0) {
+        // Parsing just completed - wait for embedding jobs to be created
+        if (hasEmbeddingConfig && !hasSeenEmbeddingJobs) {
+          setWaitingForEmbedding(true);
+          // Start waiting timer
+          if (waitingStartTime === null) {
+            setWaitingStartTime(Date.now());
+          }
+        }
+        if (onParsingComplete) {
+          onParsingComplete();
+        }
       }
 
       setIsLoading(false);
@@ -161,6 +174,16 @@ const ProcessingStatusBanner: React.FC<ProcessingStatusBannerProps> = ({
       // Track if we've ever seen embedding jobs
       if (data.total_jobs > 0) {
         setHasSeenEmbeddingJobs(true);
+        setWaitingForEmbedding(false);  // Jobs created, no longer waiting
+        setWaitingStartTime(null);  // Clear waiting timer
+      } else if (waitingForEmbedding && waitingStartTime) {
+        // If we've been waiting for 5 seconds and still no jobs, stop waiting
+        // This handles the case where all events already have embeddings
+        const waitingDuration = (Date.now() - waitingStartTime) / 1000;
+        if (waitingDuration > 5) {
+          setWaitingForEmbedding(false);
+          setWaitingStartTime(null);
+        }
       }
 
       // Initialize display values on first load only
@@ -207,23 +230,27 @@ const ProcessingStatusBanner: React.FC<ProcessingStatusBannerProps> = ({
     initialize();
   }, [investigationId]);
 
-  // Track parsing start time and elapsed seconds
+  // Track processing start time and elapsed seconds (for both parsing and embedding)
   useEffect(() => {
     const parsingActive = parsingCounts.queued > 0 || parsingCounts.running > 0;
+    const embeddingActive = hasEmbeddingConfig && embeddingStatus && (!embeddingStatus.is_complete || (hasSeenEmbeddingJobs && embeddingStatus.progress_percent < 100));
+    const anyProcessingActive = parsingActive || embeddingActive;
 
-    if (parsingActive && parsingStartTime === null && !isLoading) {
+    // Start timer when any processing begins
+    if (anyProcessingActive && parsingStartTime === null && !isLoading) {
       setParsingStartTime(Date.now());
       setElapsedSeconds(0);
-    } else if (!parsingActive && parsingStartTime !== null) {
+    } 
+    // Only reset timer when BOTH parsing AND embedding are complete
+    else if (!anyProcessingActive && parsingStartTime !== null) {
       setParsingStartTime(null);
       setElapsedSeconds(0);
       setEverHadQueued(false);
       setEverHadRunning(false);
-      // Don't reset everHadCompleted - we want it to stay visible
-      // setEverHadCompleted(false);
+      setEverHadCompleted(false);
       setEverHadFailed(false);
     }
-  }, [parsingCounts.queued, parsingCounts.running, parsingStartTime, isLoading]);
+  }, [parsingCounts.queued, parsingCounts.running, parsingStartTime, isLoading, hasEmbeddingConfig, embeddingStatus?.is_complete, embeddingStatus?.progress_percent, hasSeenEmbeddingJobs]);
 
   // Update elapsed time every second
   useEffect(() => {
@@ -337,14 +364,36 @@ const ProcessingStatusBanner: React.FC<ProcessingStatusBannerProps> = ({
   }, [parsingCounts.queued, parsingCounts.running, elapsedSeconds, embeddingStatus?.is_complete, hasSeenEmbeddingJobs]);
 
   const parsingActive = parsingCounts.queued > 0 || parsingCounts.running > 0;
-  // Show embedding section if: config exists AND (jobs active OR jobs have been seen)
+  // Show embedding section if: config exists AND (jobs active OR jobs have been seen OR waiting)
   const embeddingActive = hasEmbeddingConfig && embeddingStatus && (!embeddingStatus.is_complete || (hasSeenEmbeddingJobs && embeddingStatus.progress_percent < 100));
-  // Show embedding display when: embedding config exists AND (parsing is active OR embedding is active)
-  // This avoids showing empty banner when nothing is happening
-  const showEmbeddingDisplay = hasEmbeddingConfig && (parsingActive || embeddingActive);
+  // Show embedding display when: embedding config exists AND (parsing active OR embedding active OR waiting)
+  const showEmbeddingDisplay = hasEmbeddingConfig && (parsingActive || embeddingActive || waitingForEmbedding);
+  
+  // Track if banner has ever been shown (to maintain continuity)
+  useEffect(() => {
+    if (parsingActive || embeddingActive || waitingForEmbedding) {
+      setBannerEverShown(true);
+    }
+  }, [parsingActive, embeddingActive, waitingForEmbedding]);
+  
+  // Show banner if it has been shown and hasn't been reset yet
+  const showBanner = bannerEverShown;
+  
+  // Reset banner state when all processing is truly complete
+  useEffect(() => {
+    const allDone = !parsingActive && !embeddingActive && !waitingForEmbedding;
+    
+    if (allDone && bannerEverShown) {
+      // Wait 2 seconds after everything completes before hiding
+      const timeout = setTimeout(() => {
+        setBannerEverShown(false);
+      }, 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [parsingActive, embeddingActive, waitingForEmbedding, bannerEverShown]);
 
-  // Show banner only if parsing or embedding is actually active
-  if (isLoading || (!parsingActive && !embeddingActive)) {
+  // Show banner only if there's activity or we're in the transition period
+  if (isLoading || !showBanner) {
     return null;
   }
 
@@ -352,29 +401,28 @@ const ProcessingStatusBanner: React.FC<ProcessingStatusBannerProps> = ({
     ? ((parsingCounts.completed + parsingCounts.failed) / parsingCounts.total) * 100
     : 0;
 
-  const showDetailedStats = elapsedSeconds >= 15;
-
   // Determine primary status message
   let statusMessage = '';
   let statusIcon = null;
   
   if (parsingActive && embeddingActive) {
-    statusMessage = `Processing ${totalParsingJobs} artifacts and generating embeddings`;
+    statusMessage = "You can't send new questions until all artifacts finish parsing";
     statusIcon = <CogIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />;
   } else if (parsingActive) {
-    statusMessage = showDetailedStats 
-      ? "You can't send new questions until all artifacts finish parsing"
-      : `Processing ${totalParsingJobs} artifacts... (${elapsedSeconds}s)`;
+    statusMessage = "You can't send new questions until all artifacts finish parsing";
     statusIcon = <CogIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />;
+  } else if (waitingForEmbedding) {
+    statusMessage = 'Preparing embeddings...';
+    statusIcon = <CogIcon className="w-5 h-5 text-purple-600 dark:text-purple-400 animate-spin" />;
   } else if (embeddingActive) {
     statusMessage = 'Augmented Chat mode will be available once embedding is complete';
     statusIcon = <SparklesIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />;
   }
 
   return (
-    <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-800 transition-all duration-300">
+    <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-800">
       <div className="max-w-4xl mx-auto">
-        {/* Single unified header */}
+        {/* Header with status message */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             {statusIcon}
@@ -383,126 +431,73 @@ const ProcessingStatusBanner: React.FC<ProcessingStatusBannerProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-4">
-            {parsingActive && (
+            {(parsingCounts.total > 0) && (
               <span className="text-xs text-blue-700 dark:text-blue-300 font-mono">
                 {parsingCounts.completed + parsingCounts.failed} / {totalParsingJobs} artifacts
               </span>
             )}
-            {showEmbeddingDisplay && embeddingStatus && (
+            {totalEvents > 0 && (
               <span className="text-xs text-blue-700 dark:text-blue-300">
-                {displayEmbeddingCompleted.toLocaleString()}
-                {displayEmbeddingProcessing > 0 && (
-                  <span className="text-blue-500 dark:text-blue-400">
-                    {' '}(+{displayEmbeddingProcessing.toLocaleString()})
-                  </span>
-                )}
-                {' '}/ {embeddingStatus.events_total.toLocaleString()} events
+                {totalEvents.toLocaleString()} events
               </span>
             )}
           </div>
         </div>
 
-        {/* Combined progress bar */}
-        <div className="space-y-2">
-          {parsingActive && (
-            <div className="w-full bg-blue-200 dark:bg-blue-900 rounded-full h-2">
-              <div
-                className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${parsingProgress}%` }}
-              />
-            </div>
-          )}
-          
-          {showEmbeddingDisplay && (
-            <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2 relative overflow-hidden">
-              {embeddingStatus && displayEmbeddingProcessing > 0 && (
-                <div
-                  className="absolute top-0 left-0 h-2 bg-blue-400 dark:bg-blue-600 rounded-full transition-all duration-150"
-                  style={{ 
-                    width: `${((displayEmbeddingCompleted + displayEmbeddingProcessing) / (embeddingStatus.events_total || 1)) * 100}%`
-                  }}
-                ></div>
-              )}
-              <div
-                className="absolute top-0 left-0 h-2 bg-blue-600 dark:bg-blue-400 rounded-full transition-all duration-150"
-                style={{ width: `${displayEmbeddingProgress}%` }}
-              ></div>
-            </div>
-          )}
+        {/* Progress bar */}
+        <div className="w-full bg-blue-200 dark:bg-blue-900 rounded-full h-2 mb-3">
+          <div
+            className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${parsingProgress}%` }}
+          />
         </div>
 
-        {/* Detailed stats - show for parsing after 15 seconds */}
-        {(parsingActive && showDetailedStats) && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 transition-all duration-300">
-            {/* Queued - always show when detailed stats appear */}
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-              <ClockIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Queued</div>
-                <div className="text-lg font-bold text-gray-900 dark:text-white">
-                  {parsingCounts.queued}
-                </div>
+        {/* Stats boxes - always show */}
+        <div className="grid grid-cols-4 gap-3">
+          {/* Queued */}
+          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
+            <ClockIcon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Queued</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">
+                {parsingCounts.queued}
               </div>
             </div>
-
-            {/* Parsing - always show when detailed stats appear */}
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-              <CogIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Parsing</div>
-                <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                  {parsingCounts.running}
-                </div>
-              </div>
-            </div>
-
-            {/* Completed - always show when detailed stats appear */}
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-              <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Completed</div>
-                <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                  {parsingCounts.completed}
-                </div>
-              </div>
-            </div>
-
-            {/* Failed - only show if there are failures */}
-            {everHadFailed && (
-              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-                <ExclamationCircleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
-                <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Failed</div>
-                  <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                    {parsingCounts.failed}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Embedding counter - show when embedding is configured */}
-            {showEmbeddingDisplay && (
-              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
-                <SparklesIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Embedding</div>
-                  <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                    {embeddingStatus ? Math.round(displayEmbeddingProgress) : 0}%
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
-        )}
 
-        {parsingActive && showDetailedStats && totalEvents > 0 && (
-          <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300 mt-2">
-            <DocumentTextIcon className="w-4 h-4" />
-            <span>
-              <strong>{totalEvents.toLocaleString()}</strong> events parsed so far
-            </span>
+          {/* Parsing */}
+          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
+            <CogIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Parsing</div>
+              <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                {parsingCounts.running}
+              </div>
+            </div>
           </div>
-        )}
+
+          {/* Completed */}
+          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
+            <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Completed</div>
+              <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                {parsingCounts.completed}
+              </div>
+            </div>
+          </div>
+
+          {/* Embedding */}
+          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-700">
+            <SparklesIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Embedding</div>
+              <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                {embeddingStatus ? `${displayEmbeddingCompleted.toLocaleString()} / ${embeddingStatus.events_total.toLocaleString()}` : '0 / 0'}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

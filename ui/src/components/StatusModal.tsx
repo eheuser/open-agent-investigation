@@ -320,19 +320,12 @@ const StatusModal: React.FC<StatusModalProps> = ({ isOpen, onClose }) => {
                     </div>
 
                     {/* Quick Stats Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       <StatCard
                         icon={<FolderIcon className="w-5 h-5" />}
                         label="Investigations"
                         value={stats.investigations.total}
                         color="blue"
-                      />
-                      <StatCard
-                        icon={<DocumentTextIcon className="w-5 h-5" />}
-                        label="Artifacts"
-                        value={stats.artifacts.total}
-                        subtitle={formatBytes(stats.artifacts.total_size_bytes)}
-                        color="green"
                       />
                       <StatCard
                         icon={<ChartBarIcon className="w-5 h-5" />}
@@ -485,42 +478,6 @@ const StatusModal: React.FC<StatusModalProps> = ({ isOpen, onClose }) => {
                 {/* Artifacts Tab */}
                 {activeTab === 'artifacts' && (
                   <div className="space-y-4">
-                    {/* Summary Stats */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                          Total Storage
-                        </h3>
-                        <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                          {formatBytes(stats.artifacts.total_size_bytes)}
-                        </div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          {stats.artifacts.total.toLocaleString()} artifacts
-                        </div>
-                      </div>
-
-                      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                          By Classification
-                        </h3>
-                        <div className="space-y-2">
-                          {stats.artifacts.by_classification.map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between text-sm"
-                            >
-                              <span className="text-gray-700 dark:text-gray-300">
-                                {getClassificationName(item.classification)}
-                              </span>
-                              <span className="font-medium text-gray-900 dark:text-gray-100">
-                                {item.count}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Search Bar */}
                     <div className="relative">
                       <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />

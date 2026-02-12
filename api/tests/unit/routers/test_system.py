@@ -14,23 +14,24 @@ def create_full_mock_sequence(mock_execute_result, **overrides):
     """
     Helper to create full sequence of database query mocks with optional overrides.
     
-    Query sequence (16 queries total):
+    Query sequence (15 queries total):
     0. Investigation stats from materialized view
     1. Artifacts total (total, size_bytes) from system_stats_cache
-    2. Artifacts by classification
+    2. Artifacts by classification (TABLESAMPLE)
     3. Artifacts search count (scalar)
     4. Artifacts list (paginated)
     5. Events total (total, with_embeddings) from system_stats_cache
-    6. Events by type
-    7. Events by investigation
-    8. Embeddings total (scalar) from system_stats_cache
-    9. Embeddings by owner type
-    10. Embeddings by model
-    11. Timeline stats (total, with_embeddings) from system_stats_cache
-    12. Timeline by type
-    13. Jobs stats (rows of stat_key, stat_value) from system_stats_cache
-    14. Users (total, admins, regular)
-    15. Database health check (scalar)
+    6. Events by type (TABLESAMPLE)
+    7. Embeddings total (scalar) from system_stats_cache
+    8. Embeddings by owner type (TABLESAMPLE)
+    9. Embeddings by model (TABLESAMPLE)
+    10. Timeline stats (total, with_embeddings) from system_stats_cache
+    11. Timeline by type (TABLESAMPLE)
+    12. Jobs stats (rows of stat_key, stat_value) from system_stats_cache
+    13. Users (total, admins, regular)
+    14. Database health check (scalar)
+    
+    Note: events_by_investigation is derived from investigation stats (query 0), not a separate query
     """
     defaults = {
         "investigations": [],
@@ -60,7 +61,7 @@ def create_full_mock_sequence(mock_execute_result, **overrides):
         mock_execute_result(defaults["artifacts_list"]),
         mock_execute_result(defaults["events_total"]),
         mock_execute_result(defaults["events_by_type"]),
-        mock_execute_result(defaults["events_by_investigation"]),
+        # events_by_investigation removed - derived from investigation stats
         mock_execute_result(scalar_value=defaults["embeddings_total"]),
         mock_execute_result(defaults["embeddings_by_owner"]),
         mock_execute_result(defaults["embeddings_by_model"]),
@@ -114,17 +115,16 @@ class TestGetSystemStatus:
             mock_execute_result,
             investigations=[(uuid4(), "Test Investigation", "testuser", datetime.utcnow(), 100, 80, 20, 80.0, 10, 8, 2, 80.0)],
             artifacts_total=(1000, 5000000),
-            artifacts_classification=[("0", 100), ("1", 200), ("3", 50)],
+            artifacts_classification=[("0", 400), ("1", 800), ("3", 200)],  # Estimates (4x multiplier)
             artifacts_search_count=350,
             artifacts_list=[(1, "test.evtx", "1", datetime.utcnow(), 1024, "Test Inv", b"abc123")],
             events_total=(10000, 8000),
-            events_by_type=[("evtx_security_4624", 500), ("evtx_sysmon_1", 300)],
-            events_by_investigation=[(uuid4(), "Test Inv", 1000)],
+            events_by_type=[("evtx_security_4624", 10000), ("evtx_sysmon_1", 6000)],  # Estimates (20x multiplier)
             embeddings_total=8500,
-            embeddings_by_owner=[("tool", 8000), ("timeline", 500)],
-            embeddings_by_model=[("text-embedding-ada-002", 8500)],
+            embeddings_by_owner=[("tool", 80000), ("timeline", 5000)],  # Estimates (10x multiplier)
+            embeddings_by_model=[("text-embedding-ada-002", 85000)],  # Estimates (10x multiplier)
             timeline_stats=(50, 45),
-            timeline_by_type=[("event", 40), ("finding", 10)],
+            timeline_by_type=[("event", 400), ("finding", 100)],  # Estimates (10x multiplier)
             job_stats={
                 "jobs_parsing_pending": 2,
                 "jobs_parsing_completed": 100,
@@ -486,9 +486,9 @@ class TestGetSystemStatus:
             mock_execute_result,
             embeddings_total=10000,
             embeddings_by_model=[
-                ("text-embedding-ada-002", 5000),
-                ("nomic-embed-text", 3000),
-                ("all-MiniLM-L6-v2", 2000),
+                ("text-embedding-ada-002", 50000),  # Estimates (10x multiplier)
+                ("nomic-embed-text", 30000),
+                ("all-MiniLM-L6-v2", 20000),
             ]
         )
 
@@ -496,7 +496,7 @@ class TestGetSystemStatus:
 
         assert len(result["embeddings"]["by_model"]) == 3
         assert result["embeddings"]["by_model"][0]["model_name"] == "text-embedding-ada-002"
-        assert result["embeddings"]["by_model"][0]["count"] == 5000
+        assert result["embeddings"]["by_model"][0]["count"] == 50000  # Estimated
 
     async def test_embeddings_by_owner_type(self, mock_db, mock_user, mock_execute_result):
         """Test embeddings grouped by owner type."""
@@ -504,10 +504,10 @@ class TestGetSystemStatus:
             mock_execute_result,
             embeddings_total=10000,
             embeddings_by_owner=[
-                ("tool", 8000),
-                ("timeline", 1500),
-                ("chat", 400),
-                ("note", 100),
+                ("tool", 80000),  # Estimates (10x multiplier)
+                ("timeline", 15000),
+                ("chat", 4000),
+                ("note", 1000),
             ]
         )
 
@@ -515,7 +515,7 @@ class TestGetSystemStatus:
 
         assert len(result["embeddings"]["by_owner_type"]) == 4
         assert result["embeddings"]["by_owner_type"][0]["owner_type"] == "tool"
-        assert result["embeddings"]["by_owner_type"][0]["count"] == 8000
+        assert result["embeddings"]["by_owner_type"][0]["count"] == 80000  # Estimated
 
     async def test_timeline_by_type_distribution(self, mock_db, mock_user, mock_execute_result):
         """Test timeline entries grouped by type."""
@@ -523,10 +523,10 @@ class TestGetSystemStatus:
             mock_execute_result,
             timeline_stats=(100, 70),
             timeline_by_type=[
-                ("event", 70),
-                ("finding", 20),
-                ("observation", 8),
-                ("note", 2),
+                ("event", 700),  # Estimates (10x multiplier)
+                ("finding", 200),
+                ("observation", 80),
+                ("note", 20),
             ]
         )
 
@@ -534,7 +534,7 @@ class TestGetSystemStatus:
 
         assert len(result["timeline"]["by_type"]) == 4
         assert result["timeline"]["by_type"][0]["entry_type"] == "event"
-        assert result["timeline"]["by_type"][0]["count"] == 70
+        assert result["timeline"]["by_type"][0]["count"] == 700  # Estimated
 
     async def test_artifacts_classification_names(self, mock_db, mock_user, mock_execute_result):
         """Test artifacts grouped by classification."""
@@ -542,11 +542,11 @@ class TestGetSystemStatus:
             mock_execute_result,
             artifacts_total=(500, 1000000),
             artifacts_classification=[
-                ("0", 50),   # System Hive
-                ("1", 200),  # Log File
-                ("2", 100),  # Binary
-                ("3", 100),  # Archive
-                ("4", 50),   # Unknown
+                ("0", 200),   # System Hive (estimated, 4x multiplier)
+                ("1", 800),   # Log File
+                ("2", 400),   # Binary
+                ("3", 400),   # Archive
+                ("4", 200),   # Unknown
             ]
         )
 
@@ -637,20 +637,24 @@ class TestGetSystemStatus:
             assert any("testuser" in arg for arg in call_args)
 
     async def test_events_by_investigation_sorted_by_count(self, mock_db, mock_user, mock_execute_result):
-        """Test that events by investigation are sorted by count descending."""
+        """Test that events by investigation are sorted by count descending (derived from investigation stats)."""
+        inv1 = uuid4()
+        inv2 = uuid4()
+        inv3 = uuid4()
+        
         mock_db.execute.side_effect = create_full_mock_sequence(
             mock_execute_result,
-            events_total=(1000, 500),
-            events_by_investigation=[
-                (uuid4(), "High Volume Inv", 5000),
-                (uuid4(), "Medium Volume Inv", 2000),
-                (uuid4(), "Low Volume Inv", 100),
-            ]
+            investigations=[
+                (inv1, "High Volume Inv", "owner1", datetime.utcnow(), 5000, 4000, 1000, 80.0, 50, 40, 10, 80.0),
+                (inv2, "Medium Volume Inv", "owner2", datetime.utcnow(), 2000, 1500, 500, 75.0, 20, 15, 5, 75.0),
+                (inv3, "Low Volume Inv", "owner3", datetime.utcnow(), 100, 80, 20, 80.0, 5, 4, 1, 80.0),
+            ],
+            events_total=(7100, 5580),
         )
 
         result = await get_system_status(mock_db, mock_user)
 
-        # Verify descending order
+        # Verify descending order (derived from investigation stats)
         assert result["events"]["by_investigation"][0]["event_count"] == 5000
         assert result["events"]["by_investigation"][1]["event_count"] == 2000
         assert result["events"]["by_investigation"][2]["event_count"] == 100

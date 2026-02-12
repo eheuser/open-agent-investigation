@@ -873,7 +873,7 @@ class EmbeddingService:
 
             except Exception as e:
                 last_error = e
-                logger.error(
+                logger.info(
                     f"Embedding call failed (attempt {attempt + 1}/{self.max_retries}): {e}",
                     exc_info=True,
                 )

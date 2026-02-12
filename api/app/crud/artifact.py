@@ -13,8 +13,9 @@ logger = get_logger(__name__)
 
 # Maximum artifact size: 500 MB
 # Files larger than this will be stored on filesystem only (no database blob)
-MAX_ARTIFACT_BLOB_SIZE = 500 * 1024 * 1024
-
+# TODO don't store this in the DB
+#MAX_ARTIFACT_BLOB_SIZE = 500 * 1024 * 1024
+MAX_ARTIFACT_BLOB_SIZE = 1
 
 def sha256_bytes(data: bytes) -> bytes:
     """
@@ -59,7 +60,7 @@ async def create_artifact(
     # For very large files (>500 MB), store empty blob to avoid database bloat
     # The file will still be available on the filesystem for parsing
     if file_size > MAX_ARTIFACT_BLOB_SIZE:
-        logger.warning(
+        logger.debug(
             f"Artifact {filename} is {file_size:,} bytes (>{MAX_ARTIFACT_BLOB_SIZE:,}), "
             f"storing on filesystem only (empty database blob)"
         )
@@ -73,6 +74,7 @@ async def create_artifact(
         sha256=sha,
         filename=filename,
         classification=classification,
+        size_bytes=file_size,  # Store original file size
         blob=blob_to_store,
     )
 

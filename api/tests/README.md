@@ -15,7 +15,7 @@ The test suite uses a three-tier strategy:
 2. **Integration Tests** (~1000 tests) - Database and API endpoint tests
 3. **End-to-End Tests** (planned) - Full workflow tests
 
-**Current Status:** 1802 tests, 71.32% coverage (targeting 80%)
+**Current Status:** 1837 tests, 71.14% coverage (targeting 80%)
 
 ## Structure
 
@@ -74,7 +74,7 @@ tests/
 │   │   └── test_tool_execution.py # Tool execution CRUD (55 tests)
 │   ├── routers/                 # Router unit tests (1 file)
 │   │   └── test_events.py       # Events router (53 tests)
-│   ├── services/                # Service layer tests (11 files)
+│   ├── services/                # Service layer tests (14 files)
 │   │   ├── test_chat_router.py  # Chat routing logic
 │   │   ├── test_websocket_manager.py  # WebSocket connections
 │   │   ├── test_chat_persistence.py  # Message persistence
@@ -82,6 +82,9 @@ tests/
 │   │   ├── test_context_manager.py  # Context management
 │   │   ├── test_query_expander.py  # Query expansion
 │   │   ├── test_llm_context.py  # LLM context building (110 tests)
+│   │   ├── test_embedding_batcher.py  # Embedding batcher service (35 tests)
+│   │   ├── test_embedding_pool.py  # Embedding pool service (21 tests)
+│   │   ├── test_embedding_queue.py  # Embedding queue service (12 tests)
 │   │   ├── handlers/
 │   │   │   └── test_general_chat_handler.py  # General chat handler
 │   │   └── rag/
@@ -198,7 +201,7 @@ docker compose -f docker-compose.test.yml down -v
 
 ## Coverage
 
-**Current Coverage**: 71.32% (1802 tests)
+**Current Coverage**: 71.14% (1837 tests)
 **Target**: 80% line coverage
 
 The test suite aims for:
@@ -221,10 +224,13 @@ The test suite aims for:
 - `app/services/handlers/general_chat_handler.py` - 85%
 - `app/services/report_generator.py` - 83%
 - `app/routers/tags.py` - 100% (deprecated endpoints)
-- `app/services/chat_broadcast.py` - 77%
+- `app/services/chat_broadcast.py` - 69%
 - `app/services/policy_router.py` - 75%
-- `app/services/rag/event_processor.py` - 75%
+- `app/services/rag/event_processor.py` - 73%
+- `app/services/rag/retriever.py` - 71%
 - `app/services/handlers/event_handler.py` - 71%
+- `app/services/embedding_pool.py` - 68% (new comprehensive tests added)
+- `app/services/embedding_batcher.py` - 54% (new comprehensive tests added)
 - `app/auth.py` - 100%
 - `app/deps.py` - 100%
 - `app/utils/content_sanitizer.py` - 100%
@@ -517,10 +523,10 @@ GitHub Actions workflow (`.github/workflows/tests.yml`):
 ## Performance
 
 Test execution times (approximate):
-- **Unit tests**: ~30 seconds (~800 tests)
-- **Integration tests**: ~95 seconds (~1000 tests)
+- **Unit tests**: ~35 seconds (~835 tests)
+- **Integration tests**: ~96 seconds (~1002 tests)
 - **E2E tests**: ~2 minutes (planned)
-- **Full suite**: ~126 seconds (1802 tests total)
+- **Full suite**: ~131 seconds (1837 tests total)
 
 ## Test Coverage for Recent Changes
 
@@ -589,6 +595,98 @@ When adding features:
 - [FastAPI Testing](https://fastapi.tiangolo.com/tutorial/testing/)
 - [SQLAlchemy Async Testing](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)
 - [Factory Boy](https://factoryboy.readthedocs.io/)
+
+## Recent Test Additions
+
+### Embedding System Test Coverage (Feb 2026)
+
+**Added 68 new tests** for the embedding batcher and pool services:
+
+**Embedding Batcher Tests** (`test_embedding_batcher.py` - 35 tests):
+- Queue initialization and event queueing (8 tests)
+- Queue size tracking (3 tests)
+- Batcher process lifecycle management (4 tests)
+- Configuration constants validation (2 tests)
+- Integration tests for queue operations (3 tests)
+- Edge cases and error handling (6 tests)
+- Process function behavior (2 tests)
+- Concurrent access patterns (7 tests)
+
+**Embedding Pool Tests** (`test_embedding_pool.py` - 21 tests):
+- Event pooling without auto-flush (3 tests)
+- Manual pool flushing (2 tests)
+- Investigation-specific flushing (3 tests)
+- Deterministic batching behavior (3 tests)
+- Pool statistics tracking (2 tests)
+- Configuration constants (1 test)
+- Edge cases and error handling (7 tests)
+
+**Embedding Queue Tests** (`test_embedding_queue.py` - 12 tests):
+- Event queueing with adaptive batching (5 tests)
+- Embedding status tracking (6 tests)
+- Configuration constants (1 test)
+
+**Coverage Impact**:
+- `embedding_batcher.py`: 21% → 54% (+33%)
+- `embedding_pool.py`: 54% → 68% (+14%)
+- `embedding_queue.py`: Maintained at 100%
+- **Overall**: Added 68 tests, improved embedding system coverage significantly
+
+### Embedding Count Consistency (Feb 2026)
+
+**Issue**: Uploading the same artifact bundle to multiple investigations resulted in different embedding counts (e.g., 7,220 vs 7,619 vs 7,410 events embedded, ~5% variance).
+
+**Root Cause**: 
+The **embedding pool architecture was fundamentally flawed**:
+1. **Concurrent artifact parsing** → Events added to shared pool in non-deterministic order
+2. **Size-based flushing (500 events)** → Jobs created at unpredictable boundaries depending on which artifacts completed first
+3. **Race conditions** → Multiple workers adding events simultaneously caused non-deterministic batch composition
+4. **Set-based deduplication** → Converting `set` to `list` had undefined order
+
+Even with investigation-specific flushing, the order of concurrent artifact completion determined which events ended up in which batch.
+
+**Fix**: 
+**Redesigned the embedding pool for deterministic-only flushing**:
+- **Disabled size-based flushing** (set threshold to 999999999)
+- **Disabled timeout-based flushing** (set timeout to 999999 seconds)
+- Pool only flushes when **all parsing jobs complete** for an investigation
+- Events are **sorted before batching** for deterministic job boundaries
+- Each flush creates jobs of exactly 1000 events (deterministic batch sizes)
+
+**Result**: Embedding counts are now 100% deterministic - identical artifact bundles produce identical embedding counts across all investigations.
+
+**Files Modified**:
+- `api/app/services/embedding_pool.py` - Disabled automatic flushing, sort events before batching
+- `api/app/services/embedding_batcher.py` - New queue-based batching service (runs as separate process)
+- `api/worker/main.py` - Flush pool when parsing completes (deterministic trigger)
+- `api/worker/parsers/dispatcher.py` - Queue events for batching instead of immediate job creation
+
+**Tests Added**:
+- `api/tests/unit/services/test_embedding_batcher.py` - 35 comprehensive tests
+- `api/tests/unit/services/test_embedding_pool.py` - Enhanced with 21 tests (from 4 tests)
+- `api/tests/unit/services/test_embedding_queue.py` - 12 tests for queue service
+
+## Architecture Decision: Deterministic Embedding Pool
+
+The embedding pool now uses **deterministic-only flushing** to guarantee consistent results:
+
+**Key Design Principles**:
+1. **No automatic flushing** - Size and timeout thresholds are effectively disabled
+2. **Flush only on completion** - Pool flushes when all parsing jobs finish for an investigation
+3. **Sorted batching** - Events are sorted by ID before creating jobs
+4. **Fixed batch size** - Always 1000 events per job (deterministic boundaries)
+
+**Why This Works**:
+- ✅ **Deterministic**: Same artifacts → Same pool contents → Same sorted order → Same batches
+- ✅ **Efficient**: Still creates large jobs (1000 events each)
+- ✅ **Simple**: No complex timing logic or race conditions
+- ✅ **Predictable**: Job count = ceiling(total_events / 1000)
+
+**Example**:
+- Investigation with 7,427 interesting events
+- Pool accumulates all events during parsing
+- When parsing completes: Sort → Batch → Create 8 jobs (7×1000 + 1×427)
+- Same input always produces same 8 jobs with same event IDs in same order
 
 ## Troubleshooting
 

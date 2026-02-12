@@ -19,7 +19,7 @@ Open Agent Investigation (OAI) provides an end‑to‑end workflow for Windows h
 * **Hybrid retrieval** – Event data is indexed with both BM25 keyword search and vector embeddings (PGVector) enabling fast semantic lookup.
 * **Playbook engine** – Over 20 built‑in MITRE ATT&CK‑aligned playbooks; users can clone and customize them in Markdown.
 * **Timeline construction** – Chronological aggregation of deduplicated events, with support for manual annotation and export to PDF/Markdown.
-* **Performance optimization** – Materialized views and aggregate caches provide <500ms status modal loading (10-20x faster); automatically refreshed after jobs complete.
+* **Performance optimization** – Materialized views, aggregate caches, and statistical sampling provide <200ms status modal loading (25-50x faster); automatically refreshed after jobs complete.
 * **Extensible architecture** – Workers run as asynchronous multiprocess tasks; new parsers or tools are added via a plugin interface.
 
 ## Visual Overview

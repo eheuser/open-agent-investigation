@@ -12,9 +12,11 @@ from ..utils.log_setup import get_logger
 logger = get_logger(__name__)
 
 # Pool configuration
-POOL_FLUSH_SIZE = 2000  # Create job when pool reaches this size (reduced from 2000 for more frequent jobs)
-POOL_FLUSH_TIMEOUT = 3  # Create job after this many seconds (reduced from 30 for faster visibility)
-POOL_CHECK_INTERVAL = 5  # Check for timeout flushes every N seconds
+# NOTE: Size-based and timeout-based flushing are DISABLED for deterministic behavior
+# Pool is only flushed when parsing completes for an investigation
+POOL_FLUSH_SIZE = 999999999  # Effectively disabled (only flush on investigation completion)
+POOL_FLUSH_TIMEOUT = 999999  # Effectively disabled (only flush on investigation completion)
+POOL_CHECK_INTERVAL = 60  # Check infrequently (only for cleanup of abandoned pools)
 
 
 class EmbeddingPool:
@@ -92,13 +94,8 @@ class EmbeddingPool:
                 f"pool size: {new_size:,}/{POOL_FLUSH_SIZE})"
             )
 
-            # Check if we should flush
-            if new_size >= POOL_FLUSH_SIZE:
-                logger.debug(
-                    f"Pool reached flush threshold ({new_size:,} >= {POOL_FLUSH_SIZE}), flushing..."
-                )
-                return await self._flush_pool(db, pool_key)
-
+            # Size-based flushing is disabled - only flush when investigation parsing completes
+            # This ensures deterministic batching (same artifacts = same batches)
             return 0
 
     async def _flush_pool(
@@ -107,7 +104,7 @@ class EmbeddingPool:
         pool_key: tuple[UUID, int],
     ) -> int:
         """
-        Flush a specific pool by creating embedding jobs.
+        Flush a specific pool by creating embedding jobs with proper batching.
 
         Must be called with _pool_lock held.
 
@@ -122,7 +119,7 @@ class EmbeddingPool:
             return 0
 
         pool = self._pools[pool_key]
-        event_ids = list(pool["event_ids"])
+        event_ids = sorted(list(pool["event_ids"]))  # Sort for deterministic batching
 
         if not event_ids:
             # Clean up empty pool
@@ -131,21 +128,27 @@ class EmbeddingPool:
 
         investigation_id, user_id = pool_key
 
-        # Create job with all pooled events
-        job = EmbeddingJob(
-            investigation_id=investigation_id,
-            user_id=user_id,
-            event_ids=event_ids,
-            status=JobStatus.PENDING,
-        )
-        db.add(job)
+        # Batch events into jobs of 1000 events each (deterministic batching)
+        BATCH_SIZE = 1000
+        jobs_created = 0
+
+        for i in range(0, len(event_ids), BATCH_SIZE):
+            batch = event_ids[i : i + BATCH_SIZE]
+            
+            job = EmbeddingJob(
+                investigation_id=investigation_id,
+                user_id=user_id,
+                event_ids=batch,
+                status=JobStatus.PENDING,
+            )
+            db.add(job)
+            jobs_created += 1
 
         try:
             await db.commit()
-            jobs_created = 1
 
             logger.debug(
-                f"Flushed pool: created 1 job with {len(event_ids):,} events "
+                f"Flushed pool: created {jobs_created} job(s) with {len(event_ids):,} events "
                 f"(investigation {investigation_id})"
             )
 
@@ -158,6 +161,37 @@ class EmbeddingPool:
             logger.error(f"Failed to flush pool: {e}", exc_info=True)
             await db.rollback()
             return 0
+
+    async def flush_investigation(self, db: AsyncSession, investigation_id: UUID) -> int:
+        """
+        Flush all pools for a specific investigation.
+
+        Args:
+            db: Database session
+            investigation_id: Investigation UUID to flush
+
+        Returns:
+            Number of jobs created
+        """
+        async with self._pool_lock:
+            total_jobs = 0
+            
+            # Find all pool keys for this investigation
+            keys_to_flush = [
+                key for key in self._pools.keys()
+                if key[0] == investigation_id
+            ]
+
+            for pool_key in keys_to_flush:
+                jobs_created = await self._flush_pool(db, pool_key)
+                total_jobs += jobs_created
+
+            if total_jobs > 0:
+                logger.debug(
+                    f"Flushed {len(keys_to_flush)} pool(s) for investigation {investigation_id}: "
+                    f"{total_jobs} job(s) created"
+                )
+            return total_jobs
 
     async def flush_all(self, db: AsyncSession) -> int:
         """
@@ -331,6 +365,20 @@ async def add_events_to_pool(
     return await _embedding_pool.add_events(db, investigation_id, user_id, event_ids)
 
 
+async def flush_investigation_pool(db: AsyncSession, investigation_id: UUID) -> int:
+    """
+    Flush the embedding pool for a specific investigation.
+
+    Args:
+        db: Database session
+        investigation_id: Investigation UUID
+
+    Returns:
+        Number of jobs created
+    """
+    return await _embedding_pool.flush_investigation(db, investigation_id)
+
+
 async def flush_embedding_pool(db: AsyncSession) -> int:
     """
     Manually flush all pools.
@@ -372,6 +420,7 @@ def get_pool_statistics() -> Dict:
 
 __all__ = [
     "add_events_to_pool",
+    "flush_investigation_pool",
     "flush_embedding_pool",
     "start_pool_flusher",
     "stop_pool_flusher",

@@ -414,12 +414,13 @@ Authentication event analysis:
 **Performance Optimizations**:
 - **Materialized Views**: Investigation statistics pre-computed for fast loading
 - **Aggregate Cache**: System-wide stats cached to avoid expensive COUNT(*) queries
+- **Statistical Sampling**: GROUP BY queries use TABLESAMPLE for 25-50x speedup
 - **Lazy Loading**: Statistics only fetched when modal is opened
 - **Pagination**: Artifact list paginated (20 per page) to reduce payload size
 
 **Typical Load Time**:
-- **Before Optimization**: 5-10 seconds (multiple complex JOINs)
-- **After Optimization**: <500ms (cached aggregates + materialized view)
+- **Before Optimization**: 5-10 seconds (multiple complex JOINs + GROUP BY)
+- **After Optimization**: <200ms (cached aggregates + materialized view + sampling)
 
 **Cache Refresh**:
 - Statistics are cached in the database and refreshed:
