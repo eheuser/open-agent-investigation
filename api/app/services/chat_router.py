@@ -235,8 +235,10 @@ async def classify_intent(
         embedding_status = await get_embedding_status(db, investigation_id)
         if not embedding_status["is_complete"]:
             allow_rag = False
-            logger.debug(f"[CHAT_ROUTER] RAG mode disabled - embeddings pending ({embedding_status['total_pending_events']} events)")
-    
+            logger.debug(
+                f"[CHAT_ROUTER] RAG mode disabled - embeddings pending ({embedding_status['total_pending_events']} events)"
+            )
+
     # Fetch chat history if not provided
     if chat_history is None:
         chat_history = await _fetch_recent_chat_history(db, investigation_id, limit=10)
@@ -449,7 +451,7 @@ async def route_chat_message(
                 "message": "Augmented Chat mode requires embedding configuration. Please configure an embedding provider in LLM settings or use 'Auto', 'Agent', or 'Timeline' mode.",
             }
             return
-        
+
         # Check if embeddings are still being generated
         embedding_status = await get_embedding_status(db, investigation_id)
         if not embedding_status["is_complete"]:
@@ -459,7 +461,7 @@ async def route_chat_message(
                 "message": f"Augmented Chat mode is unavailable while embeddings are being generated ({pending_events:,} events pending). Please wait for embedding to complete or use 'Auto', 'Agent', or 'Timeline' mode.",
             }
             return
-        
+
         # The chat handler will persist tool executions after the message is created
         async for chunk in handle_rag_query(db, investigation_id, user_query, user_id):
             yield chunk
@@ -480,9 +482,9 @@ async def route_chat_message(
             if summary:
                 message += f"\n\n---\n📊 {summary}"
             yield {
-                "type": "answer_chunk", 
-                "content": message, 
-                "chunk_id": 0, 
+                "type": "answer_chunk",
+                "content": message,
+                "chunk_id": 0,
                 "is_final": True,
                 "metadata": {
                     "routing_metadata": result.get("routing_metadata"),
@@ -519,7 +521,9 @@ async def route_chat_message(
         embedding_status = await get_embedding_status(db, investigation_id)
         if not embedding_status["is_complete"]:
             allow_rag = False
-            logger.debug(f"[CHAT_ROUTER] RAG mode disabled for auto classification - embeddings pending ({embedding_status['total_pending_events']} events)")
+            logger.debug(
+                f"[CHAT_ROUTER] RAG mode disabled for auto classification - embeddings pending ({embedding_status['total_pending_events']} events)"
+            )
 
     # Step 3: Classify intent with conversation context
     classification = await classify_intent(
@@ -574,9 +578,9 @@ async def route_chat_message(
                     message += f"\n\n---\n📊 {summary}"
 
                 yield {
-                    "type": "answer_chunk", 
-                    "content": message, 
-                    "chunk_id": 0, 
+                    "type": "answer_chunk",
+                    "content": message,
+                    "chunk_id": 0,
                     "is_final": True,
                     "metadata": {
                         "routing_metadata": result.get("routing_metadata"),
@@ -607,7 +611,7 @@ async def route_chat_message(
             result = await handle_policy_execution(
                 db, investigation_id, processing_query, user_id, effort=effort
             )
-            
+
             # Check if parsing is in progress
             if result.get("type") == "parsing_in_progress":
                 logger.debug(f"[CHAT_ROUTER] Parsing in progress, delaying agent execution")

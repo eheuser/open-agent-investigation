@@ -336,7 +336,7 @@ async def _execute_timeline_llm_loop(
                     operation_types.append("update")
                 if any(t["name"] == "delete_timeline_entry" for t in tools_used):
                     operation_types.append("delete")
-                
+
                 operation_type = "/".join(operation_types) if operation_types else "query"
 
                 return {
@@ -715,7 +715,7 @@ async def _tool_query_timeline(
                 "data": row[6] or {},
                 "tags": row[7] or [],
             }
-            
+
             # Include full event data if available (from LEFT JOIN)
             if row[1] and row[8]:  # event_id exists and event_type exists
                 entry["event"] = {
@@ -725,7 +725,7 @@ async def _tool_query_timeline(
                     "payload": row[10],
                     "artifact_id": row[11],
                 }
-            
+
             entries.append(entry)
 
         return {

@@ -44,37 +44,25 @@ async def get_system_status(
         stats: Dict[str, Any] = {}
         
         # ===== INVESTIGATIONS =====
-        # Detailed investigation statistics with event and timeline embedding coverage
+        # Hybrid approach: Use cached data from materialized view with fallback to live data
+        # Cached data is refreshed automatically after parsing/embedding jobs and every 5 minutes
         result = await db.execute(  # type: ignore
             text("""
                 SELECT 
-                    i.investigation_id,
-                    i.title,
-                    u.username as owner,
-                    i.created_at,
-                    COUNT(DISTINCT e.event_id) AS total_events,
-                    COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NOT NULL) AS events_with_embeddings,
-                    COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NULL) AS events_without_embeddings,
-                    ROUND(
-                        100.0 * COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NOT NULL) / 
-                        NULLIF(COUNT(DISTINCT e.event_id), 0), 
-                        2
-                    ) AS event_embedding_coverage_percent,
-                    COUNT(DISTINCT te.entry_id) AS total_timeline_entries,
-                    COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NOT NULL) AS timeline_with_embeddings,
-                    COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NULL) AS timeline_without_embeddings,
-                    ROUND(
-                        100.0 * COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NOT NULL) / 
-                        NULLIF(COUNT(DISTINCT te.entry_id), 0), 
-                        2
-                    ) AS timeline_embedding_coverage_percent
-                FROM investigations i
-                LEFT JOIN users u ON u.user_id = i.owner_user_id
-                LEFT JOIN events e ON e.investigation_id = i.investigation_id
-                LEFT JOIN embeddings emb_e ON emb_e.owner_type = 'tool' AND emb_e.owner_id = e.event_id
-                LEFT JOIN timeline_entries te ON te.investigation_id = i.investigation_id
-                GROUP BY i.investigation_id, i.title, u.username, i.created_at
-                ORDER BY i.created_at DESC
+                    investigation_id,
+                    title,
+                    owner,
+                    created_at,
+                    total_events,
+                    events_with_embeddings,
+                    events_without_embeddings,
+                    event_embedding_coverage_percent,
+                    total_timeline_entries,
+                    timeline_with_embeddings,
+                    timeline_without_embeddings,
+                    timeline_embedding_coverage_percent
+                FROM investigation_stats_mv
+                ORDER BY created_at DESC
             """)
         )
         
@@ -103,13 +91,14 @@ async def get_system_status(
         }
         
         # ===== ARTIFACTS =====
-        # Total artifacts and storage
+        # Use cached stats for artifact totals (refreshed automatically)
         result = await db.execute(  # type: ignore
             text("""
                 SELECT 
-                    COUNT(*) as total,
-                    COALESCE(SUM(length(blob)), 0) as total_size_bytes
-                FROM artifacts
+                    MAX(CASE WHEN stat_key = 'total_artifacts' THEN stat_value ELSE 0 END) as total,
+                    MAX(CASE WHEN stat_key = 'total_artifact_bytes' THEN stat_value ELSE 0 END) as total_size_bytes
+                FROM system_stats_cache
+                WHERE stat_key IN ('total_artifacts', 'total_artifact_bytes')
             """)
         )
         row = result.fetchone()
@@ -196,29 +185,21 @@ async def get_system_status(
         }
         
         # ===== EVENTS & EMBEDDINGS =====
-        # Event embedding coverage
+        # Use cached stats for event totals (refreshed automatically)
         result = await db.execute(  # type: ignore
             text("""
                 SELECT 
-                    COUNT(DISTINCT e.event_id) AS total_events,
-                    COUNT(DISTINCT e.event_id) FILTER (WHERE emb.id IS NOT NULL) AS events_with_embeddings,
-                    COUNT(DISTINCT e.event_id) FILTER (WHERE emb.id IS NULL) AS events_without_embeddings,
-                    ROUND(
-                        100.0 * COUNT(DISTINCT e.event_id) FILTER (WHERE emb.id IS NOT NULL) / 
-                        NULLIF(COUNT(DISTINCT e.event_id), 0), 
-                        2
-                    ) AS embedding_coverage_percent
-                FROM events e
-                LEFT JOIN embeddings emb 
-                    ON emb.owner_type = 'tool' 
-                    AND emb.owner_id = e.event_id
+                    MAX(CASE WHEN stat_key = 'total_events' THEN stat_value ELSE 0 END) as total_events,
+                    MAX(CASE WHEN stat_key = 'events_with_embeddings' THEN stat_value ELSE 0 END) as events_with_embeddings
+                FROM system_stats_cache
+                WHERE stat_key IN ('total_events', 'events_with_embeddings')
             """)
         )
         row = result.fetchone()
         events_total = row[0] if row else 0
         events_with_embeddings = row[1] if row else 0
-        events_without_embeddings = row[2] if row else 0
-        embedding_coverage_percent = float(row[3]) if row and row[3] else 0.0
+        events_without_embeddings = events_total - events_with_embeddings
+        embedding_coverage_percent = round(100.0 * events_with_embeddings / events_total, 2) if events_total > 0 else 0.0
         
         # Events by type (top 20)
         result = await db.execute(  # type: ignore
@@ -267,8 +248,14 @@ async def get_system_status(
         }
         
         # ===== EMBEDDINGS =====
-        # Total embeddings
-        result = await db.execute(text("SELECT COUNT(*) FROM embeddings"))  # type: ignore
+        # Use cached stats for embedding totals (refreshed automatically)
+        result = await db.execute(  # type: ignore
+            text("""
+                SELECT stat_value 
+                FROM system_stats_cache 
+                WHERE stat_key = 'total_embeddings'
+            """)
+        )
         embeddings_total = result.scalar() or 0
         
         # Embeddings by owner type
@@ -304,11 +291,22 @@ async def get_system_status(
         }
         
         # ===== TIMELINE =====
-        # Timeline entries
-        result = await db.execute(text("SELECT COUNT(*) FROM timeline_entries"))  # type: ignore
-        timeline_total = result.scalar() or 0
+        # Use cached stats for timeline totals (refreshed automatically)
+        result = await db.execute(  # type: ignore
+            text("""
+                SELECT 
+                    MAX(CASE WHEN stat_key = 'total_timeline_entries' THEN stat_value ELSE 0 END) as total,
+                    MAX(CASE WHEN stat_key = 'timeline_with_embeddings' THEN stat_value ELSE 0 END) as with_embeddings
+                FROM system_stats_cache
+                WHERE stat_key IN ('total_timeline_entries', 'timeline_with_embeddings')
+            """)
+        )
+        row = result.fetchone()
+        timeline_total = row[0] if row else 0
+        timeline_with_embeddings = row[1] if row else 0
+        timeline_embedding_coverage = round(100.0 * timeline_with_embeddings / timeline_total, 2) if timeline_total > 0 else 0.0
         
-        # Timeline by type
+        # Timeline by type (still needs to query, but much faster than before)
         result = await db.execute(  # type: ignore
             text("""
                 SELECT entry_type, COUNT(*) as count
@@ -321,23 +319,6 @@ async def get_system_status(
             {"entry_type": row[0], "count": row[1]} for row in result.fetchall()
         ]
         
-        # Timeline embedding coverage
-        result = await db.execute(  # type: ignore
-            text("""
-                SELECT 
-                    COUNT(*) FILTER (WHERE embedding_id IS NOT NULL) as with_embeddings,
-                    ROUND(
-                        100.0 * COUNT(*) FILTER (WHERE embedding_id IS NOT NULL) / 
-                        NULLIF(COUNT(*), 0), 
-                        2
-                    ) as coverage_percent
-                FROM timeline_entries
-            """)
-        )
-        row = result.fetchone()
-        timeline_with_embeddings = row[0] if row else 0
-        timeline_embedding_coverage = float(row[1]) if row and row[1] else 0.0
-        
         stats["timeline"] = {
             "total": timeline_total,
             "by_type": timeline_by_type,
@@ -346,54 +327,34 @@ async def get_system_status(
         }
         
         # ===== JOBS =====
-        # Parsing jobs
+        # Use cached stats for job counts (refreshed automatically)
         result = await db.execute(  # type: ignore
             text("""
-                SELECT status, COUNT(*) as count
-                FROM jobs_parsing
-                GROUP BY status
+                SELECT stat_key, stat_value
+                FROM system_stats_cache
+                WHERE stat_key LIKE 'jobs_%'
             """)
         )
-        parsing_jobs = {row[0]: row[1] for row in result.fetchall()}
-        
-        # Agent jobs
-        result = await db.execute(  # type: ignore
-            text("""
-                SELECT status, COUNT(*) as count
-                FROM jobs_agents
-                GROUP BY status
-            """)
-        )
-        agent_jobs = {row[0]: row[1] for row in result.fetchall()}
-        
-        # Embedding jobs
-        result = await db.execute(  # type: ignore
-            text("""
-                SELECT status, COUNT(*) as count
-                FROM jobs_embedding
-                GROUP BY status
-            """)
-        )
-        embedding_jobs = {row[0]: row[1] for row in result.fetchall()}
+        job_stats = {row[0]: row[1] for row in result.fetchall()}
         
         stats["jobs"] = {
             "parsing": {
-                "pending": parsing_jobs.get("pending", 0),
-                "running": parsing_jobs.get("running", 0),
-                "completed": parsing_jobs.get("completed", 0),
-                "failed": parsing_jobs.get("failed", 0),
+                "pending": job_stats.get("jobs_parsing_pending", 0),
+                "running": job_stats.get("jobs_parsing_running", 0),
+                "completed": job_stats.get("jobs_parsing_completed", 0),
+                "failed": job_stats.get("jobs_parsing_failed", 0),
             },
             "agents": {
-                "pending": agent_jobs.get("pending", 0),
-                "running": agent_jobs.get("running", 0),
-                "completed": agent_jobs.get("completed", 0),
-                "failed": agent_jobs.get("failed", 0),
+                "pending": job_stats.get("jobs_agents_pending", 0),
+                "running": job_stats.get("jobs_agents_running", 0),
+                "completed": job_stats.get("jobs_agents_completed", 0),
+                "failed": job_stats.get("jobs_agents_failed", 0),
             },
             "embedding": {
-                "pending": embedding_jobs.get("pending", 0),
-                "running": embedding_jobs.get("running", 0),
-                "completed": embedding_jobs.get("completed", 0),
-                "failed": embedding_jobs.get("failed", 0),
+                "pending": job_stats.get("jobs_embedding_pending", 0),
+                "running": job_stats.get("jobs_embedding_running", 0),
+                "completed": job_stats.get("jobs_embedding_completed", 0),
+                "failed": job_stats.get("jobs_embedding_failed", 0),
             },
         }
         
@@ -431,6 +392,55 @@ async def get_system_status(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve system status: {str(e)}",
+        )
+
+
+@router.post("/refresh-stats")
+async def refresh_system_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Refresh system statistics caches.
+    
+    This endpoint refreshes:
+    - Investigation statistics materialized view (investigation_stats_mv)
+    - System-wide aggregate statistics cache (system_stats_cache)
+    
+    Should be called:
+    - After parsing jobs complete (to update event counts)
+    - After embedding jobs complete (to update embedding coverage)
+    - Periodically (e.g., every 5 minutes via cron/scheduler)
+    
+    Requires authentication. All users can trigger refresh.
+    """
+    try:
+        logger.info(f"Refreshing system statistics (triggered by {current_user.username})")
+        
+        # Refresh materialized view (CONCURRENTLY allows reads during refresh)
+        await db.execute(text("SELECT refresh_investigation_stats()"))  # type: ignore
+        
+        # Refresh system stats cache
+        await db.execute(text("SELECT update_system_stats_cache()"))  # type: ignore
+        
+        await db.commit()
+        
+        logger.info("System statistics refreshed successfully")
+        return {
+            "success": True,
+            "message": "System statistics refreshed successfully",
+            "timestamp": "NOW()",
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to refresh system statistics: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh system statistics: {str(e)}",
         )
 
 

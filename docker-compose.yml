@@ -67,6 +67,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:example@db/open_agent_inv
+      # Worker concurrency settings
+      NUM_WORKERS: ${NUM_WORKERS:-8}  # Number of main worker processes (parsing/agent jobs) - default 8
       LOG_LEVEL: INFO
       LOG_FORMAT: "%(asctime)s %(levelname)s %(name)s %(message)s"
       LOG_DATEFMT: "%Y-%m-%d %H:%M:%S"
@@ -77,6 +79,32 @@ services:
       - ./api/data/agents:/app/data/agents:ro
       - investigations_data:/data/investigations  # Read-write mount (needed for archive extraction)
       - /tmp:/tmp  # Writable temp space
+    restart: unless-stopped
+
+  embedding-worker:
+    container_name: oai-embedding-worker
+    build:
+      context: ./api
+      dockerfile: worker/Dockerfile
+      platforms:
+        - "linux/amd64"
+    command: python -m worker.embedding_background_worker
+    networks:
+      - oai-network
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:example@db/open_agent_inv
+      # Embedding worker concurrency settings
+      NUM_EMBEDDING_WORKERS: ${NUM_EMBEDDING_WORKERS:-4}  # Number of embedding worker processes - default 4
+      MAX_CONCURRENT_EMBEDDING_BATCHES: ${MAX_CONCURRENT_EMBEDDING_BATCHES:-16}  # Concurrent API calls per job - default 16
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-100}  # Events per API call - default 100
+      LOG_LEVEL: INFO
+      LOG_FORMAT: "%(asctime)s %(levelname)s %(name)s %(message)s"
+      LOG_DATEFMT: "%Y-%m-%d %H:%M:%S"
+      LOG_FILE: null
+      LOG_JSON: false
     restart: unless-stopped
 
   ui:

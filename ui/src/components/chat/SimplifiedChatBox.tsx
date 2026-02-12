@@ -10,7 +10,7 @@ import EmptyState from './EmptyState';
 import LoadingState from './LoadingState';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import UploadModal from './UploadModal';
-import ParsingStatusBanner from './ParsingStatusBanner';
+import ProcessingStatusBanner from '../ProcessingStatusBanner';
 import ConfigurationErrorModal from '../ConfigurationErrorModal';
 import { useLLMConfig } from '../../hooks/useLLMConfig';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
@@ -509,10 +509,8 @@ const SimplifiedChatBox: React.FC<SimplifiedChatBoxProps> = ({ investigationId, 
         </div>
       )}
 
-      {/* Parsing Status Banner */}
-      {parsingLocked && (
-        <ParsingStatusBanner investigationId={investigationId} />
-      )}
+      {/* Processing Status Banner (Parsing + Embedding) */}
+      <ProcessingStatusBanner investigationId={investigationId} />
 
       {/* Input Area */}
       <ChatInput

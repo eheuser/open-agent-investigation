@@ -636,7 +636,7 @@ CREATE TABLE investigation_playbooks (
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/embeddings/status/{investigation_id}` | Get embedding queue status (pending/running/completed jobs, progress %) |
+| GET | `/api/v1/embeddings/status/{investigation_id}` | Get embedding queue status (pending/running/completed jobs, events_processing, progress %) |
 | POST | `/api/v1/embeddings/generate/investigation/{id}` | Backfill embeddings for investigation |
 | GET | `/api/v1/embeddings/stats/{investigation_id}` | Get embedding statistics |
 
@@ -670,18 +670,23 @@ Embeddings are generated asynchronously in the background to avoid blocking arti
 
 **UI Feedback**:
 - Progress bar above chat interface shows embedding status
-- Displays pending event count with easing animations
+- **Layered progress bar** shows completed (solid) and processing (striped) events
+- Displays event counts: completed, processing, and total
 - Augmented Chat mode automatically disabled while embeddings pending
 - Mode dropdown shows "(embedding in progress)" for Augmented Chat
 - Auto-hides when embedding complete
-- Real-time updates every 3 seconds via polling
+- Real-time updates every 1 second via polling
+- Smooth easing animations (800ms) for responsive feel
 
 **Performance**:
+- **Dedicated embedding worker** runs independently (not blocked by parsing/agent jobs)
 - Artifact parsing no longer blocked by embedding generation
 - Large EVTX files (300MB+) parse in minutes instead of hours
 - Event pooling reduces job overhead (2000 events per job vs 50)
 - Concurrent batch processing (8 simultaneous embedding API calls)
-- Embeddings process in background at lowest worker priority
+- Smaller batch size (100 events/batch) for more frequent progress updates
+- Staggered batch starts ensure UI can catch intermediate progress states
+- **Embeddings start immediately** when events are available (parallel to parsing)
 - Users can start investigating immediately after parsing
 - Incremental progress updates with smooth easing animations
 

@@ -638,6 +638,125 @@ Add to cron:
 
 ## Performance Tuning
 
+### Materialized Views & Caching
+
+The system uses **materialized views** and **aggregate caches** to speed up expensive statistics queries.
+
+**Why NOT Use Triggers?**
+
+Database triggers on `events`, `timeline_entries`, and `embeddings` tables would be **extremely expensive**:
+- Investigations can have **millions of events**
+- Batch inserts would trigger refresh after every statement
+- Parsing a single EVTX file (100k events) would trigger 100k refreshes
+- Materialized view refresh takes 1-2 seconds (unacceptable overhead)
+
+**Solution: Worker-Based Refresh**
+
+Caches are refreshed by the workers at strategic points:
+- ✅ After **ALL parsing jobs for an investigation** complete (not per-job)
+- ✅ After **ALL embedding jobs for an investigation** complete (not per-job)
+- ✅ Every **10 minutes** during periodic maintenance (worker 0 only)
+- ✅ On **worker startup** (initial population)
+
+**Why Batch Refreshes?**
+- Uploading 10 artifacts creates 10 parsing jobs
+- Refreshing after each job = 10 expensive refreshes
+- Refreshing after ALL jobs = 1 refresh (10x less overhead)
+- Cache refresh takes 1-2 seconds (acceptable when done once)
+
+**Dedicated Embedding Worker**:
+- Runs as separate process (`embedding-worker` service)
+- Processes embedding jobs **in parallel** with parsing jobs
+- Not blocked by parsing or agent jobs
+- Ensures embeddings start generating immediately
+- Configurable: `NUM_EMBEDDING_WORKERS` (default: 4)
+
+This provides <10 minute staleness with **minimal overhead** during event insertion.
+
+#### Investigation Statistics Materialized View
+
+**Purpose**: Pre-computes expensive event/timeline embedding coverage calculations per investigation.
+
+**Refresh Strategy**:
+
+The cache is **automatically refreshed** by the worker:
+- After every parsing job completes (updates event counts)
+- After every embedding job completes (updates embedding coverage)
+- Every 5 minutes during periodic maintenance
+- On worker startup (initial cache population)
+
+**Manual Refresh** (if needed):
+```sql
+-- Manual refresh (fast, allows concurrent reads)
+SELECT refresh_investigation_stats();
+
+-- Or via API endpoint
+POST /api/v1/system/refresh-stats
+```
+
+**Performance Impact**:
+- **Before**: 5-10 seconds for status modal (multiple LEFT JOINs on embeddings table)
+- **After**: <500ms (simple SELECT from materialized view)
+- **Staleness**: <5 minutes (acceptable trade-off for 10-20x performance gain)
+
+#### System Stats Cache Table
+
+**Purpose**: Stores pre-computed aggregate counts (total events, artifacts, jobs, etc.) to avoid expensive COUNT(*) queries.
+
+**Refresh Strategy**:
+```sql
+-- Update all cached stats
+SELECT update_system_stats_cache();
+```
+
+**Cached Statistics**:
+- `total_events` - Total event count
+- `events_with_embeddings` - Events with embeddings
+- `total_timeline_entries` - Total timeline entries
+- `timeline_with_embeddings` - Timeline entries with embeddings
+- `total_embeddings` - Total embeddings
+- `total_artifacts` - Total artifacts
+- `total_artifact_bytes` - Total artifact storage
+- `jobs_*_pending/running/completed/failed` - Job status counts
+
+**Performance Impact**:
+- **Before**: 2-3 seconds for aggregate counts (full table scans)
+- **After**: <100ms (indexed lookups on small cache table)
+
+#### Automatic Refresh (Implemented)
+
+The worker automatically refreshes caches:
+
+**After Parsing Jobs** (`api/worker/main.py`):
+```python
+# After parsing job completes
+await db.execute(text("SELECT update_system_stats_cache()"))
+await db.commit()
+```
+
+**After Embedding Jobs** (`api/worker/embedding_worker.py`):
+```python
+# After embedding job completes
+await db.execute(text("SELECT refresh_investigation_stats()"))
+await db.execute(text("SELECT update_system_stats_cache()"))
+await db.commit()
+```
+
+**Periodic Refresh** (every 5 minutes):
+```python
+# During periodic maintenance in worker loop
+await db.execute(text("SELECT refresh_investigation_stats()"))
+await db.commit()
+```
+
+**Startup Initialization**:
+```python
+# On worker startup
+await db.execute(text("SELECT refresh_investigation_stats()"))
+await db.execute(text("SELECT update_system_stats_cache()"))
+await db.commit()
+```
+
 ### Query Optimization
 
 ```sql

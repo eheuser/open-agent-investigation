@@ -11,25 +11,42 @@ from app.routers.system import get_system_status
 
 
 def create_full_mock_sequence(mock_execute_result, **overrides):
-    """Helper to create full sequence of 19 mock results with optional overrides."""
+    """
+    Helper to create full sequence of database query mocks with optional overrides.
+    
+    Query sequence (16 queries total):
+    0. Investigation stats from materialized view
+    1. Artifacts total (total, size_bytes) from system_stats_cache
+    2. Artifacts by classification
+    3. Artifacts search count (scalar)
+    4. Artifacts list (paginated)
+    5. Events total (total, with_embeddings) from system_stats_cache
+    6. Events by type
+    7. Events by investigation
+    8. Embeddings total (scalar) from system_stats_cache
+    9. Embeddings by owner type
+    10. Embeddings by model
+    11. Timeline stats (total, with_embeddings) from system_stats_cache
+    12. Timeline by type
+    13. Jobs stats (rows of stat_key, stat_value) from system_stats_cache
+    14. Users (total, admins, regular)
+    15. Database health check (scalar)
+    """
     defaults = {
         "investigations": [],
         "artifacts_total": (0, 0),
         "artifacts_classification": [],
         "artifacts_search_count": 0,
         "artifacts_list": [],
-        "events_total": (0, 0, 0, 0.0),
+        "events_total": (0, 0),  # (total, with_embeddings)
         "events_by_type": [],
         "events_by_investigation": [],
         "embeddings_total": 0,
         "embeddings_by_owner": [],
         "embeddings_by_model": [],
-        "timeline_total": 0,
+        "timeline_stats": (0, 0),  # (total, with_embeddings)
         "timeline_by_type": [],
-        "timeline_coverage": (0, 0.0),
-        "parsing_jobs": [],
-        "agent_jobs": [],
-        "embedding_jobs": [],
+        "job_stats": {},  # Dictionary of stat_key: stat_value
         "users": (0, 0, 0),
         "db_health": 1,
     }
@@ -47,12 +64,9 @@ def create_full_mock_sequence(mock_execute_result, **overrides):
         mock_execute_result(scalar_value=defaults["embeddings_total"]),
         mock_execute_result(defaults["embeddings_by_owner"]),
         mock_execute_result(defaults["embeddings_by_model"]),
-        mock_execute_result(scalar_value=defaults["timeline_total"]),
+        mock_execute_result(defaults["timeline_stats"]),
         mock_execute_result(defaults["timeline_by_type"]),
-        mock_execute_result(defaults["timeline_coverage"]),
-        mock_execute_result(defaults["parsing_jobs"]),
-        mock_execute_result(defaults["agent_jobs"]),
-        mock_execute_result(defaults["embedding_jobs"]),
+        mock_execute_result(list(defaults["job_stats"].items()) if defaults["job_stats"] else []),
         mock_execute_result(defaults["users"]),
         mock_execute_result(scalar_value=defaults["db_health"]),
     ]
@@ -103,18 +117,22 @@ class TestGetSystemStatus:
             artifacts_classification=[("0", 100), ("1", 200), ("3", 50)],
             artifacts_search_count=350,
             artifacts_list=[(1, "test.evtx", "1", datetime.utcnow(), 1024, "Test Inv", b"abc123")],
-            events_total=(10000, 8000, 2000, 80.0),
+            events_total=(10000, 8000),
             events_by_type=[("evtx_security_4624", 500), ("evtx_sysmon_1", 300)],
             events_by_investigation=[(uuid4(), "Test Inv", 1000)],
             embeddings_total=8500,
             embeddings_by_owner=[("tool", 8000), ("timeline", 500)],
             embeddings_by_model=[("text-embedding-ada-002", 8500)],
-            timeline_total=50,
+            timeline_stats=(50, 45),
             timeline_by_type=[("event", 40), ("finding", 10)],
-            timeline_coverage=(45, 90.0),
-            parsing_jobs=[("pending", 2), ("completed", 100)],
-            agent_jobs=[("running", 1), ("completed", 50)],
-            embedding_jobs=[("pending", 5), ("completed", 200)],
+            job_stats={
+                "jobs_parsing_pending": 2,
+                "jobs_parsing_completed": 100,
+                "jobs_agents_running": 1,
+                "jobs_agents_completed": 50,
+                "jobs_embedding_pending": 5,
+                "jobs_embedding_completed": 200,
+            },
             users=(10, 2, 8),
         )
 
@@ -237,7 +255,7 @@ class TestGetSystemStatus:
         """Test event embedding coverage percentage calculation."""
         mock_db.execute.side_effect = create_full_mock_sequence(
             mock_execute_result,
-            events_total=(1000, 750, 250, 75.0)
+            events_total=(1000, 750)  # total=1000, with_embeddings=750
         )
 
         result = await get_system_status(mock_db, mock_user)
@@ -251,8 +269,8 @@ class TestGetSystemStatus:
         """Test timeline embedding coverage percentage calculation."""
         mock_db.execute.side_effect = create_full_mock_sequence(
             mock_execute_result,
-            timeline_total=100,
-            timeline_coverage=(90, 90.0)
+            timeline_stats=(100, 90),  # total=100, with_embeddings=90
+            timeline_by_type=[("event", 70), ("finding", 30)]
         )
 
         result = await get_system_status(mock_db, mock_user)
@@ -265,9 +283,18 @@ class TestGetSystemStatus:
         """Test job status aggregation for all job types."""
         mock_db.execute.side_effect = create_full_mock_sequence(
             mock_execute_result,
-            parsing_jobs=[("pending", 5), ("running", 2), ("completed", 100), ("failed", 3)],
-            agent_jobs=[("pending", 1), ("completed", 50), ("failed", 2)],
-            embedding_jobs=[("pending", 10), ("running", 5), ("completed", 200)]
+            job_stats={
+                "jobs_parsing_pending": 5,
+                "jobs_parsing_running": 2,
+                "jobs_parsing_completed": 100,
+                "jobs_parsing_failed": 3,
+                "jobs_agents_pending": 1,
+                "jobs_agents_completed": 50,
+                "jobs_agents_failed": 2,
+                "jobs_embedding_pending": 10,
+                "jobs_embedding_running": 5,
+                "jobs_embedding_completed": 200,
+            }
         )
 
         result = await get_system_status(mock_db, mock_user)
@@ -327,8 +354,8 @@ class TestGetSystemStatus:
         """Test handling of empty database (no data)."""
         mock_db.execute.side_effect = create_full_mock_sequence(
             mock_execute_result,
-            events_total=(0, 0, 0, None),
-            timeline_coverage=(0, None),
+            events_total=(0, 0),
+            timeline_stats=(0, 0),
             users=(1, 0, 1)
         )
 
@@ -414,7 +441,7 @@ class TestGetSystemStatus:
         
         mock_db.execute.side_effect = create_full_mock_sequence(
             mock_execute_result,
-            events_total=(1000, 500, 500, 50.0),
+            events_total=(1000, 500),
             events_by_type=event_types[:20]
         )
 
@@ -494,7 +521,7 @@ class TestGetSystemStatus:
         """Test timeline entries grouped by type."""
         mock_db.execute.side_effect = create_full_mock_sequence(
             mock_execute_result,
-            timeline_total=100,
+            timeline_stats=(100, 70),
             timeline_by_type=[
                 ("event", 70),
                 ("finding", 20),
@@ -613,7 +640,7 @@ class TestGetSystemStatus:
         """Test that events by investigation are sorted by count descending."""
         mock_db.execute.side_effect = create_full_mock_sequence(
             mock_execute_result,
-            events_total=(1000, 500, 500, 50.0),
+            events_total=(1000, 500),
             events_by_investigation=[
                 (uuid4(), "High Volume Inv", 5000),
                 (uuid4(), "Medium Volume Inv", 2000),

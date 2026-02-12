@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Worker settings
     worker_poll_interval: int = 1  # seconds
     worker_timeout: int = 30  # seconds
+    num_workers: int = 8  # Number of main worker processes (parsing/agent jobs) - default 8
+    num_embedding_workers: int = 4  # Number of dedicated embedding worker processes - default 4
+    max_concurrent_embedding_batches: int = 16  # Concurrent API calls per embedding job - default 16
+    embedding_batch_size: int = 100  # Events per embedding API call - default 100
     
     # File storage
     investigations_base_path: str = "/data/investigations"

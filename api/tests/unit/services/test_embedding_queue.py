@@ -185,14 +185,14 @@ class TestGetEmbeddingStatus:
         running_row.events_processed = 0
         
         result_mock.all.return_value = [running_row]
-        db.execute.return_value = result_mock
+        db.execute = AsyncMock(return_value=result_mock)
         
         status = await get_embedding_status(db, inv_id)
         
         assert status["pending_jobs"] == 0
         assert status["running_jobs"] == 2
         assert status["completed_jobs"] == 0
-        assert status["events_pending"] == 200
+        assert status["events_processing"] == 200  # All events in running jobs are being processed
         assert status["is_complete"] is False
 
     @pytest.mark.asyncio
@@ -253,7 +253,7 @@ class TestGetEmbeddingStatus:
         completed_row.events_processed = 300
         
         result_mock.all.return_value = [pending_row, running_row, completed_row]
-        db.execute.return_value = result_mock
+        db.execute = AsyncMock(return_value=result_mock)
         
         status = await get_embedding_status(db, inv_id)
         
@@ -261,7 +261,8 @@ class TestGetEmbeddingStatus:
         assert status["running_jobs"] == 1
         assert status["completed_jobs"] == 3
         assert status["total_jobs"] == 6
-        assert status["events_pending"] == 300  # 200 + 100
+        assert status["events_pending"] == 200  # Only pending jobs count as pending
+        assert status["events_processing"] == 100  # Running jobs with unprocessed events
         assert status["events_completed"] == 300
         assert status["events_total"] == 600  # 200 + 100 + 300
         assert status["progress_percent"] == 50  # 300/600

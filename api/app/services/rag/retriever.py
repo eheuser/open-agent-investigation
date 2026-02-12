@@ -86,7 +86,7 @@ class Retriever:
                 k=k,
                 bm25_weight=bm25_weight,
             )
-        
+
         # Fallback to vector-only search
         candidates = await self._vector_search(
             query_vec=query_vec,
@@ -115,7 +115,7 @@ class Retriever:
     ) -> List[EmbeddingChunk]:
         """
         Perform hybrid BM25 + vector search and merge results.
-        
+
         Args:
             query_vec: Query embedding vector
             query_text: Original text query for BM25 search
@@ -123,15 +123,15 @@ class Retriever:
             owner_types: Optional list of owner types to filter
             k: Maximum number of results to return
             bm25_weight: Weight for BM25 scores (0.0-1.0)
-            
+
         Returns:
             List of EmbeddingChunk objects with combined scores
         """
         vector_weight = 1.0 - bm25_weight
-        
+
         # Get candidates from both methods (fetch more to allow for merging)
         fetch_k = min(k * 3, 150)  # Fetch 3x desired results, capped at 150
-        
+
         # Perform BM25 search
         bm25_candidates = await self._bm25_search(
             query_text=query_text,
@@ -139,7 +139,7 @@ class Retriever:
             owner_types=owner_types,
             limit=fetch_k,
         )
-        
+
         # Perform vector search
         vector_candidates = await self._vector_search(
             query_vec=query_vec,
@@ -147,43 +147,53 @@ class Retriever:
             owner_types=owner_types,
             limit=fetch_k,
         )
-        
-        logger.debug(f"Hybrid search: {len(bm25_candidates)} BM25 candidates, {len(vector_candidates)} vector candidates")
-        
+
+        logger.debug(
+            f"Hybrid search: {len(bm25_candidates)} BM25 candidates, {len(vector_candidates)} vector candidates"
+        )
+
         # Build score maps
-        bm25_scores = {(emb_id, owner_type, owner_id): score for emb_id, owner_type, owner_id, score in bm25_candidates}
-        vector_scores = {(emb_id, owner_type, owner_id): score for emb_id, owner_type, owner_id, score in vector_candidates}
-        
+        bm25_scores = {
+            (emb_id, owner_type, owner_id): score
+            for emb_id, owner_type, owner_id, score in bm25_candidates
+        }
+        vector_scores = {
+            (emb_id, owner_type, owner_id): score
+            for emb_id, owner_type, owner_id, score in vector_candidates
+        }
+
         # Normalize scores to [0, 1]
         max_bm25 = max((s for s in bm25_scores.values()), default=1.0)
         max_vector = max((s for s in vector_scores.values()), default=1.0)
-        
+
         # Combine all candidates
         all_keys = set(bm25_scores.keys()) | set(vector_scores.keys())
-        
+
         combined = []
         for key in all_keys:
             emb_id, owner_type, owner_id = key
-            
+
             # Normalize and combine scores
             norm_bm25 = (bm25_scores.get(key, 0.0) / max_bm25) if max_bm25 > 0 else 0.0
             norm_vector = (vector_scores.get(key, 0.0) / max_vector) if max_vector > 0 else 0.0
-            
+
             final_score = (bm25_weight * norm_bm25) + (vector_weight * norm_vector)
-            
+
             combined.append((emb_id, owner_type, owner_id, final_score))
-        
+
         # Sort by combined score and take top k
         combined.sort(key=lambda x: x[3], reverse=True)
         top_candidates = combined[:k]
-        
-        logger.debug(f"Hybrid merge: {len(combined)} unique candidates, returning top {len(top_candidates)}")
-        
+
+        logger.debug(
+            f"Hybrid merge: {len(combined)} unique candidates, returning top {len(top_candidates)}"
+        )
+
         # Load text content
         chunks = await self._load_texts_with_events(top_candidates)
-        
+
         return chunks
-    
+
     async def _bm25_search(
         self,
         query_text: str,
@@ -193,13 +203,13 @@ class Retriever:
     ) -> List[Tuple[int, str, int, float]]:
         """
         Perform BM25 full-text search on embedded content.
-        
+
         Args:
             query_text: Text query for full-text search
             investigation_id: Investigation UUID
             owner_types: Optional list of owner types to filter
             limit: Maximum number of results
-            
+
         Returns:
             List of tuples: (embedding_id, owner_type, owner_id, bm25_score)
         """
@@ -246,32 +256,34 @@ class Retriever:
                 END
             ) @@ plainto_tsquery('english', :query)
             """
-            
+
             if owner_types:
                 sql += " AND e.owner_type = ANY(:owner_types)"
-            
+
             sql += " ORDER BY e.id, bm25_score DESC LIMIT :limit"
-            
+
             params = {
                 "query": query_text,
                 "inv_id": investigation_id,
                 "limit": limit,
             }
-            
+
             if owner_types:
                 params["owner_types"] = owner_types
-            
+
             result = await self.db.execute(text(sql), params)
             rows = result.fetchall()
-            
-            logger.debug(f"BM25 search returned {len(rows)} results for query: {query_text[:50]}...")
-            
+
+            logger.debug(
+                f"BM25 search returned {len(rows)} results for query: {query_text[:50]}..."
+            )
+
             return [(row[0], row[1], row[2], float(row[3])) for row in rows]
-            
+
         except Exception as e:
             logger.error(f"BM25 search failed: {e}", exc_info=True)
             raise
-    
+
     async def _vector_search(
         self,
         query_vec: np.ndarray,
@@ -418,21 +430,27 @@ class Retriever:
                 text = await self._fetch_text(owner_type, owner_id)
                 # Fetch full event data for tool-type sources and timeline entries with linked events
                 event_data = None
-                if owner_type == 'tool' and text:
+                if owner_type == "tool" and text:
                     event_data = await self._fetch_event_data(owner_id)
                     if event_data:
-                        logger.debug(f"Fetched event data for event {owner_id}: {event_data.get('event_type')}")
+                        logger.debug(
+                            f"Fetched event data for event {owner_id}: {event_data.get('event_type')}"
+                        )
                     else:
                         logger.warning(f"Failed to fetch event data for event {owner_id}")
-                elif owner_type == 'timeline' and text:
+                elif owner_type == "timeline" and text:
                     # Check if timeline entry has a linked event
                     event_id = await self._get_timeline_event_id(owner_id)
                     if event_id:
                         event_data = await self._fetch_event_data(event_id)
                         if event_data:
-                            logger.debug(f"Fetched linked event data for timeline {owner_id}: {event_data.get('event_type')}")
+                            logger.debug(
+                                f"Fetched linked event data for timeline {owner_id}: {event_data.get('event_type')}"
+                            )
                         else:
-                            logger.warning(f"Failed to fetch linked event data for timeline {owner_id}")
+                            logger.warning(
+                                f"Failed to fetch linked event data for timeline {owner_id}"
+                            )
                 if text:
                     chunks.append(
                         EmbeddingChunk(
@@ -473,14 +491,14 @@ class Retriever:
 
         logger.debug(f"Loaded {len(chunks):,} chunks from {len(candidates):,} candidates")
         return chunks
-    
+
     async def _get_timeline_event_id(self, timeline_entry_id: int) -> Optional[int]:
         """
         Get the linked event_id for a timeline entry.
-        
+
         Args:
             timeline_entry_id: Timeline entry ID
-            
+
         Returns:
             Event ID if the timeline entry has a linked event, None otherwise
         """
@@ -496,22 +514,22 @@ class Retriever:
                 {"id": timeline_entry_id},
             )
             row = result.fetchone()
-            
+
             if not row or row[0] is None:
                 return None
-            
+
             return row[0]
         except Exception as e:
             logger.warning(f"Failed to get event_id for timeline entry {timeline_entry_id}: {e}")
             return None
-    
+
     async def _fetch_event_data(self, event_id: int) -> Optional[Dict[str, Any]]:
         """
         Fetch full event object for UI display.
-        
+
         Args:
             event_id: Event ID
-            
+
         Returns:
             Event object with event_id, event_type, timestamp, artifact_id, payload
         """
@@ -527,12 +545,12 @@ class Retriever:
                 {"id": event_id},
             )
             row = result.fetchone()
-            
+
             if not row:
                 return None
-            
+
             event_id_val, event_type, event_ts, payload, artifact_id = row
-            
+
             event_obj = {
                 "event_id": event_id_val,
                 "event_type": event_type,
@@ -540,7 +558,7 @@ class Retriever:
                 "artifact_id": artifact_id,
                 "payload": payload,
             }
-            
+
             logger.debug(f"Built event object for event {event_id_val}: type={event_type}")
             return event_obj
         except Exception as e:

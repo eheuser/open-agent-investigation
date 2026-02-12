@@ -618,6 +618,20 @@ CREATE TRIGGER update_playbooks_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- ============================================================================
+-- CACHE REFRESH STRATEGY
+-- ============================================================================
+-- NOTE: Cache refresh is handled by the worker, NOT by triggers
+-- Triggers would be too expensive for millions of events
+-- 
+-- Refresh happens:
+-- 1. On worker startup (initial population)
+-- 2. After each parsing job completes (system_stats_cache only)
+-- 3. After each embedding job completes (both caches)
+-- 4. Every 5 minutes during periodic maintenance (investigation_stats_mv)
+--
+-- This provides <5 minute staleness while avoiding trigger overhead
+
 -- Analysis results cache table (for analysis modules like Autoruns, Execution Evidence, etc.)
 CREATE TABLE IF NOT EXISTS analysis_results (
     result_id BIGSERIAL PRIMARY KEY,
@@ -635,6 +649,135 @@ CREATE TABLE IF NOT EXISTS analysis_results (
 
 CREATE INDEX idx_analysis_results_investigation ON analysis_results(investigation_id, analysis_type);
 CREATE INDEX idx_analysis_results_expires ON analysis_results(expires_at) WHERE expires_at IS NOT NULL;
+
+-- ============================================================================
+-- PERFORMANCE OPTIMIZATION: MATERIALIZED VIEWS & AGGREGATES
+-- ============================================================================
+
+-- Materialized view for investigation statistics (refreshed on-demand)
+-- Pre-computes expensive event/timeline embedding coverage calculations
+CREATE MATERIALIZED VIEW IF NOT EXISTS investigation_stats_mv AS
+SELECT 
+    i.investigation_id,
+    i.title,
+    u.username as owner,
+    i.created_at,
+    COUNT(DISTINCT e.event_id) AS total_events,
+    COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NOT NULL) AS events_with_embeddings,
+    COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NULL) AS events_without_embeddings,
+    ROUND(
+        100.0 * COUNT(DISTINCT e.event_id) FILTER (WHERE emb_e.id IS NOT NULL) / 
+        NULLIF(COUNT(DISTINCT e.event_id), 0), 
+        2
+    ) AS event_embedding_coverage_percent,
+    COUNT(DISTINCT te.entry_id) AS total_timeline_entries,
+    COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NOT NULL) AS timeline_with_embeddings,
+    COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NULL) AS timeline_without_embeddings,
+    ROUND(
+        100.0 * COUNT(DISTINCT te.entry_id) FILTER (WHERE te.embedding_id IS NOT NULL) / 
+        NULLIF(COUNT(DISTINCT te.entry_id), 0), 
+        2
+    ) AS timeline_embedding_coverage_percent
+FROM investigations i
+LEFT JOIN users u ON u.user_id = i.owner_user_id
+LEFT JOIN events e ON e.investigation_id = i.investigation_id
+LEFT JOIN embeddings emb_e ON emb_e.owner_type = 'tool' AND emb_e.owner_id = e.event_id
+LEFT JOIN timeline_entries te ON te.investigation_id = i.investigation_id
+GROUP BY i.investigation_id, i.title, u.username, i.created_at;
+
+-- Index on materialized view for fast lookups
+CREATE UNIQUE INDEX IF NOT EXISTS idx_investigation_stats_mv_id ON investigation_stats_mv(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_investigation_stats_mv_created ON investigation_stats_mv(created_at DESC);
+
+-- Function to refresh investigation stats (call after parsing/embedding jobs)
+CREATE OR REPLACE FUNCTION refresh_investigation_stats()
+RETURNS void AS $$
+BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY investigation_stats_mv;
+END;
+$$ LANGUAGE plpgsql;
+
+-- System-wide aggregate statistics table (updated via trigger)
+-- Avoids expensive COUNT(*) queries on large tables
+CREATE TABLE IF NOT EXISTS system_stats_cache (
+    stat_key TEXT PRIMARY KEY,
+    stat_value BIGINT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Initialize cache with zero values
+INSERT INTO system_stats_cache (stat_key, stat_value) VALUES
+    ('total_events', 0),
+    ('events_with_embeddings', 0),
+    ('total_timeline_entries', 0),
+    ('timeline_with_embeddings', 0),
+    ('total_embeddings', 0),
+    ('total_artifacts', 0),
+    ('total_artifact_bytes', 0),
+    ('jobs_parsing_pending', 0),
+    ('jobs_parsing_running', 0),
+    ('jobs_parsing_completed', 0),
+    ('jobs_parsing_failed', 0),
+    ('jobs_agents_pending', 0),
+    ('jobs_agents_running', 0),
+    ('jobs_agents_completed', 0),
+    ('jobs_agents_failed', 0),
+    ('jobs_embedding_pending', 0),
+    ('jobs_embedding_running', 0),
+    ('jobs_embedding_completed', 0),
+    ('jobs_embedding_failed', 0)
+ON CONFLICT (stat_key) DO NOTHING;
+
+-- Function to update system stats cache (called periodically or on-demand)
+CREATE OR REPLACE FUNCTION update_system_stats_cache()
+RETURNS void AS $$
+BEGIN
+    -- Update event counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM events), updated_at = NOW() WHERE stat_key = 'total_events';
+    UPDATE system_stats_cache SET stat_value = (
+        SELECT COUNT(DISTINCT e.event_id) 
+        FROM events e 
+        INNER JOIN embeddings emb ON emb.owner_type = 'tool' AND emb.owner_id = e.event_id
+    ), updated_at = NOW() WHERE stat_key = 'events_with_embeddings';
+    
+    -- Update timeline counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM timeline_entries), updated_at = NOW() WHERE stat_key = 'total_timeline_entries';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM timeline_entries WHERE embedding_id IS NOT NULL), updated_at = NOW() WHERE stat_key = 'timeline_with_embeddings';
+    
+    -- Update embedding counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM embeddings), updated_at = NOW() WHERE stat_key = 'total_embeddings';
+    
+    -- Update artifact counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM artifacts), updated_at = NOW() WHERE stat_key = 'total_artifacts';
+    UPDATE system_stats_cache SET stat_value = (SELECT COALESCE(SUM(length(blob)), 0) FROM artifacts), updated_at = NOW() WHERE stat_key = 'total_artifact_bytes';
+    
+    -- Update job counts
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'pending'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_pending';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'running'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_running';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'completed'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_completed';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_parsing WHERE status = 'failed'), updated_at = NOW() WHERE stat_key = 'jobs_parsing_failed';
+    
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_agents WHERE status = 'pending'), updated_at = NOW() WHERE stat_key = 'jobs_agents_pending';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_agents WHERE status = 'running'), updated_at = NOW() WHERE stat_key = 'jobs_agents_running';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_agents WHERE status = 'completed'), updated_at = NOW() WHERE stat_key = 'jobs_agents_completed';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_agents WHERE status = 'failed'), updated_at = NOW() WHERE stat_key = 'jobs_agents_failed';
+    
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_embedding WHERE status = 'pending'), updated_at = NOW() WHERE stat_key = 'jobs_embedding_pending';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_embedding WHERE status = 'running'), updated_at = NOW() WHERE stat_key = 'jobs_embedding_running';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_embedding WHERE status = 'completed'), updated_at = NOW() WHERE stat_key = 'jobs_embedding_completed';
+    UPDATE system_stats_cache SET stat_value = (SELECT COUNT(*) FROM jobs_embedding WHERE status = 'failed'), updated_at = NOW() WHERE stat_key = 'jobs_embedding_failed';
+END;
+$$ LANGUAGE plpgsql;
+
+-- Composite indexes for faster aggregation queries
+CREATE INDEX IF NOT EXISTS idx_events_investigation_id_only ON events(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_timeline_entries_investigation_id_only ON timeline_entries(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_tool_type_only ON embeddings(owner_type) WHERE owner_type = 'tool';
+
+-- Index for job status aggregations (covers all status values)
+CREATE INDEX IF NOT EXISTS idx_jobs_parsing_status_all ON jobs_parsing(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_agents_status_all ON jobs_agents(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_embedding_status_all ON jobs_embedding(status);
 
 -- ============================================================================
 -- DEFAULT DATA

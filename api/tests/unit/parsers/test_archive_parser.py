@@ -113,31 +113,9 @@ class TestArchiveParserSafety:
         assert MAX_EXTRACTED_FILES > 0
 
 
-@pytest.mark.integration
-class TestArchiveParserIntegration:
-    """Integration tests requiring full database setup."""
-    
-    @pytest.mark.asyncio
-    async def test_zip_extraction_creates_artifacts(self, db_session, tmp_path):
-        """
-        Test that extracting a ZIP creates artifacts for each file.
-        
-        Note: This is a placeholder for full integration testing.
-        Requires mocking artifact CRUD and job queue operations.
-        """
-        # This test would require:
-        # 1. Mock investigation directory structure
-        # 2. Mock artifact CRUD operations
-        # 3. Mock job queue operations
-        # 4. Verify correct number of artifacts created
-        # 5. Verify parsing jobs queued for each artifact
-        
-        pytest.skip("Full integration test requires database fixtures")
-
 
 __all__ = [
     "TestArchiveParserIdentify",
     "TestArchiveParserExtraction",
     "TestArchiveParserSafety",
-    "TestArchiveParserIntegration",
 ]

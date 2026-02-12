@@ -351,8 +351,9 @@ class TestPersistRAGToolExecutions:
         # Verify expansion tool
         assert len(added_tools) == 2
         assert added_tools[0].tool_name == "expand_query"
-        assert "3 search terms" in added_tools[0].result_summary
-        assert "lsass.exe" in added_tools[0].result_summary
+        assert "3 search queries" in added_tools[0].result_summary
+        assert added_tools[0].result["total_queries"] == 3
+        assert "formatted_queries" in added_tools[0].result
 
         # Verify retrieval tool
         assert added_tools[1].tool_name == "retrieve_sources"

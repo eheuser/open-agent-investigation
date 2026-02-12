@@ -24,7 +24,6 @@ from app.schemas.investigation_choice import InvestigationChoiceCreate
 from worker.parsers import parse_artifact
 from worker.agents.assistant_agent import AssistantAgent
 from worker.core.llm_client import LLMClient
-from worker.embedding_worker import claim_embedding_job, process_embedding_job
 
 from app.utils.log_setup import get_logger
 from app.utils.http_log_handler import setup_worker_logging
@@ -33,7 +32,8 @@ logger = get_logger(__name__)
 
 MAIN_WORKER_ID = uuid_pkg.uuid4()
 
-NUM_WORKERS = min(mp.cpu_count(), 4)
+# Get number of workers from environment (default: min of CPU count or 4)
+NUM_WORKERS = settings.num_workers or min(mp.cpu_count(), 4)
 
 
 # Database engine for main process
@@ -351,8 +351,37 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
             )
 
         # Check if there are any more pending/running parsing jobs for this investigation
-        # If not, clear the parsing lock
-        await check_and_clear_parsing_lock(db, investigation_id)
+        # If not, clear the parsing lock AND refresh caches
+        result = await db.execute(
+            select(ParsingJob)
+            .where(ParsingJob.investigation_id == investigation_id)
+            .where(ParsingJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]))
+        )
+        remaining_jobs = result.scalars().all()
+        
+        if len(remaining_jobs) == 0:
+            # All parsing complete for this investigation
+            await inv_crud.set_parsing_lock(db, investigation_id, locked=False)
+            logger.info(f"Cleared parsing lock for investigation {investigation_id}")
+            
+            # Notify WebSocket clients that parsing is complete
+            await notify_websocket_clients(
+                investigation_id=investigation_id,
+                message={
+                    "type": "parsing_complete",
+                    "investigation_id": str(investigation_id),
+                },
+            )
+            
+            # NOTE: Cache refresh intentionally skipped here to avoid slowing down final parsing job
+            # Cache will be refreshed by:
+            # 1. Embedding worker after all embeddings complete (more important)
+            # 2. Periodic maintenance every 10 minutes (worker 0)
+            # This prevents 600% CPU spike during ingestion
+        else:
+            logger.debug(
+                f"Investigation {investigation_id} still has {len(remaining_jobs):,} parsing job(s) pending/running"
+            )
 
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
@@ -787,9 +816,9 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
         expire_on_commit=False,
     )
 
-    # Track when we last checked for stale jobs
+    # Track when we last checked for stale jobs and refreshed caches
     last_stale_check = datetime.utcnow()
-    stale_check_interval_minutes = 5
+    stale_check_interval_minutes = 10  # Increased from 5 to reduce cache refresh frequency
 
     async def async_worker_loop():
         """
@@ -867,23 +896,8 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
                             await db.commit()
                         continue
 
-                    # Try to claim an embedding job (lowest priority)
-                    embedding_job = await claim_embedding_job(db, worker_id)
-
-                    if embedding_job:
-                        # Process embedding job
-                        try:
-                            await process_embedding_job(db, embedding_job)
-                        except asyncio.CancelledError:
-                            logger.info(f"Worker {worker_index} embedding job cancelled")
-                            # Mark job as failed
-                            embedding_job.status = JobStatus.FAILED
-                            embedding_job.finished_at = datetime.utcnow()
-                            embedding_job.error_message = "Job cancelled by user"
-                            await db.commit()
-                        continue
-
                     # No jobs available, wait before polling again
+                    # Note: Embedding jobs are handled by dedicated embedding-worker service
                     await asyncio.sleep(1.0)
 
                     # Periodically check for stale jobs (every 5 minutes)
@@ -892,8 +906,19 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
                     if (now - last_stale_check).total_seconds() > (
                         stale_check_interval_minutes * 60
                     ):
-                        logger.debug(f"Worker {worker_index} running periodic stale job check...")
+                        logger.debug(f"Worker {worker_index} running periodic maintenance...")
                         await recover_stale_jobs(db)
+                        
+                        # Also refresh investigation stats materialized view (only if worker 0)
+                        # This prevents multiple workers from refreshing simultaneously
+                        if worker_index == 0:
+                            try:
+                                logger.debug(f"Worker {worker_index} refreshing investigation stats cache...")
+                                await db.execute(text("SELECT refresh_investigation_stats()"))
+                                await db.commit()
+                            except Exception as cache_error:
+                                logger.warning(f"Failed to refresh investigation stats: {cache_error}")
+                        
                         last_stale_check = now
 
             except Exception as e:
@@ -1067,20 +1092,35 @@ def main():
     """
     logger.info(f"Worker manager starting with {NUM_WORKERS} worker processes...")
 
-    # Recover stale jobs on startup
-    async def recover():
+    # Recover stale jobs and initialize caches on startup
+    async def recover_and_init_caches():
         """
-        Recover any stale jobs in the database.
+        Recover any stale jobs in the database and initialize statistics caches.
 
         This coroutine opens an asynchronous session with the configured database engine and invokes
         `recover_stale_jobs` to detect jobs that were claimed but not completed (e.g., due to worker crashes or timeouts) and resets them so they can be reassigned.
+        
+        It also initializes the system statistics caches (materialized view and aggregate cache)
+        to ensure the status modal has data available immediately.
 
         The function does not take any parameters and returns `None`. It should be called during application startup or shutdown to ensure the job queue remains consistent.
         """
         async with AsyncSessionLocal() as db:
+            # Recover stale jobs
             await recover_stale_jobs(db)
+            
+            # Initialize statistics caches
+            try:
+                logger.info("Initializing statistics caches on startup...")
+                await db.execute(text("SELECT refresh_investigation_stats()"))
+                await db.execute(text("SELECT update_system_stats_cache()"))
+                await db.commit()
+                logger.info("Statistics caches initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize statistics caches: {e}")
+                # Don't fail startup if cache initialization fails
 
-    asyncio.run(recover())
+    asyncio.run(recover_and_init_caches())
 
     # Create control queues for each worker
     control_queues = [mp.Queue() for _ in range(NUM_WORKERS)]

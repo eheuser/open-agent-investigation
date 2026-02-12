@@ -182,7 +182,11 @@ Dashboard → Click "Create Investigation"
 
 **Features**:
 - Ask natural language questions
-- **Embedding progress indicator** - Shows background embedding status with event count
+- **Embedding progress indicator** - Shows background embedding status with layered progress bar:
+  - **Solid blue bar**: Completed embeddings
+  - **Animated striped bar**: Events currently being processed (visible activity)
+  - **Event counts**: Shows completed, processing, and total events
+  - Updates every 1 second for responsive feedback
 - **Mode selector** - Choose routing mode (Auto/Agent/Timeline/Augmented Chat)
   - Augmented Chat mode automatically disabled while embeddings are being generated
 - **Effort selector** - Choose investigation depth (Quick/Standard/Thorough)
@@ -394,7 +398,36 @@ Authentication event analysis:
 - Automatic parsing job creation
 - Supported formats: `.evtx`, `.pf`, `.lnk`, `$MFT`, registry hives
 
-### 7. Playbook Manager
+### 7. Server Status Modal
+
+**Location**: Header icon (chart icon)
+
+**Features**:
+- On-demand system statistics (click to load, not automatic)
+- Investigation statistics with embedding coverage
+- Artifact storage and classification breakdown
+- Event and embedding statistics
+- Job queue status (parsing, agents, embedding)
+- Database health check
+- Manual refresh button
+
+**Performance Optimizations**:
+- **Materialized Views**: Investigation statistics pre-computed for fast loading
+- **Aggregate Cache**: System-wide stats cached to avoid expensive COUNT(*) queries
+- **Lazy Loading**: Statistics only fetched when modal is opened
+- **Pagination**: Artifact list paginated (20 per page) to reduce payload size
+
+**Typical Load Time**:
+- **Before Optimization**: 5-10 seconds (multiple complex JOINs)
+- **After Optimization**: <500ms (cached aggregates + materialized view)
+
+**Cache Refresh**:
+- Statistics are cached in the database and refreshed:
+  - Automatically after parsing/embedding jobs complete
+  - Manually via refresh button in modal
+  - Periodically via background scheduler (recommended: every 5 minutes)
+
+### 8. Playbook Manager
 
 **Location**: `/playbooks`
 
@@ -441,7 +474,7 @@ playbook: |
 5. (Optional) Enable/disable per investigation via API
 ```
 
-### 8. Settings Panel
+### 9. Settings Panel
 
 **Location**: `/settings`
 

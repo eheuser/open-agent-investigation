@@ -73,7 +73,7 @@ async def _batch_create_embeddings(
 
     Raises:
         None explicitly. All errors encountered while generating embeddings or inserting rows are caught, logged, and cause a rollback of the current transaction without propagating exceptions.
-    
+
     Performance:
         Batch size of 200 events provides good balance between API efficiency and memory usage.
         Bulk inserts reduce database round-trips from 200 commits per batch to 1 commit per batch.
@@ -142,12 +142,14 @@ async def _batch_create_embeddings(
                     # Convert numpy array to list, then to PostgreSQL vector format string
                     vec_list = embedding_vec.tolist()
                     vec_str = "[" + ",".join(map(str, vec_list)) + "]"
-                    
-                    insert_params.append({
-                        "event_id": event_id,
-                        "model_name": embedding_model_name,
-                        "vec_str": vec_str,
-                    })
+
+                    insert_params.append(
+                        {
+                            "event_id": event_id,
+                            "model_name": embedding_model_name,
+                            "vec_str": vec_str,
+                        }
+                    )
 
                 # Execute bulk insert using executemany
                 await db.execute(
@@ -159,18 +161,18 @@ async def _batch_create_embeddings(
                     ),
                     insert_params,
                 )
-                
+
                 # Commit once per batch
                 await db.commit()
                 created_count += len(insert_params)
-                
+
                 logger.debug(f"Created {created_count} embeddings so far...")
 
             except Exception as e:
                 # Log error and rollback the batch
                 logger.error(f"Failed to bulk insert embeddings for batch: {e}")
                 await db.rollback()
-                
+
                 # Fall back to individual inserts for this batch to identify problematic events
                 logger.info(f"Retrying batch with individual inserts to identify failures...")
                 for event_id, embedding_vec in zip(event_ids, embeddings):
@@ -194,7 +196,9 @@ async def _batch_create_embeddings(
                         await db.commit()
                         created_count += 1
                     except Exception as individual_error:
-                        logger.debug(f"Failed to insert embedding for event {event_id}: {individual_error}")
+                        logger.debug(
+                            f"Failed to insert embedding for event {event_id}: {individual_error}"
+                        )
                         try:
                             await db.rollback()
                         except:
@@ -371,7 +375,7 @@ def _format_event_for_timeline(event_type: str, payload: Dict[str, Any]) -> tupl
     elif event_type.startswith("mft_"):
         return _format_mft_event(payload)
 
-    elif event_type in ( "registry_key", "registry_value" ):
+    elif event_type in ("registry_key", "registry_value"):
         return _format_registry_event(payload)
 
     elif event_type.startswith("prefetch_"):
@@ -852,7 +856,7 @@ async def process_interesting_events(
                     path = payload.get("path", payload.get("file_path", ""))
                     extension = payload.get("extension", "")
                     is_interesting = filter_engine.is_interesting_mft(path, extension)
-                elif event_type in ( "registry_key", "registry_value" ):
+                elif event_type in ("registry_key", "registry_value"):
                     key_path = payload.get("key_path", payload.get("path", ""))
                     is_interesting = filter_engine.is_interesting_registry(key_path)
                 elif event_type.startswith("prefetch_"):
@@ -873,11 +877,10 @@ async def process_interesting_events(
                     "registry_userassist",
                     "registry_bam",
                     "registry_shellbags_ntuser",
-                    "registry_shimcache"
-
+                    "registry_shimcache",
                 ):
                     is_interesting = True
-                
+
                 if is_interesting:
                     interesting_events.append((event_id, event_type, payload))
             except Exception as e:

@@ -48,6 +48,7 @@ _logging_config = {
 
 logging.config.dictConfig(_logging_config)
 
+
 def get_logger(name: str = __name__) -> logging.Logger:
     """Return a logger instance with the given name.
 
