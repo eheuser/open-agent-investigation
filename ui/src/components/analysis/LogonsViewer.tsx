@@ -194,7 +194,6 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         `/api/v1/analysis/logons/${investigationId}`
       );
 
-      //console.log('Loaded initial data:', response.data.entries.length, 'entries');
       setEntries(response.data.entries);
       setSummary(response.data.summary);
 
@@ -224,8 +223,6 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         usernames: usernameCounts,
       });
 
-      //console.log('Cardinality counts:', { logonTypeCounts, sourceIPCounts, usernameCounts });
-
       // Build dynamic filter lists from the cardinality counts, sorted by count (descending)
       const sourceIPList = Object.keys(sourceIPCounts).sort((a, b) => sourceIPCounts[b] - sourceIPCounts[a]);
       const usernameList = Object.keys(usernameCounts).sort((a, b) => usernameCounts[b] - usernameCounts[a]);
@@ -235,7 +232,6 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         usernames: usernameList,
       });
 
-      //console.log('Dynamic filters set:', { sourceIPList: sourceIPList.length, usernameList: usernameList.length });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load logon data');
       console.error('Failed to load initial data:', err);
@@ -272,20 +268,14 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         });
       }
 
-      //console.log('[loadLogons] Requesting filtered data with params:', params.toString());
-
       const response = await api.get<LogonsResponse>(
         `/api/v1/analysis/logons/${investigationId}?${params.toString()}`
       );
-
-      //console.log('[loadLogons] Received', response.data.entries.length, 'entries from server');
-      //console.log('[loadLogons] Current entries.length before setEntries:', entries.length);
 
       // Set entries (this will trigger applyFilters via useEffect)
       setEntries(response.data.entries);
       setSummary(response.data.summary);
 
-      //console.log('[loadLogons] Called setEntries with', response.data.entries.length, 'entries');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load logon data');
       console.error('Failed to load logons:', err);
@@ -295,7 +285,6 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
   };
 
   const applyFilters = () => {
-    //console.log('[applyFilters] Called with entries.length:', entries.length, 'searchText:', searchText);
     let filtered = [...entries];
 
     // Only apply client-side search text filtering
@@ -313,7 +302,6 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
       );
     }
 
-    //console.log('[applyFilters] Setting filteredEntries to', filtered.length, 'entries');
     setFilteredEntries(filtered);
   };
 
