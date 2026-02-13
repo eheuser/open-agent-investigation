@@ -33,14 +33,14 @@ prometheus-client==0.20.*
 # Utilities
 python-dotenv==1.0.*
 tiktoken==0.7.*
-python-dateutil==2.8.*
+python-dateutil==2.9.*
 
 # RAG & Embeddings (lightweight - no torch/transformers)
 pgvector==0.2.*
 numpy==1.26.*
 
 # Report Generation
-markdown==3.6.*
+markdown==3.10.*
 weasyprint==60.*
 pydyf==0.10.*  # Pin pydyf for WeasyPrint compatibility
 
