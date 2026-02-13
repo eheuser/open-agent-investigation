@@ -125,7 +125,13 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
   // Reload filtered data when filters change (but keep cardinality counts from initial load)
   useEffect(() => {
     if (selectedLogonTypes.length > 0 || selectedSourceIPs.length > 0 || selectedUsernames.length > 0) {
+      // At least one filter is active - load filtered data from server
       loadLogons();
+    } else {
+      // No filters active - reload all data from server
+      // We need to fetch fresh data, not just apply client-side filters
+      // because 'entries' might contain only the previously filtered subset
+      loadInitialData();
     }
   }, [selectedLogonTypes, selectedSourceIPs, selectedUsernames]);
 
@@ -149,7 +155,7 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
     return unsubscribe;
   }, [subscribe, investigationId, selectedLogonTypes, selectedSourceIPs, selectedUsernames]);
 
-  // Apply client-side filters when entries or search text change
+  // Apply client-side search filter when entries or search text change
   useEffect(() => {
     applyFilters();
     setPage(0);
@@ -266,12 +272,20 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
         });
       }
 
+      //console.log('[loadLogons] Requesting filtered data with params:', params.toString());
+
       const response = await api.get<LogonsResponse>(
         `/api/v1/analysis/logons/${investigationId}?${params.toString()}`
       );
 
+      //console.log('[loadLogons] Received', response.data.entries.length, 'entries from server');
+      //console.log('[loadLogons] Current entries.length before setEntries:', entries.length);
+
+      // Set entries (this will trigger applyFilters via useEffect)
       setEntries(response.data.entries);
       setSummary(response.data.summary);
+
+      //console.log('[loadLogons] Called setEntries with', response.data.entries.length, 'entries');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load logon data');
       console.error('Failed to load logons:', err);
@@ -281,9 +295,11 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
   };
 
   const applyFilters = () => {
+    //console.log('[applyFilters] Called with entries.length:', entries.length, 'searchText:', searchText);
     let filtered = [...entries];
 
-    // Filter by search text
+    // Only apply client-side search text filtering
+    // Server-side filters (logon types, source IPs, usernames) are already applied in 'entries'
     if (searchText) {
       const searchLower = searchText.toLowerCase();
       filtered = filtered.filter(
@@ -297,25 +313,47 @@ const LogonsViewer: React.FC<Props> = ({ investigationId }) => {
       );
     }
 
+    //console.log('[applyFilters] Setting filteredEntries to', filtered.length, 'entries');
     setFilteredEntries(filtered);
   };
 
   const toggleLogonType = (type: string) => {
-    setSelectedLogonTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    );
+    setSelectedLogonTypes((prev) => {
+      const isSelected = prev.includes(type);
+      if (isSelected) {
+        // Remove the type
+        return prev.filter((t) => t !== type);
+      } else {
+        // Add the type
+        return [...prev, type];
+      }
+    });
   };
 
   const toggleSourceIP = (ip: string) => {
-    setSelectedSourceIPs((prev) =>
-      prev.includes(ip) ? prev.filter((i) => i !== ip) : [...prev, ip]
-    );
+    setSelectedSourceIPs((prev) => {
+      const isSelected = prev.includes(ip);
+      if (isSelected) {
+        // Remove the IP
+        return prev.filter((i) => i !== ip);
+      } else {
+        // Add the IP
+        return [...prev, ip];
+      }
+    });
   };
 
   const toggleUsername = (username: string) => {
-    setSelectedUsernames((prev) =>
-      prev.includes(username) ? prev.filter((u) => u !== username) : [...prev, username]
-    );
+    setSelectedUsernames((prev) => {
+      const isSelected = prev.includes(username);
+      if (isSelected) {
+        // Remove the username
+        return prev.filter((u) => u !== username);
+      } else {
+        // Add the username
+        return [...prev, username];
+      }
+    });
   };
 
   const toggleEntry = (index: number) => {

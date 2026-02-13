@@ -908,23 +908,31 @@ VITE_WS_URL=wss://localhost
 
 ### Docker Production Build
 
-The `Dockerfile` creates a multi-stage build:
+The `Dockerfile` creates a multi-stage build with automatic SSL certificate management:
 
+**Certificate Handling:**
+- Certificates are stored in `certs/` directory (mapped to host)
+- On first run, self-signed certificates are automatically generated
+- Certificates persist across container rebuilds
+- To use custom certificates, place `server.crt` and `server.key` in `certs/` before starting
+
+**Build Process:**
 ```dockerfile
-# Stage 1: Build
-FROM node:18-alpine AS build
+# Stage 1: Build UI
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
-# Stage 2: Serve
+# Stage 2: Serve with nginx
 FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/nginx.conf /etc/nginx/conf.d/default.conf
+# Entrypoint script handles certificate generation/copying
 EXPOSE 443
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/docker-entrypoint.sh"]
 ```
 
 ### Nginx Configuration

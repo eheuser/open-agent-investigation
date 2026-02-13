@@ -429,16 +429,6 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({ message, toolExec
                               source.event !== null &&
                               (source.event.event_id || source.event.event_type);
 
-                            // Log first source to debug
-                            if (idx === 0) {
-                              console.log('First RAG source:', {
-                                has_event: !!source.event,
-                                event_type: typeof source.event,
-                                event_value: source.event,
-                                hasEventData
-                              });
-                            }
-
                             // If we have full event data, use EventCard
                             if (hasEventData) {
                               return (

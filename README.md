@@ -123,6 +123,12 @@ Routing is performed by an LLM‑based intent classifier; manual selection is al
 docker compose up -d          # Start nginx, API, workers, PostgreSQL
 ```
 
+**SSL Certificates:**
+- On first run, self-signed SSL certificates are automatically generated and stored in `certs/`
+- Certificates persist across container rebuilds (mapped to host directory)
+- To use custom certificates, place `server.crt` and `server.key` in `certs/` before starting
+- For production, replace with trusted certificates from a certificate authority
+
 #### Worker Concurrency Configuration
 
 Control worker concurrency via environment variables:
