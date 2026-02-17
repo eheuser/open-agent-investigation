@@ -13,7 +13,7 @@ from pathlib import Path
 from ..deps import get_db, get_current_user
 from ..models.user import User
 from ..crud.investigation import check_investigation_access
-from ..utils.security import validate_path_within_base, sanitize_filename, sanitize_log_message
+from ..utils.security import validate_path_within_base, sanitize_filename
 
 router = APIRouter()
 
