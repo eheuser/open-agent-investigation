@@ -2,7 +2,6 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..utils.log_setup import get_logger
-from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
