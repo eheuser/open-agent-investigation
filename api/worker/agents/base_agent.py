@@ -46,6 +46,7 @@ except ImportError:
 
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -223,7 +224,7 @@ class BaseAgent:
                     f"for investigation {self.investigation_id}"
                 )
             except Exception as e:
-                logger.error(f"Failed to load available fields: {e}", exc_info=True)
+                logger.error(f"Failed to load available fields: {sanitize_log_message(str(e))}", exc_info=True)
                 self._available_fields = []
 
         return self._available_fields
@@ -257,7 +258,7 @@ class BaseAgent:
                 self.last_status_update = now
                 logger.info(f"Job {self.job_id} status: {status_message}")
             except Exception as e:
-                logger.warning(f"Failed to update job status: {e}")
+                logger.warning(f"Failed to update job status: {sanitize_log_message(str(e))}")
 
     async def call_llm(
         self, messages: List[Dict[str, Any]], stream: bool = False
@@ -382,7 +383,7 @@ class BaseAgent:
                     "Caller should compact memory and retry."
                 )
 
-            logger.error(f"LLM call failed: {e}", exc_info=True)
+            logger.error(f"LLM call failed: {sanitize_log_message(str(e))}", exc_info=True)
             raise
 
     def _build_tool_definitions(self) -> List[Dict[str, Any]]:
@@ -573,7 +574,7 @@ class BaseAgent:
                         tool_calls.append((tool_name, arguments))
                         logger.info(f"Parsed tool call from text: {tool_name}")
                     except json.JSONDecodeError as e:
-                        logger.warning(f"Failed to parse JSON for {tool_name}: {e}")
+                        logger.warning(f"Failed to parse JSON for {tool_name}: {sanitize_log_message(str(e))}")
 
         # Pattern 2: Simple JSON blocks with tool name
         # Tool: register_graph_node
@@ -588,7 +589,7 @@ class BaseAgent:
                     tool_calls.append((tool_name, arguments))
                     logger.info(f"Parsed tool call from text (pattern 2): {tool_name}")
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse JSON for {tool_name}: {e}")
+                    logger.warning(f"Failed to parse JSON for {tool_name}: {sanitize_log_message(str(e))}")
 
         # Pattern 3: Function call syntax
         # register_graph_node({"label": "...", ...})
@@ -602,7 +603,7 @@ class BaseAgent:
                     tool_calls.append((tool_name, arguments))
                     logger.info(f"Parsed tool call from text (pattern 3): {tool_name}")
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse JSON for {tool_name}: {e}")
+                    logger.warning(f"Failed to parse JSON for {tool_name}: {sanitize_log_message(str(e))}")
 
         return tool_calls
 
@@ -812,7 +813,7 @@ This step is critical, losing control of your investigation due to omission is a
             return summary
 
         except Exception as e:
-            logger.error(f"Failed to compact with LLM: {e}", exc_info=True)
+            logger.error(f"Failed to compact with LLM: {sanitize_log_message(str(e))}", exc_info=True)
             return self._fallback_compaction(messages_to_compact)
 
     def _fallback_compaction(self, messages: List[Dict[str, Any]]) -> str:

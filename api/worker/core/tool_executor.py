@@ -6,6 +6,7 @@ from ..models import ToolResult
 from .tool_registry import tool_registry
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -106,7 +107,7 @@ class ToolExecutor:
         # Get tool spec
         spec = tool_registry.get(tool_name)
         if not spec:
-            logger.error(f"Unknown tool: {tool_name}")
+            logger.error(f"Unknown tool: {sanitize_log_message(tool_name)}")
             return ToolResult(status="error", error_msg=f"Unknown tool: {tool_name}")
 
         # Validate and clean arguments
@@ -135,7 +136,7 @@ class ToolExecutor:
 
             # Check if result indicates error
             if isinstance(result, dict) and "error" in result:
-                logger.warning(f"Tool {tool_name} returned error: {result['error']}")
+                logger.warning(f"Tool {sanitize_log_message(tool_name)} returned error: {sanitize_log_message(str(result['error']))}")
                 # Rollback savepoint on tool-level error
                 await savepoint.rollback()
                 return ToolResult(status="error", error_msg=result["error"])
@@ -145,7 +146,7 @@ class ToolExecutor:
             return ToolResult(status="ok", result=result)
 
         except Exception as e:
-            logger.error(f"Tool {tool_name} failed: {e}", exc_info=True)
+            logger.error(f"Tool {tool_name} failed: {sanitize_log_message(str(e))}", exc_info=True)
             
             # Rollback the savepoint to prevent poisoning subsequent tool executions
             if savepoint is not None:
@@ -153,6 +154,6 @@ class ToolExecutor:
                     await savepoint.rollback()
                     logger.debug(f"Rolled back savepoint after tool {tool_name} failure")
                 except Exception as rollback_error:
-                    logger.error(f"Failed to rollback savepoint: {rollback_error}")
+                    logger.error(f"Failed to rollback savepoint: {sanitize_log_message(str(rollback_error))}")
             
             return ToolResult(status="error", error_msg=str(e))

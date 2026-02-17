@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 from app.core.database import async_session_factory
 
 logger = get_logger(__name__)
@@ -233,7 +234,7 @@ class LogonsAnalyzer:
                     entries.append(entry)
 
         except Exception as e:
-            logger.error(f"Failed to query event logs: {e}", exc_info=True)
+            logger.error(f"Failed to query event logs: {sanitize_log_message(str(e))}", exc_info=True)
 
         return entries
 
@@ -320,7 +321,7 @@ class LogonsAnalyzer:
             )
 
         except Exception as e:
-            logger.warning(f"Failed to create LogonEntry from event log: {e}")
+            logger.warning(f"Failed to create LogonEntry from event log: {sanitize_log_message(str(e))}")
             return None
 
     def _extract_ip_address(self, payload: Dict[str, Any]) -> Optional[str]:
@@ -512,7 +513,7 @@ class LogonsAnalyzer:
             }
 
         except Exception as e:
-            logger.error(f"Failed to get dynamic filters: {e}", exc_info=True)
+            logger.error(f"Failed to get dynamic filters: {sanitize_log_message(str(e))}", exc_info=True)
             return {
                 "source_ips": [],
                 "usernames": [],
@@ -577,7 +578,7 @@ class LogonsAnalyzer:
                 return None
 
         except Exception as e:
-            logger.warning(f"Failed to retrieve cached results: {e}")
+            logger.warning(f"Failed to retrieve cached results: {sanitize_log_message(str(e))}")
             return None
 
     async def _cache_results(
@@ -645,7 +646,7 @@ class LogonsAnalyzer:
                 logger.debug(f"Cached {len(entries)} logon entries (expires in 12 hours)")
 
         except Exception as e:
-            logger.error(f"Failed to cache results: {e}", exc_info=True)
+            logger.error(f"Failed to cache results: {sanitize_log_message(str(e))}", exc_info=True)
 
 
 __all__ = ["LogonsAnalyzer", "LogonEntry"]

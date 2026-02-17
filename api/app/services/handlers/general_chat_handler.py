@@ -7,6 +7,7 @@ from ...crud.llm_config import get_active_llm_config
 from ..llm_service import LLMService
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -89,12 +90,12 @@ async def handle_general_chat(
         }
 
     except Exception as e:
-        logger.error(f"[GENERAL_CHAT] Critical error: {e}", exc_info=True)
+        logger.error(f"[GENERAL_CHAT] Critical error: {sanitize_log_message(str(e))}", exc_info=True)
         # Ensure transaction is clean
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"[GENERAL_CHAT] Rollback failed: {rollback_error}")
+            logger.error(f"[GENERAL_CHAT] Rollback failed: {sanitize_log_message(str(rollback_error))}")
 
         return {
             "type": "error",
@@ -330,7 +331,7 @@ async def _get_llm_response(llm_config, prompt: str) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"LLM request failed: {e}", exc_info=True)
+        logger.error(f"LLM request failed: {sanitize_log_message(str(e))}", exc_info=True)
         return {
             "type": "error",
             "message": f"Error getting LLM response: {str(e)}",

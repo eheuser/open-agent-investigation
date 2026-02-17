@@ -10,6 +10,7 @@ from ..crud.llm_config import get_active_llm_config
 from .llm_auth_helper import prepare_llm_auth
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -638,7 +639,7 @@ class LLMService:
                 else:
                     return str(llm_response[field])
 
-        logger.warning(f"Could not extract text from LLM response: {llm_response}")
+        logger.warning(f"Could not extract text from LLM response: {sanitize_log_message(str(llm_response))}")
         return None
 
 
@@ -828,7 +829,7 @@ class EmbeddingService:
             all_embeddings: List[List[float]] = []
             for i, result in enumerate(batch_results):
                 if isinstance(result, BaseException):
-                    logger.error(f"Batch {i+1}/{len(batches)} failed: {result}")
+                    logger.error(f"Batch {i+1}/{len(batches)} failed: {sanitize_log_message(str(result))}")
                     raise result
                 # Type narrowing: result is List[List[float]] here
                 all_embeddings.extend(result)
@@ -958,7 +959,7 @@ class EmbeddingService:
             all_reranked: List[Dict[str, Any]] = []
             for i, result in enumerate(batch_results):
                 if isinstance(result, BaseException):
-                    logger.error(f"Rerank batch {i+1}/{len(batches)} failed: {result}")
+                    logger.error(f"Rerank batch {i+1}/{len(batches)} failed: {sanitize_log_message(str(result))}")
                     raise result
                 # Type narrowing: result is List[Dict[str, Any]] here
                 all_reranked.extend(result)

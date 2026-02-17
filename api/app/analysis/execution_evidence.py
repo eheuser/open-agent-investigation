@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 from app.core.database import async_session_factory
 
 logger = get_logger(__name__)
@@ -154,9 +155,9 @@ class ExecutionEvidenceAnalyzer:
                 for row in debug_rows:
                     logger.debug(f"  - {row[0]}: {row[1]} events")
             else:
-                logger.warning(f"Investigation {investigation_id} has NO events at all!")
+                logger.warning(f"Investigation {sanitize_log_message(str(investigation_id))} has NO events at all!")
         except Exception as e:
-            logger.warning(f"Failed to query event types for debugging: {e}")
+            logger.warning(f"Failed to query event types for debugging: {sanitize_log_message(str(e))}")
 
         # Analyze each category
         for category_key, category_info in categories_to_analyze.items():
@@ -229,12 +230,12 @@ class ExecutionEvidenceAnalyzer:
                     entries.append(entry)
 
         except Exception as e:
-            logger.error(f"Failed to query category '{category_info['name']}': {e}", exc_info=True)
+            logger.error(f"Failed to query category '{sanitize_log_message(category_info['name'])}': {sanitize_log_message(str(e))}", exc_info=True)
             # Rollback the transaction to prevent poisoning subsequent queries
             try:
                 await db.rollback()
             except Exception as rollback_error:
-                logger.warning(f"Failed to rollback transaction: {rollback_error}")
+                logger.warning(f"Failed to rollback transaction: {sanitize_log_message(str(rollback_error))}")
 
         return entries
 
@@ -272,7 +273,7 @@ class ExecutionEvidenceAnalyzer:
             )
 
         except Exception as e:
-            logger.warning(f"Failed to create ExecutionEntry for category '{category_key}': {e}")
+            logger.warning(f"Failed to create ExecutionEntry for category '{sanitize_log_message(category_key)}': {sanitize_log_message(str(e))}")
             return None
 
     def _extract_executable_path(self, category_key: str, payload: Dict[str, Any]) -> Optional[str]:
@@ -458,7 +459,7 @@ class ExecutionEvidenceAnalyzer:
                 return None
 
         except Exception as e:
-            logger.warning(f"Failed to retrieve cached results: {e}")
+            logger.warning(f"Failed to retrieve cached results: {sanitize_log_message(str(e))}")
             return None
 
     async def _cache_results(
@@ -517,7 +518,7 @@ class ExecutionEvidenceAnalyzer:
                 logger.debug(f"Cached {len(entries)} execution evidence entries (expires in 12 hours)")
 
         except Exception as e:
-            logger.error(f"Failed to cache results: {e}", exc_info=True)
+            logger.error(f"Failed to cache results: {sanitize_log_message(str(e))}", exc_info=True)
             # Don't fail the analysis if caching fails
 
 

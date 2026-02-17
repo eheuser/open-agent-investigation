@@ -15,6 +15,7 @@ from ..services.chat_persistence import (
 from ..crud.investigation import check_investigation_access
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -115,7 +116,7 @@ async def route_policy(
             if response.get("type") == "answer_chunk":
                 assistant_content_chunks.append(response.get("content", ""))
     except Exception as e:
-        logger.error(f"Error in chat router: {e}", exc_info=True)
+        logger.error(f"Error in chat router: {sanitize_log_message(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chat router error: {str(e)}")
 
     logger.debug(f"Total responses collected: {len(responses):,}")

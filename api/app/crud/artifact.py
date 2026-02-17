@@ -8,6 +8,7 @@ import uuid
 from ..models.artifact import Artifact, ArtifactClassification
 from ..core.config import settings
 from app.utils.log_setup import get_logger
+from ..utils.security import validate_path_within_base, sanitize_filename, sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -61,7 +62,7 @@ async def create_artifact(
     # The file will still be available on the filesystem for parsing
     if file_size > MAX_ARTIFACT_BLOB_SIZE:
         logger.debug(
-            f"Artifact {filename} is {file_size:,} bytes (>{MAX_ARTIFACT_BLOB_SIZE:,}), "
+            f"Artifact {sanitize_log_message(filename)} is {file_size:,} bytes (>{MAX_ARTIFACT_BLOB_SIZE:,}), "
             f"storing on filesystem only (empty database blob)"
         )
         blob_to_store = b""  # Empty blob - file available on filesystem
@@ -82,10 +83,16 @@ async def create_artifact(
     await db.flush()  # Get artifact_id
 
     # Write to filesystem
-    inv_dir = Path(settings.investigations_base_path) / str(investigation_id) / "raw_files"
+    base_path = Path(settings.investigations_base_path)
+    inv_dir = validate_path_within_base(
+        Path(str(investigation_id)) / "raw_files",
+        base_path
+    )
     inv_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = inv_dir / f"{artifact.artifact_id}_{filename}"
+    # Sanitize filename to prevent path traversal
+    safe_filename = sanitize_filename(f"{artifact.artifact_id}_{filename}")
+    file_path = inv_dir / safe_filename
     file_path.write_bytes(file_bytes)
 
     await db.commit()

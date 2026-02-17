@@ -12,6 +12,7 @@ from ..services.rag.embedding_service import (
 from ..services.embedding_queue import get_embedding_status
 from ..crud.llm_config import get_active_llm_config
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -43,7 +44,7 @@ async def get_embedding_status_endpoint(
         status = await get_embedding_status(db, inv_uuid)
         return status
     except Exception as e:
-        logger.error(f"Failed to get embedding status: {e}", exc_info=True)
+        logger.error(f"Failed to get embedding status: {sanitize_log_message(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

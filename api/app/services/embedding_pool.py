@@ -8,6 +8,7 @@ from sqlalchemy import select, and_
 from ..models.job_embedding import EmbeddingJob
 from ..models.job_parsing import JobStatus
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -158,7 +159,7 @@ class EmbeddingPool:
             return jobs_created
 
         except Exception as e:
-            logger.error(f"Failed to flush pool: {e}", exc_info=True)
+            logger.error(f"Failed to flush pool: {sanitize_log_message(str(e))}", exc_info=True)
             await db.rollback()
             return 0
 
@@ -286,7 +287,7 @@ class EmbeddingPool:
                     logger.debug("Background flusher cancelled")
                     break
                 except Exception as e:
-                    logger.error(f"Error in background flusher: {e}", exc_info=True)
+                    logger.error(f"Error in background flusher: {sanitize_log_message(str(e))}", exc_info=True)
                     # Continue running despite errors
 
         self._background_task = asyncio.create_task(background_flush_loop())

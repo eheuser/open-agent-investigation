@@ -18,6 +18,7 @@ from .context_manager import ChatContextManager
 from .embedding_queue import get_embedding_status
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -290,7 +291,7 @@ async def classify_intent(
             return _fallback_classification(user_query)
 
     except Exception as e:
-        logger.error(f"Intent classification failed: {e}")
+        logger.error(f"Intent classification failed: {sanitize_log_message(str(e))}")
         return _fallback_classification(user_query)
 
 
@@ -655,14 +656,14 @@ async def route_chat_message(
                 yield result
 
         else:
-            logger.error(f"[CHAT_ROUTER] Unknown intent: {classification.intent}")
+            logger.error(f"[CHAT_ROUTER] Unknown intent: {sanitize_log_message(classification.intent)}")
             yield {
                 "type": "error",
                 "message": f"Unknown intent type: {classification.intent.value}",
             }
 
     except Exception as e:
-        logger.error(f"[CHAT_ROUTER] Error: {e}", exc_info=True)
+        logger.error(f"[CHAT_ROUTER] Error: {sanitize_log_message(str(e))}", exc_info=True)
         yield {
             "type": "error",
             "message": f"Error processing query: {str(e)}",
@@ -726,7 +727,7 @@ async def handle_clarification_response(
         return result
     except Exception as e:
         logger.error(
-            f"Unexpected error in handle_clarification_response for investigation {investigation_id}: {e}",
+            f"Unexpected error in handle_clarification_response for investigation {investigation_id}: {sanitize_log_message(str(e))}",
             exc_info=True,
         )
         return {

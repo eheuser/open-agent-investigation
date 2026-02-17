@@ -8,6 +8,7 @@ from .embedding import Embedder
 from ...crud.llm_config import get_active_llm_config
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -161,7 +162,7 @@ async def generate_embeddings_for_events(
         return created_count
 
     except Exception as e:
-        logger.error(f"Error generating embeddings for events: {e}", exc_info=True)
+        logger.error(f"Error generating embeddings for events: {sanitize_log_message(str(e))}", exc_info=True)
         await db.rollback()
         return 0
 
@@ -267,7 +268,7 @@ async def generate_embedding_for_chat_message(
         return embedding_id
 
     except Exception as e:
-        logger.error(f"Error generating embedding for chat message: {e}", exc_info=True)
+        logger.error(f"Error generating embedding for chat message: {sanitize_log_message(str(e))}", exc_info=True)
         await db.rollback()
         return None
 
@@ -394,7 +395,7 @@ async def generate_embedding_for_timeline_entry(
         return embedding_id
 
     except Exception as e:
-        logger.error(f"Error generating embedding for timeline entry: {e}", exc_info=True)
+        logger.error(f"Error generating embedding for timeline entry: {sanitize_log_message(str(e))}", exc_info=True)
         await db.rollback()
         return None
 
@@ -538,7 +539,7 @@ async def generate_embeddings_for_timeline_entries(
         return created_count
 
     except Exception as e:
-        logger.error(f"Error generating embeddings for timeline entries: {e}", exc_info=True)
+        logger.error(f"Error generating embeddings for timeline entries: {sanitize_log_message(str(e))}", exc_info=True)
         await db.rollback()
         return 0
 

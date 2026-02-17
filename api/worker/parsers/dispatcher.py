@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.services.rag.filter_engine import FilterEngine
 from app.services.embedding_batcher import queue_events_for_embedding
 from app.utils.log_setup import get_logger
+from app.utils.security import validate_path_within_base, sanitize_filename, sanitize_log_message
 import json
 
 # Import all parser classes
@@ -89,15 +90,22 @@ async def parse_artifact(
     if not artifact:
         raise ValueError(f"Artifact {artifact_id} not found")
 
-    # Get file path
-    inv_dir = Path(settings.investigations_base_path) / str(investigation_id) / "raw_files"
-    file_path = inv_dir / f"{artifact_id}_{artifact.filename}"
+    # Get file path with validation to prevent path traversal
+    base_path = Path(settings.investigations_base_path)
+    inv_dir = validate_path_within_base(
+        Path(str(investigation_id)) / "raw_files",
+        base_path
+    )
+    
+    # Sanitize filename to prevent path traversal
+    safe_filename = sanitize_filename(f"{artifact_id}_{artifact.filename}")
+    file_path = inv_dir / safe_filename
 
     if not file_path.exists():
         raise RuntimeError(f"Artifact file not found: {file_path}")
 
     logger.debug(
-        f"Identifying parser for artifact {artifact_id} ({artifact.filename})"
+        f"Identifying parser for artifact {artifact_id} ({sanitize_log_message(artifact.filename)})"
     )
 
     # Try each parser's identify() method
@@ -107,18 +115,18 @@ async def parse_artifact(
             if parser_class.identify(artifact.filename, file_path):
                 selected_parser = parser_class()
                 logger.debug(
-                    f"Selected {parser_class.__name__} for artifact {artifact_id} ({artifact.filename})"
+                    f"Selected {parser_class.__name__} for artifact {artifact_id} ({sanitize_log_message(artifact.filename)})"
                 )
                 break
         except Exception as e:
             logger.debug(
-                f"{parser_class.__name__}.identify() failed for {artifact.filename}: {e}"
+                f"{parser_class.__name__}.identify() failed for {sanitize_log_message(artifact.filename)}: {sanitize_log_message(str(e))}"
             )
             continue
 
     if not selected_parser:
         raise RuntimeError(
-            f"No parser available for artifact {artifact_id} ({artifact.filename}). "
+            f"No parser available for artifact {artifact_id} ({sanitize_log_message(artifact.filename)}). "
             f"File type not recognized."
         )
 
@@ -131,7 +139,7 @@ async def parse_artifact(
         if not isinstance(selected_parser, FileMetadataParser):
             logger.debug(
                 f"{selected_parser.__class__.__name__} failed to parse artifact {artifact_id} "
-                f"({artifact.filename}): {e}. Falling back to FileMetadataParser."
+                f"({sanitize_log_message(artifact.filename)}): {sanitize_log_message(str(e))}. Falling back to FileMetadataParser."
             )
             try:
                 # Use FileMetadataParser as fallback
@@ -143,15 +151,15 @@ async def parse_artifact(
                 )
             except Exception as fallback_error:
                 logger.error(
-                    f"FileMetadataParser fallback also failed for artifact {artifact_id}: {fallback_error}"
+                    f"FileMetadataParser fallback also failed for artifact {artifact_id}: {sanitize_log_message(str(fallback_error))}"
                 )
                 raise RuntimeError(
                     f"Both {selected_parser.__class__.__name__} and FileMetadataParser failed to parse "
-                    f"artifact {artifact_id} ({artifact.filename})"
+                    f"artifact {artifact_id} ({sanitize_log_message(artifact.filename)})"
                 )
         else:
             # FileMetadataParser itself failed - re-raise the error
-            logger.error(f"FileMetadataParser failed for artifact {artifact_id}: {e}")
+            logger.error(f"FileMetadataParser failed for artifact {artifact_id}: {sanitize_log_message(str(e))}")
             raise
 
     # After parsing, queue interesting events for background embedding
@@ -245,7 +253,7 @@ async def parse_artifact(
                     if is_interesting:
                         interesting_event_ids.append(event_id)
                 except Exception as e:
-                    logger.debug(f"Failed to filter event {event_id}: {e}")
+                    logger.debug(f"Failed to filter event {event_id}: {sanitize_log_message(str(e))}")
                     continue
             
             # Queue events for background batching (thread-safe, works across processes)
@@ -260,7 +268,7 @@ async def parse_artifact(
                     f"(artifact {artifact_id}, investigation {investigation_id})"
                 )
         except Exception as e:
-            logger.warning(f"Event queueing failed for artifact {artifact_id}: {e}")
+            logger.warning(f"Event queueing failed for artifact {artifact_id}: {sanitize_log_message(str(e))}")
             # Don't rollback - parsing succeeded, queueing is optional
 
     return events_inserted

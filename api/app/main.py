@@ -33,6 +33,7 @@ from .routers import (
     system,
 )
 from .utils.log_setup import get_logger
+from .utils.security import sanitize_log_message
 from .services.log_streaming import setup_log_streaming
 from .services.embedding_pool import start_pool_flusher, stop_pool_flusher, flush_embedding_pool
 
@@ -97,7 +98,7 @@ async def health(db=Depends(get_db)):
         await db.execute("SELECT 1")
         return {"status": "ok", "database": "connected"}
     except Exception as e:
-        return {"status": "error", "database": "disconnected", "error": str(e)}
+        return {"status": "error", "database": "disconnected", "error": sanitize_log_message(str(e))}
 
 
 @app.get("/metrics")
@@ -277,7 +278,7 @@ async def cleanup_stale_jobs():
             break  # Exit after first iteration
 
     except Exception as e:
-        logger.error(f"Error cleaning up stale jobs: {e}")
+        logger.error(f"Error cleaning up stale jobs: {sanitize_log_message(str(e))}")
         # Don't raise - we don't want to prevent startup
 
 
@@ -299,7 +300,7 @@ async def shutdown_event():
                 await db.close()
             break
     except Exception as e:
-        logger.error(f"Error flushing embedding pool on shutdown: {e}")
+        logger.error(f"Error flushing embedding pool on shutdown: {sanitize_log_message(str(e))}")
 
     # Stop the background flusher
     await stop_pool_flusher()

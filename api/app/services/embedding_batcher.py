@@ -21,6 +21,7 @@ from ..models.job_embedding import EmbeddingJob
 from ..models.job_parsing import JobStatus
 from ..core.config import settings
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -142,7 +143,7 @@ async def batch_loop_async(stop_event):
                             )
                             
                         except Exception as e:
-                            logger.error(f"Failed to create embedding jobs: {e}", exc_info=True)
+                            logger.error(f"Failed to create embedding jobs: {sanitize_log_message(str(e))}", exc_info=True)
                             try:
                                 await db.rollback()
                             except:
@@ -152,7 +153,7 @@ async def batch_loop_async(stop_event):
                     await asyncio.sleep(3.0)
 
             except Exception as e:
-                logger.error(f"Error in batching loop: {e}", exc_info=True)
+                logger.error(f"Error in batching loop: {sanitize_log_message(str(e))}", exc_info=True)
                 await asyncio.sleep(5.0)  # Back off on error
 
     finally:

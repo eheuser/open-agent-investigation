@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 from app.core.database import async_session_factory
 
 logger = get_logger(__name__)
@@ -75,20 +76,20 @@ class AutorunsAnalyzer:
     def _load_config(self, config_path: Path) -> Dict[str, Any]:
         try:
             if not config_path.exists():
-                logger.warning(f"Config file not found: {config_path}")
+                logger.warning(f"Config file not found: {sanitize_log_message(str(config_path))}")
                 return {"categories": []}
 
             with open(config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
 
             if not config or "categories" not in config:
-                logger.warning(f"Invalid config file: {config_path}")
+                logger.warning(f"Invalid config file: {sanitize_log_message(str(config_path))}")
                 return {"categories": []}
 
             return config
 
         except Exception as e:
-            logger.error(f"Failed to load config from {config_path}: {e}", exc_info=True)
+            logger.error(f"Failed to load config from {sanitize_log_message(str(config_path))}: {sanitize_log_message(str(e))}", exc_info=True)
             return {"categories": []}
 
     async def analyze(
@@ -287,7 +288,7 @@ class AutorunsAnalyzer:
                     entries.append(entry)
         
         except Exception as e:
-            logger.error(f"Failed to query path '{normalized_path}': {e}", exc_info=True)
+            logger.error(f"Failed to query path '{sanitize_log_message(normalized_path)}': {sanitize_log_message(str(e))}", exc_info=True)
         
         return entries
     
@@ -340,7 +341,7 @@ class AutorunsAnalyzer:
                     entries.append(entry)
         
         except Exception as e:
-            logger.error(f"Failed to query event type '{event_type}': {e}", exc_info=True)
+            logger.error(f"Failed to query event type '{sanitize_log_message(event_type)}': {sanitize_log_message(str(e))}", exc_info=True)
         
         return entries
     
@@ -390,7 +391,7 @@ class AutorunsAnalyzer:
             return None
         
         except Exception as e:
-            logger.warning(f"Failed to create AutorunEntry from event: {e}")
+            logger.warning(f"Failed to create AutorunEntry from event: {sanitize_log_message(str(e))}")
             return None
 
     def _create_entry(
@@ -436,7 +437,7 @@ class AutorunsAnalyzer:
             )
         
         except Exception as e:
-            logger.warning(f"Failed to create AutorunEntry: {e}")
+            logger.warning(f"Failed to create AutorunEntry: {sanitize_log_message(str(e))}")
             return None
     
     def _is_valid_autorun_path(self, path: str) -> bool:
@@ -521,7 +522,7 @@ class AutorunsAnalyzer:
                 return None
             
         except Exception as e:
-            logger.warning(f"Failed to retrieve cached results: {e}")
+            logger.warning(f"Failed to retrieve cached results: {sanitize_log_message(str(e))}")
             return None
     
     async def _cache_results(
@@ -583,7 +584,7 @@ class AutorunsAnalyzer:
                 logger.debug(f"Cached {len(entries)} autoruns entries (expires in 12 hours)")
                 
         except Exception as e:
-            logger.error(f"Failed to cache results: {e}", exc_info=True)
+            logger.error(f"Failed to cache results: {sanitize_log_message(str(e))}", exc_info=True)
             # Don't fail the analysis if caching fails - just log the error
 
 

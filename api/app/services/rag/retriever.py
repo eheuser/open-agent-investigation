@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -281,7 +282,7 @@ class Retriever:
             return [(row[0], row[1], row[2], float(row[3])) for row in rows]
 
         except Exception as e:
-            logger.error(f"BM25 search failed: {e}", exc_info=True)
+            logger.error(f"BM25 search failed: {sanitize_log_message(str(e))}", exc_info=True)
             raise
 
     async def _vector_search(
@@ -374,7 +375,7 @@ class Retriever:
             return [(row[0], row[1], row[2], row[3]) for row in rows]
 
         except Exception as e:
-            logger.error(f"Vector search failed: {e}", exc_info=True)
+            logger.error(f"Vector search failed: {sanitize_log_message(str(e))}", exc_info=True)
             # Don't rollback here - let the caller handle it
             # Re-raising will propagate the error up to the handler
             raise
@@ -483,7 +484,7 @@ class Retriever:
                         await self.db.rollback()
                         logger.debug("Transaction rolled back successfully")
                     except Exception as rb_error:
-                        logger.error(f"Rollback failed: {rb_error}")
+                        logger.error(f"Rollback failed: {sanitize_log_message(str(rb_error))}")
                     # Stop processing remaining candidates
                     break
                 # For other errors, continue to next candidate
@@ -520,7 +521,7 @@ class Retriever:
 
             return row[0]
         except Exception as e:
-            logger.warning(f"Failed to get event_id for timeline entry {timeline_entry_id}: {e}")
+            logger.warning(f"Failed to get event_id for timeline entry {timeline_entry_id}: {sanitize_log_message(str(e))}")
             return None
 
     async def _fetch_event_data(self, event_id: int) -> Optional[Dict[str, Any]]:
@@ -562,7 +563,7 @@ class Retriever:
             logger.debug(f"Built event object for event {event_id_val}: type={event_type}")
             return event_obj
         except Exception as e:
-            logger.warning(f"Failed to fetch event data for event {event_id}: {e}")
+            logger.warning(f"Failed to fetch event data for event {event_id}: {sanitize_log_message(str(e))}")
             return None
 
     async def _fetch_text(self, owner_type: str, owner_id: int) -> Optional[str]:
@@ -636,7 +637,7 @@ class Retriever:
             return None
 
         except Exception as e:
-            logger.warning(f"Failed to fetch text for {owner_type}/{owner_id}: {e}")
+            logger.warning(f"Failed to fetch text for {owner_type}/{owner_id}: {sanitize_log_message(str(e))}")
             # Don't rollback here - just return None and let the chunk be skipped
             return None
 

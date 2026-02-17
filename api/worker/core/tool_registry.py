@@ -2,6 +2,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -42,7 +43,7 @@ class ToolRegistry:
         registration.
         """
         if spec.name in self._tools:
-            logger.warning(f"Tool {spec.name} already registered, overwriting")
+            logger.warning(f"Tool {sanitize_log_message(spec.name)} already registered, overwriting")
         self._tools[spec.name] = spec
         logger.debug(f"Registered tool: {spec.name}")
 

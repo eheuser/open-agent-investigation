@@ -2,6 +2,7 @@ import re
 from typing import Dict, Any
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -55,7 +56,7 @@ async def render_diagram(
     if len(source) > 5000:
         return {"error": "Source description too long (max 5000 characters)."}
 
-    logger.info(f"Rendering {format} diagram: {source[:100]}...")
+    logger.info(f"Rendering {sanitize_log_message(format)} diagram: {sanitize_log_message(source[:100])}...")
 
     try:
         if format == "graphviz":
@@ -78,8 +79,8 @@ async def render_diagram(
         }
 
     except Exception as e:
-        logger.error(f"Diagram generation failed: {e}", exc_info=True)
-        return {"error": f"Diagram generation failed: {str(e)[:200]}"}
+        logger.error(f"Diagram generation failed: {sanitize_log_message(str(e))}", exc_info=True)
+        return {"error": f"Diagram generation failed: {sanitize_log_message(str(e)[:200])}"}
 
 
 def _generate_graphviz(description: str) -> str:

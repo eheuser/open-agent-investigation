@@ -11,6 +11,7 @@ from sqlalchemy import text
 from ..llm_service import LLMService
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -238,7 +239,7 @@ Respond with ONLY the JSON array, no other text."""
 
         return []
     except Exception as e:
-        logger.error(f"LLM extraction failed: {e}")
+        logger.error(f"LLM extraction failed: {sanitize_log_message(str(e))}")
         return []
 
 

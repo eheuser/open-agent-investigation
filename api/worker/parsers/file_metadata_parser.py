@@ -15,6 +15,7 @@ from .base_parser import BaseParser
 from .utils import flatten_dict, sanitize_for_jsonb
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -52,7 +53,7 @@ def _calculate_hashes(file_path: Path) -> Dict[str, str]:
             'sha256': sha256_hash.hexdigest(),
         }
     except Exception as e:
-        logger.debug(f"Failed to calculate hashes for {file_path}: {e}")
+        logger.debug(f"Failed to calculate hashes for {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
         return {
             'md5': "",
             'sha1': "",
@@ -159,7 +160,7 @@ def _extract_strings(file_path: Path, max_size: int = MAX_STRINGS_SIZE) -> Dict[
         }
     
     except Exception as e:
-        logger.debug(f"Failed to extract strings from {file_path}: {e}")
+        logger.debug(f"Failed to extract strings from {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
         return {
             'ascii_strings': [],
             'unicode_strings': [],
@@ -227,7 +228,7 @@ def _detect_file_type(file_path: Path) -> Dict[str, Any]:
             }
     
     except Exception as e:
-        logger.debug(f"Failed to detect file type for {file_path}: {e}")
+        logger.debug(f"Failed to detect file type for {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
         return {
             'magic_bytes': None,
             'file_type': 'ERROR',
@@ -298,7 +299,7 @@ def _extract_pe_info(file_path: Path) -> Optional[Dict[str, Any]]:
             }
     
     except Exception as e:
-        logger.debug(f"Failed to extract PE info from {file_path}: {e}")
+        logger.debug(f"Failed to extract PE info from {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
         return None
 
 
@@ -384,7 +385,7 @@ class FileMetadataParser(BaseParser):
                         sample_data = f.read(65536)  # 64 KB sample
                         entropy = _calculate_entropy(sample_data)
                 except Exception as e:
-                    logger.debug(f"Failed to calculate entropy for {file_path}: {e}")
+                    logger.debug(f"Failed to calculate entropy for {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
                 
                 # Extract strings
                 strings_data = _extract_strings(file_path)
@@ -439,8 +440,8 @@ class FileMetadataParser(BaseParser):
             return 1
         
         except Exception as e:
-            logger.error(f"Failed to extract metadata from {file_path}: {e}", exc_info=True)
-            raise RuntimeError(f"File metadata extraction failed: {e}")
+            logger.error(f"Failed to extract metadata from {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}", exc_info=True)
+            raise RuntimeError(f"File metadata extraction failed: {sanitize_log_message(str(e))}")
 
 
 __all__ = ["FileMetadataParser"]

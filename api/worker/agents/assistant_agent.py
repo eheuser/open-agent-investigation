@@ -22,6 +22,7 @@ from .prompts import get_system_prompt, get_tool_execution_prompt, get_analysis_
 from .investigation_playbooks import get_investigation_strategy_prompt
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -192,7 +193,7 @@ class AssistantAgent:
                 logger.info(f"Job {self.job_id} cancelled by user")
                 return True
         except Exception as e:
-            logger.warning(f"Cancel check failed: {e}")
+            logger.warning(f"Cancel check failed: {sanitize_log_message(str(e))}")
         return False
 
     async def _llm_stream(
@@ -275,7 +276,7 @@ class AssistantAgent:
                 raise
             except Exception as e:
                 last_err = e
-                logger.error(f"LLM error (attempt {attempt}/{MAX_RETRIES}): {e}")
+                logger.error(f"LLM error (attempt {attempt}/{MAX_RETRIES}): {sanitize_log_message(str(e))}")
                 if attempt < MAX_RETRIES:
                     wait = RETRY_BACKOFF_BASE ** attempt
                     yield {"type": "llm_retry", "message": f"Retrying in {wait}s...", "retry_count": attempt}
@@ -456,7 +457,7 @@ class AssistantAgent:
                     raise
                 except Exception as e:
                     last_err = e
-                    logger.error(f"Tool {name} error (attempt {attempt}/{MAX_RETRIES}): {e}")
+                    logger.error(f"Tool {name} error (attempt {attempt}/{MAX_RETRIES}): {sanitize_log_message(str(e))}")
                     if attempt < MAX_RETRIES:
                         wait = RETRY_BACKOFF_BASE ** attempt
                         yield {
@@ -473,7 +474,7 @@ class AssistantAgent:
                             "tool": name,
                             "display_name": args.get("description", name),
                             "result": {"status": "error", "result": None, "error_msg": str(e)},
-                            "result_summary": f"Error: {e}",
+                            "result_summary": f"Error: {sanitize_log_message(str(e))}",
                             "success": False,
                             "tool_call_id": tc.id or f"tc_err_{self.total_tools_executed}",
                         }
@@ -573,7 +574,7 @@ class AssistantAgent:
                     llm_client=self.llm_client,
                 )
             except Exception as e:
-                logger.warning(f"LLM summary failed: {e}")
+                logger.warning(f"LLM summary failed: {sanitize_log_message(str(e))}")
                 trimmed = trim_messages_from_middle(chat_log, max_tokens=4000)
                 yield {"type": "context_compacted", "message": "Trimmed from middle"}
                 yield {"type": "_compacted_chat_log", "chat_log": trimmed}
@@ -610,7 +611,7 @@ class AssistantAgent:
             if count:
                 logger.info(f"Generated {count} timeline embeddings")
         except Exception as e:
-            logger.warning(f"Embedding batch failed: {e}")
+            logger.warning(f"Embedding batch failed: {sanitize_log_message(str(e))}")
 
     async def run(self) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -647,7 +648,7 @@ class AssistantAgent:
                 }
                 logger.info(f"Selected playbook: {selected_playbook.display_name}")
         except Exception as e:
-            logger.warning(f"Playbook selection failed: {e}")
+            logger.warning(f"Playbook selection failed: {sanitize_log_message(str(e))}")
         
         try:
             yield {
@@ -730,7 +731,7 @@ class AssistantAgent:
                     
                     if signature in self.query_signatures:
                         duplicates_removed += 1
-                        logger.warning(f"Blocking duplicate query: {signature}")
+                        logger.warning(f"Blocking duplicate query: {sanitize_log_message(signature)}")
                     else:
                         self.query_signatures.add(signature)
                         filtered_calls.append(tc)
@@ -916,7 +917,7 @@ class AssistantAgent:
             }
             raise
         except Exception as exc:
-            logger.error(f"Unexpected agent error: {exc}", exc_info=True)
+            logger.error(f"Unexpected agent error: {sanitize_log_message(str(exc))}", exc_info=True)
             yield {"type": "agent_error", "error": str(exc)}
 
 __all__ = ["AssistantAgent"]

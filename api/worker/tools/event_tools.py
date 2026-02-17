@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dateutil import parser as date_parser
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -64,7 +65,7 @@ async def search_events_by_type(
         # Convert wildcard to SQL LIKE pattern
         pattern = event_type.replace("*", "%")
 
-        logger.info(f"Searching events by type: pattern='{pattern}', limit={limit}, offset={offset}")
+        logger.info(f"Searching events by type: pattern='{sanitize_log_message(pattern)}', limit={limit}, offset={offset}")
 
         result = await db.execute(
             text(
@@ -134,12 +135,12 @@ async def search_events_by_type(
             "offset": offset,
         }
     except Exception as e:
-        logger.error(f"search_events_by_type failed: {e}", exc_info=True)
+        logger.error(f"search_events_by_type failed: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
-        return {"error": f"Failed to search events by type: {str(e)}"}
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {"error": f"Failed to search events by type: {sanitize_log_message(str(e))}"}
 
 
 async def search_events_by_timerange(
@@ -207,7 +208,7 @@ async def search_events_by_timerange(
             try:
                 params["start_time"] = date_parser.parse(start_time)
             except (ValueError, TypeError) as e:
-                logger.warning(f"Failed to parse start_time '{start_time}': {e}")
+                logger.warning(f"Failed to parse start_time '{sanitize_log_message(start_time)}': {sanitize_log_message(str(e))}")
                 params["start_time"] = start_time  # Let DB handle the error
 
         if end_time:
@@ -216,7 +217,7 @@ async def search_events_by_timerange(
             try:
                 params["end_time"] = date_parser.parse(end_time)
             except (ValueError, TypeError) as e:
-                logger.warning(f"Failed to parse end_time '{end_time}': {e}")
+                logger.warning(f"Failed to parse end_time '{sanitize_log_message(end_time)}': {sanitize_log_message(str(e))}")
                 params["end_time"] = end_time  # Let DB handle the error
 
         if event_type:
@@ -291,12 +292,12 @@ async def search_events_by_timerange(
             "offset": offset,
         }
     except Exception as e:
-        logger.error(f"search_events_by_timerange failed: {e}", exc_info=True)
+        logger.error(f"search_events_by_timerange failed: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
-        return {"error": f"Failed to search events by timerange: {str(e)}"}
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {"error": f"Failed to search events by timerange: {sanitize_log_message(str(e))}"}
 
 
 async def search_events_by_content(
@@ -377,7 +378,7 @@ async def search_events_by_content(
         where_clause = " AND ".join(conditions)
 
         logger.info(
-            f"Searching events by content: search_text='{search_value}', event_type={event_type}"
+            f"Searching events by content: search_text='{sanitize_log_message(search_value)}', event_type={sanitize_log_message(str(event_type))}"
         )
 
         result = await db.execute(
@@ -428,7 +429,7 @@ async def search_events_by_content(
         total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
 
         logger.info(
-            f"search_events_by_content returned {len(events)} events (search_text='{search_value}'), "
+            f"search_events_by_content returned {len(events)} events (search_text='{sanitize_log_message(search_value)}'), "
             f"page {current_page}/{total_pages}, total={total_count}"
         )
 
@@ -444,12 +445,12 @@ async def search_events_by_content(
             "offset": offset,
         }
     except Exception as e:
-        logger.error(f"search_events_by_content failed: {e}", exc_info=True)
+        logger.error(f"search_events_by_content failed: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
-        return {"error": f"Failed to search events by content: {str(e)}"}
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {"error": f"Failed to search events by content: {sanitize_log_message(str(e))}"}
 
 
 async def get_event_by_id(
@@ -514,12 +515,12 @@ async def get_event_by_id(
             "payload": row[4],
         }
     except Exception as e:
-        logger.error(f"get_event_by_id failed: {e}", exc_info=True)
+        logger.error(f"get_event_by_id failed: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
-        return {"error": f"Failed to get event by ID: {str(e)}"}
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {"error": f"Failed to get event by ID: {sanitize_log_message(str(e))}"}
 
 
 async def query_jsonb_field(
@@ -648,8 +649,8 @@ async def query_jsonb_field(
     where_clause = " AND ".join(conditions) if conditions else "TRUE"
 
     logger.info(
-        f"Querying JSONB field: path='{jsonb_path}', operator='{operator}', value='{value}'"
-    )
+            f"Querying JSONB field: path='{sanitize_log_message(jsonb_path)}', operator='{sanitize_log_message(operator)}', value='{sanitize_log_message(str(value))}'"
+        )
 
     try:
         result = await db.execute(
@@ -717,8 +718,8 @@ async def query_jsonb_field(
         }
 
     except Exception as e:
-        logger.error(f"JSONB query failed: {e}", exc_info=True)
-        return {"error": str(e)}
+        logger.error(f"JSONB query failed: {sanitize_log_message(str(e))}", exc_info=True)
+        return {"error": sanitize_log_message(str(e))}
 
 
 async def aggregate_jsonb_field(
@@ -786,7 +787,7 @@ async def aggregate_jsonb_field(
         event_filter = "AND event_type LIKE :event_pattern"
         params["event_pattern"] = pattern
 
-    logger.info(f"Aggregating JSONB field: path='{jsonb_path}', aggregation='{aggregation}'")
+    logger.info(f"Aggregating JSONB field: path='{sanitize_log_message(jsonb_path)}', aggregation='{sanitize_log_message(aggregation)}'")
 
     try:
         if aggregation == "count":
@@ -858,8 +859,8 @@ async def aggregate_jsonb_field(
             }
 
     except Exception as e:
-        logger.error(f"JSONB aggregation failed: {e}", exc_info=True)
-        return {"error": str(e)}
+        logger.error(f"JSONB aggregation failed: {sanitize_log_message(str(e))}", exc_info=True)
+        return {"error": sanitize_log_message(str(e))}
 
 
 async def get_available_jsonb_fields(
@@ -937,11 +938,11 @@ async def get_available_jsonb_fields(
 
         return fields
     except Exception as e:
-        logger.error(f"get_available_jsonb_fields failed: {e}", exc_info=True)
+        logger.error(f"get_available_jsonb_fields failed: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
         return []
 
 
@@ -992,7 +993,7 @@ async def count_events(
             try:
                 params["start_time"] = date_parser.parse(start_time)
             except (ValueError, TypeError) as e:
-                logger.warning(f"Failed to parse start_time '{start_time}': {e}")
+                logger.warning(f"Failed to parse start_time '{sanitize_log_message(start_time)}': {sanitize_log_message(str(e))}")
                 params["start_time"] = start_time  # Let DB handle the error
 
         if end_time:
@@ -1001,7 +1002,7 @@ async def count_events(
             try:
                 params["end_time"] = date_parser.parse(end_time)
             except (ValueError, TypeError) as e:
-                logger.warning(f"Failed to parse end_time '{end_time}': {e}")
+                logger.warning(f"Failed to parse end_time '{sanitize_log_message(end_time)}': {sanitize_log_message(str(e))}")
                 params["end_time"] = end_time  # Let DB handle the error
 
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
@@ -1026,9 +1027,9 @@ async def count_events(
 
         return {"count": count}
     except Exception as e:
-        logger.error(f"count_events failed: {e}", exc_info=True)
+        logger.error(f"count_events failed: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
-        return {"error": f"Failed to count events: {str(e)}"}
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {"error": f"Failed to count events: {sanitize_log_message(str(e))}"}

@@ -17,6 +17,7 @@ from app.models.job_parsing import JobStatus
 from app.crud.llm_config import get_active_llm_config
 from app.services.rag.event_processor import _batch_create_embeddings
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 import json
 
 logger = get_logger(__name__)
@@ -143,7 +144,7 @@ async def process_embedding_job(db: AsyncSession, job: EmbeddingJob):
                 )
                 interesting_events.append((event_id, event_type, payload))
             except Exception as e:
-                logger.debug(f"Failed to parse event {event_id}: {e}")
+                logger.debug(f"Failed to parse event {event_id}: {sanitize_log_message(str(e))}")
                 continue
 
         # Check if concurrent embedding calls are enabled
@@ -205,11 +206,11 @@ async def process_embedding_job(db: AsyncSession, job: EmbeddingJob):
             else:
                 logger.debug(f"Investigation {investigation_id} still has {remaining_jobs} embedding job(s) pending/running")
         except Exception as cache_error:
-            logger.warning(f"Failed to refresh stats cache: {cache_error}")
+            logger.warning(f"Failed to refresh stats cache: {sanitize_log_message(str(cache_error))}")
             # Don't fail the job if cache refresh fails
 
     except Exception as e:
-        logger.error(f"Embedding job {job_id} failed: {e}", exc_info=True)
+        logger.error(f"Embedding job {job_id} failed: {sanitize_log_message(str(e))}", exc_info=True)
 
         # Rollback any failed transaction
         try:
@@ -233,7 +234,7 @@ async def process_embedding_job(db: AsyncSession, job: EmbeddingJob):
             )
             await db.commit()
         except Exception as update_error:
-            logger.error(f"Failed to update job status: {update_error}")
+            logger.error(f"Failed to update job status: {sanitize_log_message(str(update_error))}")
 
 
 async def _batch_create_embeddings_concurrent(
@@ -371,13 +372,13 @@ async def _batch_create_embeddings_concurrent(
                                 )
                                 await progress_db.commit()
                         except Exception as update_error:
-                            logger.warning(f"Failed to update job progress: {update_error}")
+                            logger.warning(f"Failed to update job progress: {sanitize_log_message(str(update_error))}")
                             # Don't fail the batch if progress update fails
                     
                     return batch_created
 
                 except Exception as e:
-                    logger.error(f"Batch {batch_num} failed: {e}")
+                    logger.error(f"Batch {batch_num} failed: {sanitize_log_message(str(e))}")
                     try:
                         await batch_db.rollback()
                     except:
@@ -411,7 +412,7 @@ async def _batch_create_embeddings_concurrent(
         if isinstance(result, int):
             created_count += result
         else:
-            logger.error(f"Batch processing raised exception: {result}")
+            logger.error(f"Batch processing raised exception: {sanitize_log_message(str(result))}")
 
     return created_count
 

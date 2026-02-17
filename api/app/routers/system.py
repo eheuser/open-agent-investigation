@@ -18,6 +18,7 @@ from app.core.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -425,14 +426,14 @@ async def get_system_status(
             await db.execute(text("SELECT 1"))  # type: ignore
             stats["database"] = {"status": "connected"}
         except Exception as e:
-            logger.error(f"Database health check failed: {e}")
+            logger.error(f"Database health check failed: {sanitize_log_message(str(e))}")
             stats["database"] = {"status": "error", "message": str(e)}
         
         logger.info(f"System status retrieved by user {current_user.username}")
         return stats
         
     except Exception as e:
-        logger.error(f"Failed to retrieve system status: {e}", exc_info=True)
+        logger.error(f"Failed to retrieve system status: {sanitize_log_message(str(e))}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve system status: {str(e)}",
@@ -477,11 +478,11 @@ async def refresh_system_stats(
         }
         
     except Exception as e:
-        logger.error(f"Failed to refresh system statistics: {e}", exc_info=True)
+        logger.error(f"Failed to refresh system statistics: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to refresh system statistics: {str(e)}",

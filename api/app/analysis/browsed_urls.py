@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -167,7 +168,7 @@ class BrowsedURLsAnalyzer:
                 try:
                     payload = json.loads(payload_str) if isinstance(payload_str, str) else payload_str
                 except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse payload for event {event_id}")
+                    logger.warning(f"Failed to parse payload for event {sanitize_log_message(str(event_id))}")
                     continue
                 
                 # Extract data
@@ -193,11 +194,11 @@ class BrowsedURLsAnalyzer:
                     entries.append(entry)
         
         except Exception as e:
-            logger.error(f"Failed to query browser history: {e}", exc_info=True)
+            logger.error(f"Failed to query browser history: {sanitize_log_message(str(e))}", exc_info=True)
             try:
                 await db.rollback()
             except Exception as rollback_error:
-                logger.warning(f"Failed to rollback transaction: {rollback_error}")
+                logger.warning(f"Failed to rollback transaction: {sanitize_log_message(str(rollback_error))}")
         
         logger.debug(f"Analyzed {len(entries)} browsed URL entries")
         

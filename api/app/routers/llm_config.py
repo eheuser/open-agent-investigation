@@ -8,6 +8,7 @@ import asyncio
 from ..deps import get_db, get_current_user
 from typing import cast
 from ..models.user import User
+from ..utils.security import validate_url_safe, sanitize_log_message
 from ..models.llm_config import LLMProviderConfig
 from ..schemas.llm_config import (
     LLMConfigCreate,
@@ -346,6 +347,15 @@ async def test_llm_config(
     Returns:
         Dict with 'success' boolean, 'message' string, and optional 'error' string
     """
+    # Validate URL to prevent SSRF attacks
+    try:
+        validate_url_safe(payload.api_endpoint)
+    except HTTPException as e:
+        return {
+            "success": False,
+            "error": f"Invalid API endpoint: {e.detail}"
+        }
+    
     try:
         # Prepare minimal test request
         headers = {
@@ -434,6 +444,16 @@ async def test_embedding_config(
     Returns:
         Dict with 'success' boolean, 'message' string, and optional 'error' string
     """
+    # Validate URL to prevent SSRF attacks
+    if payload.embedding_api_url and payload.embedding_api_url.strip():
+        try:
+            validate_url_safe(payload.embedding_api_url)
+        except HTTPException as e:
+            return {
+                "success": False,
+                "error": f"Invalid embedding API URL: {e.detail}"
+            }
+    
     # Check if provider is None/empty
     if not payload.embedding_provider or payload.embedding_provider.strip() == '':
         return {
