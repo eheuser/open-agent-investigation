@@ -198,12 +198,12 @@ async def _batch_create_embeddings(
                         created_count += 1
                     except Exception as individual_error:
                         logger.debug(
-                            f"Failed to insert embedding for event {event_id}: {individual_error}"
+                            f"Failed to insert embedding for event {event_id}: {sanitize_log_message(str(individual_error))}"
                         )
                         try:
                             await db.rollback()
-                        except:
-                            pass
+                        except Exception as rollback_error:
+                            logger.debug(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
                         continue
 
         except Exception as e:
@@ -902,7 +902,10 @@ async def process_interesting_events(
                 await db.rollback()
         except Exception as commit_error:
             logger.debug(f"Error finalizing transaction: {sanitize_log_message(str(commit_error))}")
-            await db.rollback()
+            try:
+                await db.rollback()
+            except Exception as rollback_error:
+                logger.debug(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
 
         logger.debug(
             f"Processed {len(events):,} events from artifact {artifact_id}: "
@@ -914,8 +917,8 @@ async def process_interesting_events(
         # Rollback any partial changes on error
         try:
             await db.rollback()
-        except:
-            pass
+        except Exception as rollback_error:
+            logger.debug(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
 
         logger.error(f"Error processing interesting events for artifact {artifact_id}: {sanitize_log_message(str(e))}")
         raise  # Re-raise to let caller handle
