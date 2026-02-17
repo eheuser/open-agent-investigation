@@ -154,11 +154,40 @@ def sanitize_path_component(component: str, allow_dots: bool = False) -> str:
             detail="Path component must be a non-empty string"
         )
     
+    # Strip surrounding whitespace
+    component = component.strip()
+    if not component:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path component must be a non-empty string"
+        )
+    
     # Remove any null bytes
     if "\x00" in component:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Path component contains null bytes"
+        )
+    
+    # Normalize to a single path segment: this drops any directory parts and
+    # collapses traversal sequences so that only the final name is kept.
+    # For example, "../../../etc/passwd" -> "passwd".
+    normalized = Path(component).name
+    if not normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path component resolves to an empty name"
+        )
+    
+    component = normalized
+    
+    # Optionally restrict allowed characters to a conservative set to avoid
+    # unexpected filesystem semantics.
+    # Allows letters, digits, dot, underscore and hyphen.
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", component):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path component contains invalid characters"
         )
     
     # Check for path traversal attempts
