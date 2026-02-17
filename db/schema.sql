@@ -114,7 +114,31 @@ CREATE TABLE IF NOT EXISTS llm_provider_config (
 CREATE INDEX idx_llm_config_user ON llm_provider_config(user_id);
 CREATE INDEX idx_llm_config_active ON llm_provider_config(user_id, is_active) WHERE is_active = true;
 
+-- ============================================================================
+-- RAG & EMBEDDING TABLES (must be before tables that reference them)
+-- ============================================================================
 
+-- Embeddings table (polymorphic vector store)
+-- Supports flexible vector dimensions for different embedding models (768, 1024, 1536, etc.)
+CREATE TABLE IF NOT EXISTS embeddings (
+    id BIGSERIAL PRIMARY KEY,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('chat', 'timeline', 'note', 'tool')),
+    owner_id BIGINT NOT NULL,
+    model_name TEXT NOT NULL,
+    vector VECTOR NOT NULL,  -- No dimension constraint - supports any embedding model
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_embeddings_owner ON embeddings(owner_type, owner_id);
+-- Index for model_name grouping (used in status queries)
+CREATE INDEX idx_embeddings_model ON embeddings(model_name);
+-- Composite index for tool-type embeddings (optimizes event embedding coverage queries)
+CREATE INDEX idx_embeddings_tool_owner ON embeddings(owner_type, owner_id) WHERE owner_type = 'tool';
+-- Note: Vector indexes are NOT created for large embedding models (>2048 dimensions)
+-- Models like qwen3-embedding-8b (8192 dims) exceed PostgreSQL's 8KB index page limit
+-- Sequential scans are acceptable for <10k embeddings and avoid index maintenance overhead
+-- For smaller models (<= 1536 dims), you can manually create an HNSW index:
+-- CREATE INDEX idx_embeddings_vector_hnsw ON embeddings USING hnsw (vector vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- Chat messages table (conversation history in OpenAI format)
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -406,30 +430,8 @@ CREATE INDEX idx_chat_summaries_investigation ON chat_log_summaries(investigatio
 CREATE INDEX idx_chat_summaries_job ON chat_log_summaries(job_id) WHERE job_id IS NOT NULL;
 
 -- ============================================================================
--- RAG & EMBEDDING TABLES
+-- RAG & EMBEDDING TABLES (continued)
 -- ============================================================================
-
--- Embeddings table (polymorphic vector store)
--- Supports flexible vector dimensions for different embedding models (768, 1024, 1536, etc.)
-CREATE TABLE IF NOT EXISTS embeddings (
-    id BIGSERIAL PRIMARY KEY,
-    owner_type TEXT NOT NULL CHECK (owner_type IN ('chat', 'timeline', 'note', 'tool')),
-    owner_id BIGINT NOT NULL,
-    model_name TEXT NOT NULL,
-    vector VECTOR NOT NULL,  -- No dimension constraint - supports any embedding model
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_embeddings_owner ON embeddings(owner_type, owner_id);
--- Index for model_name grouping (used in status queries)
-CREATE INDEX idx_embeddings_model ON embeddings(model_name);
--- Composite index for tool-type embeddings (optimizes event embedding coverage queries)
-CREATE INDEX idx_embeddings_tool_owner ON embeddings(owner_type, owner_id) WHERE owner_type = 'tool';
--- Note: Vector indexes are NOT created for large embedding models (>2048 dimensions)
--- Models like qwen3-embedding-8b (8192 dims) exceed PostgreSQL's 8KB index page limit
--- Sequential scans are acceptable for <10k embeddings and avoid index maintenance overhead
--- For smaller models (<= 1536 dims), you can manually create an HNSW index:
--- CREATE INDEX idx_embeddings_vector_hnsw ON embeddings USING hnsw (vector vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- Investigation notes table (free-form notes)
 CREATE TABLE IF NOT EXISTS investigation_notes (
