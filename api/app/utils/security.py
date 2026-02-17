@@ -168,6 +168,43 @@ def sanitize_path_component(component: str, allow_dots: bool = False) -> str:
             detail="Path component contains null bytes"
         )
     
+    # Check for absolute paths BEFORE normalization
+    if component.startswith("/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Absolute paths are not allowed"
+        )
+    
+    # Check for Windows absolute paths (C:, D:, etc.) BEFORE normalization
+    if len(component) > 1 and component[1] == ":":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Absolute paths are not allowed"
+        )
+    
+    # Check for path traversal attempts BEFORE normalization
+    if not allow_dots:
+        # Check for . and .. exactly
+        if component in (".", ".."):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Path traversal attempts are not allowed"
+            )
+        
+        # Check for ../ or ..\ prefix (path traversal)
+        if component.startswith("../") or component.startswith("..\\"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Path traversal attempts are not allowed"
+            )
+        
+        # Check for /../ or \..\  or /..\ or \../ anywhere in path
+        if "/../" in component or "/..\\" in component or "\\../" in component or "\\..\\" in component:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Path traversal attempts are not allowed"
+            )
+    
     # Normalize to a single path segment: this drops any directory parts and
     # collapses traversal sequences so that only the final name is kept.
     # For example, "../../../etc/passwd" -> "passwd".
@@ -175,7 +212,7 @@ def sanitize_path_component(component: str, allow_dots: bool = False) -> str:
     if not normalized:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Path component resolves to an empty name"
+            detail="Path traversal attempts are not allowed"
         )
     
     component = normalized
@@ -187,27 +224,6 @@ def sanitize_path_component(component: str, allow_dots: bool = False) -> str:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Path component contains invalid characters"
-        )
-    
-    # Check for path traversal attempts
-    if not allow_dots:
-        if component in (".", ".."):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Path traversal attempts are not allowed"
-            )
-        
-        if component.startswith("..") or "/.." in component or "\\.." in component:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Path traversal attempts are not allowed"
-            )
-    
-    # Check for absolute paths
-    if component.startswith("/") or (len(component) > 1 and component[1] == ":"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Absolute paths are not allowed"
         )
     
     return component
@@ -394,3 +410,4 @@ __all__ = [
     "sanitize_log_message",
     "sanitize_filename",
 ]
+
