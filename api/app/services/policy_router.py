@@ -104,13 +104,13 @@ def load_policy(policy_id: str) -> Dict[str, Any]:
     
     # Construct path and validate it's within POLICIES_DIR
     policy_filename = f"{safe_policy_id}.yaml"
-    path = validate_path_within_base(Path(policy_filename), POLICIES_DIR, resolve=True)
+    safe_path = validate_path_within_base(Path(policy_filename), POLICIES_DIR, resolve=True)
     
-    if not path.is_file():
-        raise FileNotFoundError(f"Policy '{safe_policy_id}' not found at {path}")
+    if not safe_path.is_file():
+        raise FileNotFoundError(f"Policy '{safe_policy_id}' not found at {safe_path}")
 
     # Use resolved path (str) to prevent path traversal
-    with open(str(path), "r") as f:
+    with open(str(safe_path), "r") as f:
         return yaml.safe_load(f)
 
 
@@ -497,3 +497,5 @@ Answer with ONLY ONE policy name from the list above:"""
             "job_id": job.job_id,
         },
     }
+
+
