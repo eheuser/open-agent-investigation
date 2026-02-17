@@ -10,7 +10,6 @@ This module provides functions to prevent common security vulnerabilities:
 import re
 import ipaddress
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 from fastapi import HTTPException, status
 
