@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 import yaml
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -59,7 +60,7 @@ class PlaybookRegistry:
                 logger.debug(f"Loaded playbook: {playbook.name}")
             
             except Exception as e:
-                logger.error(f"Failed to load playbook {yaml_file}: {e}")
+                logger.error(f"Failed to load playbook {yaml_file}: {sanitize_log_message(str(e))}")
         logger.info(f"Loaded {cnt:,} playbooks")
     
     def get_all_descriptions(self) -> str:
@@ -168,12 +169,12 @@ Your response (playbook name or "none"):"""
         if playbook:
             logger.info(f"LLM selected playbook: {playbook.name}")
         else:
-            logger.warning(f"LLM returned unknown playbook name: {selected_name}")
+            logger.warning(f"LLM returned unknown playbook name: {sanitize_log_message(selected_name)}")
         
         return playbook
     
     except Exception as e:
-        logger.error(f"Failed to select playbook via LLM: {e}")
+        logger.error(f"Failed to select playbook via LLM: {sanitize_log_message(str(e))}")
         return None
 
 

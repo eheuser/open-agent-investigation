@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -176,11 +177,11 @@ Generate the JSON now:"""
         return choices
 
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse LLM response as JSON: {e}")
-        logger.error(f"Response content: {accumulated_content[:500]}")
+        logger.error(f"Failed to parse LLM response as JSON: {sanitize_log_message(str(e))}")
+        logger.error(f"Response content: {sanitize_log_message(accumulated_content[:500])}")
         return _generate_fallback_choices(question, evidence_summary)
     except Exception as e:
-        logger.error(f"Failed to generate choices: {e}", exc_info=True)
+        logger.error(f"Failed to generate choices: {sanitize_log_message(str(e))}", exc_info=True)
         return _generate_fallback_choices(question, evidence_summary)
 
 

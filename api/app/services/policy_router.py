@@ -12,6 +12,7 @@ from ..crud.llm_config import get_active_llm_config
 from .llm_auth_helper import prepare_llm_auth
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_path_component, validate_path_within_base, sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -42,23 +43,23 @@ def extract_policy_name(llm_response: str) -> str:
     if not llm_response or llm_response.strip() == "":
         default_policy = VALID_POLICIES[0] if VALID_POLICIES else "event_search"
         logger.warning(
-            f"[POLICY_ROUTER] Empty LLM response received. " f"Using default '{default_policy}'"
+            f"[POLICY_ROUTER] Empty LLM response received. Using default '{sanitize_log_message(default_policy)}'"
         )
         return default_policy
 
     response_lower = llm_response.lower().strip()
-    logger.debug(f"[POLICY_ROUTER] Parsing response: '{response_lower}'")
+    logger.debug(f"[POLICY_ROUTER] Parsing response: '{sanitize_log_message(response_lower)}'")
 
     # First, check if the response IS a valid policy (simple case)
     if response_lower in VALID_POLICIES:
-        logger.debug(f"[POLICY_ROUTER] Exact match found: '{response_lower}'")
+        logger.debug(f"[POLICY_ROUTER] Exact match found: '{sanitize_log_message(response_lower)}'")
         return response_lower
 
     # Check if response starts with a valid policy name
     for policy in VALID_POLICIES:
         if response_lower.startswith(policy):
             logger.debug(
-                f"[POLICY_ROUTER] Extracted policy '{policy}' from response: {llm_response[:100]}"
+                f"[POLICY_ROUTER] Extracted policy '{sanitize_log_message(policy)}' from response: {sanitize_log_message(llm_response[:100])}"
             )
             return policy
 
@@ -66,15 +67,15 @@ def extract_policy_name(llm_response: str) -> str:
     for policy in VALID_POLICIES:
         if policy in response_lower:
             logger.debug(
-                f"[POLICY_ROUTER] Found policy '{policy}' in response: {llm_response[:100]}"
+                f"[POLICY_ROUTER] Found policy '{sanitize_log_message(policy)}' in response: {sanitize_log_message(llm_response[:100])}"
             )
             return policy
 
     # No valid policy found - log and use default (first available policy)
     default_policy = VALID_POLICIES[0] if VALID_POLICIES else "event_search"
     logger.info(
-        f"[POLICY_ROUTER] Could not extract valid policy from LLM response: '{llm_response[:200]}'. "
-        f"Using default '{default_policy}'"
+        f"[POLICY_ROUTER] Could not extract valid policy from LLM response: '{sanitize_log_message(llm_response[:200])}'. "
+        f"Using default '{sanitize_log_message(default_policy)}'"
     )
     return default_policy
 
@@ -98,9 +99,15 @@ def load_policy(policy_id: str) -> Dict[str, Any]:
     FileNotFoundError
         If no file matching `{policy_id}.yaml` exists in :data:`POLICIES_DIR`.
     """
-    path = POLICIES_DIR / f"{policy_id}.yaml"
+    # Sanitize policy_id to prevent path traversal
+    safe_policy_id = sanitize_path_component(policy_id)
+    
+    # Construct path and validate it's within POLICIES_DIR
+    policy_filename = f"{safe_policy_id}.yaml"
+    path = validate_path_within_base(Path(policy_filename), POLICIES_DIR)
+    
     if not path.is_file():
-        raise FileNotFoundError(f"Policy '{policy_id}' not found at {path}")
+        raise FileNotFoundError(f"Policy '{safe_policy_id}' not found at {path}")
 
     with open(path, "r") as f:
         return yaml.safe_load(f)
@@ -192,9 +199,9 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
         # Log payload (truncate if too large)
         payload_str = json.dumps(payload, indent=2)
         if len(payload_str) > 1000:
-            logger.debug(f"[POLICY_ROUTER] Sending payload (truncated): {payload_str[:1000]}...")
+            logger.debug(f"[POLICY_ROUTER] Sending payload (truncated): {sanitize_log_message(payload_str[:1000])}...")
         else:
-            logger.debug(f"[POLICY_ROUTER] Sending payload: {payload_str}")
+            logger.debug(f"[POLICY_ROUTER] Sending payload: {sanitize_log_message(payload_str)}")
 
         try:
             logger.debug(f"[POLICY_ROUTER] Calling LLM at {api_endpoint} with model {model_name}")
@@ -204,19 +211,19 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
                 if resp.status != 200:
                     error_text = await resp.text()
                     logger.error(
-                        f"[POLICY_ROUTER] LLM endpoint returned {resp.status}: {error_text}"
+                        f"[POLICY_ROUTER] LLM endpoint returned {resp.status}: {sanitize_log_message(error_text)}"
                     )
-                    raise Exception(f"LLM endpoint returned {resp.status}: {error_text}")
+                    raise Exception(f"LLM endpoint returned {resp.status}: {sanitize_log_message(error_text)}")
 
                 data = await resp.json()
                 # Log response structure (truncate if too large)
                 response_str = json.dumps(data, indent=2)
                 if len(response_str) > 2000:
                     logger.debug(
-                        f"[POLICY_ROUTER] LLM raw response (truncated): {response_str[:2000]}..."
+                        f"[POLICY_ROUTER] LLM raw response (truncated): {sanitize_log_message(response_str[:2000])}..."
                     )
                 else:
-                    logger.debug(f"[POLICY_ROUTER] LLM raw response: {response_str}")
+                    logger.debug(f"[POLICY_ROUTER] LLM raw response: {sanitize_log_message(response_str)}")
 
                 # Extract content from response - try multiple formats
                 content = None
@@ -224,41 +231,41 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
                 # Format 1: OpenAI format - {"choices": [{"message": {"content": "..."}}]}
                 if "choices" in data and len(data["choices"]) > 0:
                     choice = data["choices"][0]
-                    logger.debug(f"[POLICY_ROUTER] First choice keys: {list(choice.keys())}")
+                    logger.debug(f"[POLICY_ROUTER] First choice keys: {sanitize_log_message(str(list(choice.keys())))}")
 
                     if "message" in choice:
                         message = choice["message"]
-                        logger.debug(f"[POLICY_ROUTER] Message keys: {list(message.keys())}")
+                        logger.debug(f"[POLICY_ROUTER] Message keys: {sanitize_log_message(str(list(message.keys())))}")
                         content = message.get("content")
                         content_type = type(content).__name__ if content is not None else "None"
                         logger.debug(
-                            f"[POLICY_ROUTER] Content from message.content: {repr(content)} (type: {content_type})"
+                            f"[POLICY_ROUTER] Content from message.content: {sanitize_log_message(repr(content))} (type: {content_type})"
                         )
                     elif "text" in choice:
                         content = choice["text"]
                         content_type = type(content).__name__ if content is not None else "None"
                         logger.debug(
-                            f"[POLICY_ROUTER] Content from choice.text: {repr(content)} (type: {content_type})"
+                            f"[POLICY_ROUTER] Content from choice.text: {sanitize_log_message(repr(content))} (type: {content_type})"
                         )
                     else:
                         logger.warning(
-                            f"[POLICY_ROUTER] Choice has neither 'message' nor 'text': {list(choice.keys())}"
+                            f"[POLICY_ROUTER] Choice has neither 'message' nor 'text': {sanitize_log_message(str(list(choice.keys())))}"
                         )
 
                 # Format 2: Direct response field (some providers)
                 if content is None and "response" in data:
                     content = data["response"]
-                    logger.debug(f"[POLICY_ROUTER] Extracted from response field: '{content}'")
+                    logger.debug(f"[POLICY_ROUTER] Extracted from response field: '{sanitize_log_message(str(content))}'")
 
                 # Format 3: Direct content field (some providers)
                 if content is None and "content" in data:
                     content = data["content"]
-                    logger.debug(f"[POLICY_ROUTER] Extracted from content field: '{content}'")
+                    logger.debug(f"[POLICY_ROUTER] Extracted from content field: '{sanitize_log_message(str(content))}'")
 
                 # Format 4: Text field (some providers)
                 if content is None and "text" in data:
                     content = data["text"]
-                    logger.debug(f"[POLICY_ROUTER] Extracted from text field: '{content}'")
+                    logger.debug(f"[POLICY_ROUTER] Extracted from text field: '{sanitize_log_message(str(content))}'")
 
                 # Check if we got valid content
                 if content is None:
@@ -268,9 +275,9 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
                         response_str = response_str[:1000] + "..."
                     logger.error(
                         f"[POLICY_ROUTER] LLM returned no content field. "
-                        f"Response structure: {list(data.keys())}. "
-                        f"Full response: {response_str}. "
-                        f"Using default policy '{default_policy}'"
+                        f"Response structure: {sanitize_log_message(str(list(data.keys())))}. "
+                        f"Full response: {sanitize_log_message(response_str)}. "
+                        f"Using default policy '{sanitize_log_message(default_policy)}'"
                     )
                     return {"policy": default_policy, "raw_response": "(no content field)"}
 
@@ -284,14 +291,14 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
                         response_str = response_str[:1000] + "..."
                     logger.error(
                         f"[POLICY_ROUTER] LLM returned empty content. "
-                        f"Content value: {repr(content)}. "
-                        f"Full response: {response_str}. "
-                        f"Using default policy '{default_policy}'"
+                        f"Content value: {sanitize_log_message(repr(content))}. "
+                        f"Full response: {sanitize_log_message(response_str)}. "
+                        f"Using default policy '{sanitize_log_message(default_policy)}'"
                     )
                     return {"policy": default_policy, "raw_response": "(empty string)"}
 
                 # Extract valid policy name from response
-                logger.debug(f"[POLICY_ROUTER] Final content to parse: '{content_str}'")
+                logger.debug(f"[POLICY_ROUTER] Final content to parse: '{sanitize_log_message(content_str)}'")
                 policy_name = extract_policy_name(content_str)
                 return {"policy": policy_name, "raw_response": content_str}
 
@@ -299,7 +306,7 @@ async def call_llm_backend(db: AsyncSession, user_id: int, prompt: str) -> Dict[
             # Fallback on error
             default_policy = VALID_POLICIES[0] if VALID_POLICIES else "event_search"
             logger.error(
-                f"[POLICY_ROUTER] LLM call failed: {e}, using default policy '{default_policy}'"
+                f"[POLICY_ROUTER] LLM call failed: {sanitize_log_message(str(e))}, using default policy '{sanitize_log_message(default_policy)}'"
             )
             return {"policy": default_policy}
 
@@ -373,8 +380,8 @@ Answer with ONLY ONE policy name from the list above:"""
         # Validate the selected policy
         if selected_policy_id not in VALID_POLICIES:
             logger.warning(
-                f"LLM selected invalid policy '{selected_policy_id}', using {default_policy}. "
-                f"Raw response: {llm_resp.get('raw_response', '')[:200]}"
+                f"LLM selected invalid policy '{sanitize_log_message(selected_policy_id)}', using {sanitize_log_message(default_policy)}. "
+                f"Raw response: {sanitize_log_message(llm_resp.get('raw_response', '')[:200])}"
             )
             selected_policy_id = default_policy
 
@@ -384,11 +391,11 @@ Answer with ONLY ONE policy name from the list above:"""
     except FileNotFoundError as e:
         logger.error(
             f"Policy not found for investigation {investigation_id}: "
-            f"policy_id={selected_policy_id}, error={str(e)}"
+            f"policy_id={sanitize_log_message(selected_policy_id)}, error={sanitize_log_message(str(e))}"
         )
         return {
             "type": "error",
-            "message": f"Policy '{selected_policy_id}' not found. Please select a valid policy.",
+            "message": f"Policy '{sanitize_log_message(selected_policy_id)}' not found. Please select a valid policy.",
             "suggestion": f"Available policies: {', '.join(VALID_POLICIES)}",
         }
 
@@ -431,10 +438,10 @@ Answer with ONLY ONE policy name from the list above:"""
         seed_instructions = seed_template.format(question=question, **resolved)
     except KeyError as e:
         logger.error(
-            f"Template error for policy {selected_policy_id} in investigation {investigation_id}: "
-            f"missing variable {e}"
+            f"Template error for policy {sanitize_log_message(selected_policy_id)} in investigation {investigation_id}: "
+            f"missing variable {sanitize_log_message(str(e))}"
         )
-        return {"type": "error", "message": f"Policy configuration error. Please contact support."}
+        return {"type": "error", "message": "Policy configuration error. Please contact support."}
 
     # Step 6: Check for active parsing jobs before creating agent job
     active_parsing_jobs = await get_active_parsing_jobs(db, investigation_id)

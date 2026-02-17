@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 from .utils import safe_json_dumps
 
 logger = get_logger(__name__)
@@ -43,7 +44,7 @@ async def invalidate_analysis_cache(db: AsyncSession, investigation_id: uuid.UUI
         
         await db.commit()
     except Exception as e:
-        logger.warning(f"Failed to invalidate analysis cache for investigation {investigation_id}: {e}")
+        logger.warning(f"Failed to invalidate analysis cache for investigation {sanitize_log_message(str(investigation_id))}: {sanitize_log_message(str(e))}")
         await db.rollback()
 
 
@@ -130,16 +131,16 @@ class BaseParser(ABC):
             RuntimeError: If parsing fails
         """
         parser_name = self.__class__.__name__
-        logger.debug(f"Parsing artifact {artifact_id} with {parser_name}: {file_path}")
+        logger.debug(f"Parsing artifact {artifact_id} with {parser_name}: {sanitize_log_message(str(file_path))}")
         
         try:
             events_inserted = await self._parse_impl(db, investigation_id, artifact_id, file_path)
-            logger.debug(f"{parser_name} inserted {events_inserted} events from {file_path}")
+            logger.debug(f"{parser_name} inserted {events_inserted} events from {sanitize_log_message(str(file_path))}")
             return events_inserted
         except Exception as e:
-            logger.info(f"{parser_name} failed to parse {file_path}: {e}")
-            logger.debug(f"{parser_name} failed to parse {file_path}: {e}", exc_info=True)
-            raise RuntimeError(f"{parser_name} parsing failed: {e}")
+            logger.info(f"{parser_name} failed to parse {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+            logger.debug(f"{parser_name} failed to parse {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}", exc_info=True)
+            raise RuntimeError(f"{parser_name} parsing failed: {sanitize_log_message(str(e))}")
     
     async def _insert_event_batch(
         self,
@@ -179,7 +180,7 @@ class BaseParser(ABC):
                     payload_obj = json.loads(event["payload"])
                     event["payload"] = safe_json_dumps(payload_obj)
                 except (json.JSONDecodeError, TypeError) as e:
-                    logger.debug(f"Failed to sanitize payload, using as-is: {e}")
+                    logger.debug(f"Failed to sanitize payload, using as-is: {sanitize_log_message(str(e))}")
         
         # Use unified events table
         insert_query = text(
@@ -197,7 +198,7 @@ class BaseParser(ABC):
             await invalidate_analysis_cache(db, investigation_id)
             
         except Exception as e:
-            logger.error(f"Failed to insert event batch of {len(events):,} events: {e}", exc_info=True)
+            logger.error(f"Failed to insert event batch of {len(events):,} events: {sanitize_log_message(str(e))}", exc_info=True)
             await db.rollback()
             raise
 

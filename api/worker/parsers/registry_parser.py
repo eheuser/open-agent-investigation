@@ -20,6 +20,7 @@ from .base_parser import BaseParser
 from .utils import flatten_dict, safe_json_dumps
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -158,8 +159,8 @@ class RegistryParser(BaseParser):
                         # If timestamp extraction fails, skip this key (forensically invalid)
                         skipped_exceptions += 1
                         logger.debug(
-                            f"Skipping registry key {current_path} without valid timestamp: {e}"
-                        )
+                                f"Skipping registry key {sanitize_log_message(current_path)} without valid timestamp: {sanitize_log_message(str(e))}"
+                            )
                         continue
 
                     # Process values
@@ -211,11 +212,11 @@ class RegistryParser(BaseParser):
                                 event_batch = []
 
                         except Exception as e:
-                            logger.debug(f"Failed to parse registry value: {e}")
+                            logger.debug(f"Failed to parse registry value: {sanitize_log_message(str(e))}")
                             continue
 
                 except Exception as e:
-                    logger.debug(f"Failed to process registry key: {e}")
+                    logger.debug(f"Failed to process registry key: {sanitize_log_message(str(e))}")
                     continue
 
             # Insert remaining events
@@ -234,12 +235,12 @@ class RegistryParser(BaseParser):
 
         except RegistryParsingException as e:
             #logger.error(f"Failed to parse registry hive {file_path}: {e}")
-            logger.debug(f"Failed to parse registry hive {file_path}: {e}", exc_info=True)
-            raise RuntimeError(f"Registry parsing failed: {e}")
+            logger.debug(f"Failed to parse registry hive {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}", exc_info=True)
+            raise RuntimeError(f"Registry parsing failed: {sanitize_log_message(str(e))}")
         except Exception as e:
             #logger.error(f"Unexpected error parsing registry hive {file_path}: {e}")
-            logger.debug(f"Unexpected error parsing registry hive {file_path}: {e}", exc_info=True)
-            raise RuntimeError(f"Registry parsing failed: {e}")
+            logger.debug(f"Unexpected error parsing registry hive {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}", exc_info=True)
+            raise RuntimeError(f"Registry parsing failed: {sanitize_log_message(str(e))}")
 
     async def _extract_plugin_events(
         self,
@@ -451,7 +452,7 @@ class RegistryParser(BaseParser):
                 )
 
         except Exception as e:
-            logger.error(f"Failed to parse {plugin_name} plugin data: {e}", exc_info=True)
+            logger.error(f"Failed to parse {sanitize_log_message(plugin_name)} plugin data: {sanitize_log_message(str(e))}", exc_info=True)
 
         logger.debug(f"Plugin {plugin_name} parsed {len(events)} events")
         return events

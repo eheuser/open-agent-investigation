@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -119,7 +120,7 @@ async def register_timeline_entry(
     event_row = event_result.fetchone()
 
     if not event_row:
-        logger.error(f"Event {event_id} not found in investigation {investigation_id}")
+        logger.error(f"Event {event_id} not found in investigation {sanitize_log_message(investigation_id)}")
         return {"error": f"Event {event_id} not found"}
 
     # Extract event data
@@ -131,7 +132,7 @@ async def register_timeline_entry(
     # Validate entry_type
     valid_types = ["event", "finding", "observation", "note"]
     if entry_type not in valid_types:
-        logger.warning(f"Invalid entry_type '{entry_type}', defaulting to 'event'")
+        logger.warning(f"Invalid entry_type '{sanitize_log_message(entry_type)}', defaulting to 'event'")
         entry_type = "event"
 
     # Build the data field with complete event information
@@ -224,8 +225,8 @@ async def register_timeline_entry(
 
     except Exception as e:
         await db.rollback()
-        logger.error(f"Failed to insert timeline entry: {e}")
-        return {"error": f"Failed to create timeline entry: {str(e)}"}
+        logger.error(f"Failed to insert timeline entry: {sanitize_log_message(str(e))}")
+        return {"error": f"Failed to create timeline entry: {sanitize_log_message(str(e))}"}
 
     # Update stats if provided
     if stats is not None:
@@ -357,12 +358,12 @@ async def register_finding(
         entry_id = result.scalar()
         await db.commit()
     except Exception as e:
-        logger.error(f"Failed to register finding: {e}", exc_info=True)
+        logger.error(f"Failed to register finding: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
-        return {"error": f"Failed to register finding: {str(e)}"}
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {"error": f"Failed to register finding: {sanitize_log_message(str(e))}"}
 
     # Update stats if provided
     if stats is not None:
@@ -452,11 +453,11 @@ async def batch_generate_embeddings(
         return count
 
     except Exception as e:
-        logger.error(f"Failed to batch generate embeddings: {e}", exc_info=True)
+        logger.error(f"Failed to batch generate embeddings: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
         return 0
 
 
@@ -518,16 +519,16 @@ async def link_to_event(
         await db.commit()
 
         if not updated_row:
-            logger.error(f"Failed to link entry {entry_id} to event {event_id}")
+            logger.error(f"Failed to link entry {sanitize_log_message(str(entry_id))} to event {sanitize_log_message(str(event_id))}")
             return {"error": "Timeline entry not found"}
 
         logger.info(f"✓ Linked timeline entry {entry_id} to event {event_id}")
 
         return {"entry_id": entry_id, "event_id": event_id, "status": "linked"}
     except Exception as e:
-        logger.error(f"Failed to link timeline entry: {e}", exc_info=True)
+        logger.error(f"Failed to link timeline entry: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
-        return {"error": f"Failed to link timeline entry: {str(e)}"}
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {"error": f"Failed to link timeline entry: {sanitize_log_message(str(e))}"}

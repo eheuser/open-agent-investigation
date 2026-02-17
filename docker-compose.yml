@@ -119,6 +119,8 @@ services:
       - "443:443"
     depends_on:
       - api
+    volumes:
+      - ./certs:/certs  # Persistent SSL certificates
 
 volumes:
   pg_data:

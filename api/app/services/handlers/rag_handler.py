@@ -11,6 +11,7 @@ from ..llm_service import LLMService, LLMConfig
 from ..context_manager import RAGContextManager
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -171,7 +172,7 @@ Respond with ONE query per line, no numbering, no explanations. Generate 5-7 div
         return queries[:7]  # Limit to 7 queries max
 
     except Exception as e:
-        logger.warning(f"Query expansion error: {e}")
+        logger.warning(f"Query expansion error: {sanitize_log_message(str(e))}")
         return []  # Return empty list on error, continue with original query
 
 
@@ -387,7 +388,7 @@ async def handle_rag_query(
                 f"Retrieved {len(all_chunks):,} total chunks from {len(query_vecs):,} queries"
             )
         except Exception as retrieval_error:
-            logger.error(f"Retrieval error: {retrieval_error}", exc_info=True)
+            logger.error(f"Retrieval error: {sanitize_log_message(str(retrieval_error))}", exc_info=True)
             # Rollback the transaction to clean up state
             await db.rollback()
             yield {
@@ -459,7 +460,7 @@ async def handle_rag_query(
             investigation = await get_investigation(db, investigation_id)
             investigation_title = investigation.title if investigation else "Unknown"
         except Exception as inv_error:
-            logger.warning(f"Failed to get investigation metadata: {inv_error}")
+            logger.warning(f"Failed to get investigation metadata: {sanitize_log_message(str(inv_error))}")
             investigation_title = "Unknown"
 
         # Prepare context using context manager
@@ -498,7 +499,7 @@ async def handle_rag_query(
                 }
                 return
         except Exception as llm_error:
-            logger.error(f"LLM synthesis failed: {llm_error}", exc_info=True)
+            logger.error(f"LLM synthesis failed: {sanitize_log_message(str(llm_error))}", exc_info=True)
             yield {
                 "type": "error",
                 "content": f"LLM synthesis failed: {str(llm_error)}",
@@ -598,11 +599,11 @@ async def handle_rag_query(
         try:
             await db.commit()
         except Exception as commit_error:
-            logger.warning(f"Failed to commit after RAG query: {commit_error}")
+            logger.warning(f"Failed to commit after RAG query: {sanitize_log_message(str(commit_error))}")
             await db.rollback()
 
     except Exception as e:
-        logger.error(f"Error in RAG handler: {e}", exc_info=True)
+        logger.error(f"Error in RAG handler: {sanitize_log_message(str(e))}", exc_info=True)
         # Rollback transaction on any error
         try:
             await db.rollback()
@@ -756,7 +757,7 @@ async def persist_rag_tool_executions(
         return execution_ids
 
     except Exception as e:
-        logger.error(f"Failed to persist RAG tool executions: {e}", exc_info=True)
+        logger.error(f"Failed to persist RAG tool executions: {sanitize_log_message(str(e))}", exc_info=True)
         raise
 
 

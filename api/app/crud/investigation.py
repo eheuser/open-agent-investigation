@@ -10,6 +10,7 @@ from ..core.config import settings
 from fastapi import HTTPException, status
 
 from ..utils.log_setup import get_logger
+from ..utils.security import validate_path_within_base, sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -58,12 +59,13 @@ async def create_investigation(
 
     # Create filesystem directory
     try:
-        inv_dir = Path(settings.investigations_base_path) / str(inv_id)
+        base_path = Path(settings.investigations_base_path)
+        inv_dir = validate_path_within_base(Path(str(inv_id)), base_path)
         raw_files_dir = inv_dir / "raw_files"
         raw_files_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         # If filesystem creation fails, log but don't fail the investigation creation
-        logger.warning(f"Could not create investigation directory: {e}")
+        logger.warning(f"Could not create investigation directory: {sanitize_log_message(str(e))}")
 
     await db.commit()
     await db.refresh(investigation)
@@ -200,13 +202,14 @@ async def delete_investigation(
     try:
         import shutil
 
-        inv_dir = Path(settings.investigations_base_path) / str(investigation_id)
+        base_path = Path(settings.investigations_base_path)
+        inv_dir = validate_path_within_base(Path(str(investigation_id)), base_path)
         if inv_dir.exists():
             shutil.rmtree(inv_dir)
             logger.info(f"Removed investigation directory: {inv_dir}")
     except Exception as e:
         # If filesystem cleanup fails, log but don't fail the deletion
-        logger.warning(f"Could not remove investigation directory: {e}")
+        logger.warning(f"Could not remove investigation directory: {sanitize_log_message(str(e))}")
 
 
 async def check_investigation_access(
@@ -277,7 +280,7 @@ async def set_parsing_lock(
     await db.commit()
     await db.refresh(investigation)
 
-    logger.info(f"Investigation {investigation_id} parsing_locked set to {locked}")
+    logger.info(f"Investigation {sanitize_log_message(str(investigation_id))} parsing_locked set to {locked}")
     return investigation
 
 

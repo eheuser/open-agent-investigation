@@ -2,6 +2,7 @@ from typing import Dict, Any, List
 from fastapi import WebSocket
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -34,7 +35,7 @@ class ConnectionManager:
         if investigation_id not in self.active_connections:
             self.active_connections[investigation_id] = []
         self.active_connections[investigation_id].append(websocket)
-        logger.info(f"WebSocket connected to investigation {investigation_id}")
+        logger.info(f"WebSocket connected to investigation {sanitize_log_message(investigation_id)}")
 
     def disconnect(self, investigation_id: str, websocket: WebSocket):
         """
@@ -58,7 +59,7 @@ class ConnectionManager:
                 self.active_connections[investigation_id].remove(websocket)
             if not self.active_connections[investigation_id]:
                 del self.active_connections[investigation_id]
-        logger.info(f"WebSocket disconnected from investigation {investigation_id}")
+        logger.info(f"WebSocket disconnected from investigation {sanitize_log_message(investigation_id)}")
 
     async def send_message(self, websocket: WebSocket, message: Dict[str, Any]):
         """
@@ -100,7 +101,7 @@ class ConnectionManager:
                 try:
                     await connection.send_json(message)
                 except Exception as e:
-                    logger.error(f"Error broadcasting to connection: {e}")
+                    logger.error(f"Error broadcasting to connection: {sanitize_log_message(str(e))}")
 
     def get_connection_count(self, investigation_id: str) -> int:
         """

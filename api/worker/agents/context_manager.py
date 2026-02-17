@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 from ..tools import event_tools
 
 logger = get_logger(__name__)
@@ -174,7 +175,7 @@ async def load_investigation_context(
             context_parts.append("\n### Available Data\n")
             context_parts.append("No events found. Upload artifacts first.\n")
     except Exception as e:
-        logger.error(f"Failed to load event counts: {e}", exc_info=True)
+        logger.error(f"Failed to load event counts: {sanitize_log_message(str(e))}", exc_info=True)
         context_parts.append("\n### Available Data\n")
         context_parts.append(f"Error loading data: {type(e).__name__}: {e}\n")
 
@@ -205,7 +206,7 @@ async def load_investigation_context(
             )
             context_parts.append("- `system.*` - System metadata (e.g., `system.Computer`)\n")
     except Exception as e:
-        logger.error(f"Failed to load available fields: {e}", exc_info=True)
+        logger.error(f"Failed to load available fields: {sanitize_log_message(str(e))}", exc_info=True)
 
     # Get existing timeline entries (limited to most recent 10 by UTC timestamp)
     try:
@@ -264,7 +265,7 @@ async def load_investigation_context(
             context_parts.append("\n### Existing Timeline Evidence\n")
             context_parts.append("**No timeline entries yet** - Register important findings!\n")
     except Exception as e:
-        logger.error(f"Failed to load timeline entries: {e}", exc_info=True)
+        logger.error(f"Failed to load timeline entries: {sanitize_log_message(str(e))}", exc_info=True)
 
     context_parts.append("\n---\n")
 
@@ -332,7 +333,7 @@ async def load_execution_phase_context(
             context_parts.append("\n### Event Types\n")
             context_parts.append("No events found. Upload artifacts first.\n")
     except Exception as e:
-        logger.error(f"Failed to load event counts: {e}", exc_info=True)
+        logger.error(f"Failed to load event counts: {sanitize_log_message(str(e))}", exc_info=True)
         context_parts.append("\n### Event Types\n")
         context_parts.append(f"Error loading data: {type(e).__name__}: {e}\n")
 
@@ -362,7 +363,7 @@ async def load_execution_phase_context(
             )
             context_parts.append("- `system.*` - System metadata (e.g., `system.Computer`)\n")
     except Exception as e:
-        logger.error(f"Failed to load available fields: {e}", exc_info=True)
+        logger.error(f"Failed to load available fields: {sanitize_log_message(str(e))}", exc_info=True)
 
     context_parts.append("\n---\n")
     return "".join(context_parts)
@@ -450,7 +451,7 @@ async def load_analysis_phase_context(
             context_parts.append("\n### Existing Timeline Evidence\n")
             context_parts.append("**No timeline entries yet** - Register important findings!\n")
     except Exception as e:
-        logger.error(f"Failed to load timeline entries: {e}", exc_info=True)
+        logger.error(f"Failed to load timeline entries: {sanitize_log_message(str(e))}", exc_info=True)
 
     context_parts.append("\n---\n")
     return "".join(context_parts)

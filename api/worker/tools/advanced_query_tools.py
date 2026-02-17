@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -96,7 +97,7 @@ async def execute_sql(
             "error": "Query must filter by investigation_id for security. Add: WHERE investigation_id = :investigation_id"
         }
 
-    logger.info(f"Executing SQL query: {query[:200]}...")
+    logger.info(f"Executing SQL query: {sanitize_log_message(query[:200])}...")
 
     try:
         # Execute with timeout (5 seconds)
@@ -130,11 +131,11 @@ async def execute_sql(
 
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"SQL query failed: {error_msg}")
+        logger.error(f"SQL query failed: {sanitize_log_message(error_msg)}")
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
 
         # Sanitize error message (don't leak schema details)
         if "timeout" in error_msg.lower():
@@ -142,9 +143,9 @@ async def execute_sql(
                 "error": "Query timeout (5 second limit). Simplify your query or add more filters."
             }
         elif "syntax" in error_msg.lower():
-            return {"error": f"SQL syntax error: {error_msg[:200]}"}
+            return {"error": f"SQL syntax error: {sanitize_log_message(error_msg[:200])}"}
         else:
-            return {"error": f"Query failed: {error_msg[:200]}"}
+            return {"error": f"Query failed: {sanitize_log_message(error_msg[:200])}"}
 
 
 async def apply_jq(
@@ -187,7 +188,7 @@ async def apply_jq(
     if any(char in filter for char in dangerous_chars):
         return {"error": f"Dangerous characters detected in filter. Only use JQ syntax."}
 
-    logger.info(f"Applying JQ filter: {filter[:100]}...")
+    logger.info(f"Applying JQ filter: {sanitize_log_message(filter[:100])}...")
 
     try:
         # Convert data to JSON string if needed
@@ -208,8 +209,8 @@ async def apply_jq(
 
         if process.returncode != 0:
             error_msg = process.stderr.strip()
-            logger.error(f"JQ filter failed: {error_msg}")
-            return {"error": f"JQ filter error: {error_msg[:200]}"}
+            logger.error(f"JQ filter failed: {sanitize_log_message(error_msg)}")
+            return {"error": f"JQ filter error: {sanitize_log_message(error_msg[:200])}"}
 
         # Parse output
         output = process.stdout.strip()
@@ -243,8 +244,8 @@ async def apply_jq(
         return {"error": "JQ tool not installed in container. Contact administrator."}
 
     except Exception as e:
-        logger.error(f"JQ filter failed: {e}")
-        return {"error": f"JQ filter failed: {str(e)[:200]}"}
+        logger.error(f"JQ filter failed: {sanitize_log_message(str(e))}")
+        return {"error": f"JQ filter failed: {sanitize_log_message(str(e)[:200])}"}
 
 
 __all__ = ["execute_sql", "apply_jq"]

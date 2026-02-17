@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 from app.core.database import async_session_factory
 
 logger = get_logger(__name__)
@@ -127,10 +128,13 @@ class LogonsAnalyzer:
         """
         # Check cache first
         if use_cache:
+            logger.debug(f"Checking cache for investigation {investigation_id} with filters: logon_types={logon_types}, source_ips={source_ips}, usernames={usernames}")
             cached = await self._get_cached_results(investigation_id, logon_types, source_ips, usernames)
             if cached:
                 logger.debug(f"Returning {len(cached)} cached logon entries (fast path)")
                 return cached
+            else:
+                logger.debug("No cached results found, running fresh analysis")
 
         entries: List[LogonEntry] = []
 
@@ -211,15 +215,26 @@ class LogonsAnalyzer:
                     # Apply filters
                     if logon_types and entry.logon_type not in logon_types:
                         continue
-                    if source_ips and entry.source_ip and entry.source_ip not in source_ips:
-                        continue
-                    if usernames and entry.username and entry.username not in usernames:
-                        continue
+                    
+                    # Source IP filter: skip if filter is active and entry doesn't match
+                    if source_ips:
+                        # If entry has no source_ip, skip it (can't match filter)
+                        if not entry.source_ip:
+                            continue
+                        # If entry has source_ip but it's not in the filter list, skip it
+                        if entry.source_ip not in source_ips:
+                            continue
+                    
+                    # Username filter: skip if filter is active and entry doesn't match
+                    if usernames:
+                        # If entry has no username or it's not in the filter list, skip it
+                        if not entry.username or entry.username not in usernames:
+                            continue
 
                     entries.append(entry)
 
         except Exception as e:
-            logger.error(f"Failed to query event logs: {e}", exc_info=True)
+            logger.error(f"Failed to query event logs: {sanitize_log_message(str(e))}", exc_info=True)
 
         return entries
 
@@ -306,7 +321,7 @@ class LogonsAnalyzer:
             )
 
         except Exception as e:
-            logger.warning(f"Failed to create LogonEntry from event log: {e}")
+            logger.warning(f"Failed to create LogonEntry from event log: {sanitize_log_message(str(e))}")
             return None
 
     def _extract_ip_address(self, payload: Dict[str, Any]) -> Optional[str]:
@@ -498,7 +513,7 @@ class LogonsAnalyzer:
             }
 
         except Exception as e:
-            logger.error(f"Failed to get dynamic filters: {e}", exc_info=True)
+            logger.error(f"Failed to get dynamic filters: {sanitize_log_message(str(e))}", exc_info=True)
             return {
                 "source_ips": [],
                 "usernames": [],
@@ -523,7 +538,7 @@ class LogonsAnalyzer:
                 params_json = json.dumps(params_dict, sort_keys=True)
 
                 query = """
-                    SELECT results, created_at
+                    SELECT results, created_at, parameters
                     FROM analysis_results
                     WHERE investigation_id = :investigation_id
                       AND analysis_type = 'logons'
@@ -547,7 +562,9 @@ class LogonsAnalyzer:
                 if row:
                     results_json = row[0]
                     created_at = row[1]
-                    logger.debug(f"Found cached logon results from {created_at}")
+                    cached_params = row[2]
+                    logger.debug(f"Found cached logon results from {created_at} with params: {cached_params}")
+                    logger.debug(f"Requested params: {params_json}")
 
                     # Convert JSON back to LogonEntry objects
                     entries = []
@@ -555,11 +572,13 @@ class LogonsAnalyzer:
                         entries.append(LogonEntry(**entry_dict))
 
                     return entries
+                else:
+                    logger.debug(f"No cache match found for params: {params_json}")
 
                 return None
 
         except Exception as e:
-            logger.warning(f"Failed to retrieve cached results: {e}")
+            logger.warning(f"Failed to retrieve cached results: {sanitize_log_message(str(e))}")
             return None
 
     async def _cache_results(
@@ -627,7 +646,7 @@ class LogonsAnalyzer:
                 logger.debug(f"Cached {len(entries)} logon entries (expires in 12 hours)")
 
         except Exception as e:
-            logger.error(f"Failed to cache results: {e}", exc_info=True)
+            logger.error(f"Failed to cache results: {sanitize_log_message(str(e))}", exc_info=True)
 
 
 __all__ = ["LogonsAnalyzer", "LogonEntry"]

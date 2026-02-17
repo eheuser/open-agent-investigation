@@ -12,6 +12,9 @@ __pycache__/
 # Data
 data/investigations/
 
+# SSL Certificates
+certs/
+
 # node
 node_modules/*
 

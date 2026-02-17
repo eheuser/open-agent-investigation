@@ -4,6 +4,7 @@ import aiohttp
 from bs4 import BeautifulSoup
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -103,14 +104,14 @@ async def retrieve_and_parse_url(
             if len(content) > 10000:
                 content = content[:10000] + "\n\n[Content truncated...]"
 
-            logger.info(f"Retrieved {len(content)} chars from {final_url}")
+            logger.info(f"Retrieved {len(content)} chars from {sanitize_log_message(final_url)}")
 
             return {"url": final_url, "content": content, "status": "ok"}
 
     except aiohttp.ClientError as e:
-        logger.warning(f"Failed to retrieve {url}: {e}")
-        return {"error": f"Failed to retrieve URL: {str(e)}", "url": url}
+        logger.warning(f"Failed to retrieve {sanitize_log_message(url)}: {sanitize_log_message(str(e))}")
+        return {"error": f"Failed to retrieve URL: {sanitize_log_message(str(e))}", "url": url}
 
     except Exception as e:
-        logger.error(f"Error parsing {url}: {e}", exc_info=True)
-        return {"error": f"Failed to parse content: {str(e)}", "url": url}
+        logger.error(f"Error parsing {sanitize_log_message(url)}: {sanitize_log_message(str(e))}", exc_info=True)
+        return {"error": f"Failed to parse content: {sanitize_log_message(str(e))}", "url": url}

@@ -25,6 +25,7 @@ from worker.embedding_worker import claim_embedding_job, process_embedding_job
 
 from app.utils.log_setup import get_logger
 from app.utils.http_log_handler import setup_worker_logging
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -115,7 +116,7 @@ async def embedding_worker_loop(worker_id: uuid_pkg.UUID, worker_index: int):
                         embedding_job.error_message = "Job cancelled"
                         await db.commit()
                     except Exception as e:
-                        logger.error(f"Embedding job processing failed: {e}", exc_info=True)
+                        logger.error(f"Embedding job processing failed: {sanitize_log_message(str(e))}", exc_info=True)
                         # Error handling is done inside process_embedding_job
                     continue
 
@@ -130,7 +131,7 @@ async def embedding_worker_loop(worker_id: uuid_pkg.UUID, worker_index: int):
                     last_stale_check = now
 
         except Exception as e:
-            logger.error(f"Embedding worker loop error: {e}", exc_info=True)
+            logger.error(f"Embedding worker loop error: {sanitize_log_message(str(e))}", exc_info=True)
             await asyncio.sleep(5.0)  # Wait longer on error
 
 
@@ -167,7 +168,7 @@ async def cleanup_embedding_jobs(worker_id: uuid_pkg.UUID):
             if count > 0:
                 logger.info(f"Reset {count} embedding job(s) claimed by worker {worker_id}")
     except Exception as e:
-        logger.error(f"Error during cleanup: {e}", exc_info=True)
+        logger.error(f"Error during cleanup: {sanitize_log_message(str(e))}", exc_info=True)
 
 
 def embedding_worker_process(worker_id: uuid_pkg.UUID, worker_index: int):

@@ -28,6 +28,7 @@ from worker.core.llm_client import LLMClient
 
 from app.utils.log_setup import get_logger
 from app.utils.http_log_handler import setup_worker_logging
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -415,7 +416,7 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
             )
 
     except Exception as e:
-        logger.error(f"Job {job_id} failed: {e}")
+        logger.error(f"Job {job_id} failed: {sanitize_log_message(str(e))}")
 
         # Rollback any failed transaction
         try:
@@ -439,13 +440,13 @@ async def process_parsing_job(db: AsyncSession, job: ParsingJob):
             )
             await db.commit()
         except Exception as update_error:
-            logger.error(f"Failed to update job status: {update_error}")
+            logger.error(f"Failed to update job status: {sanitize_log_message(str(update_error))}")
 
         # Check if we should clear the parsing lock even on failure
         try:
             await check_and_clear_parsing_lock(db, investigation_id)
         except Exception as lock_error:
-            logger.error(f"Failed to clear parsing lock: {lock_error}")
+            logger.error(f"Failed to clear parsing lock: {sanitize_log_message(str(lock_error))}")
 
 
 async def process_agent_job(
@@ -565,7 +566,7 @@ async def process_agent_job(
             # Track if agent encountered an error
             if update.get("type") == "agent_error":
                 agent_error = update
-                logger.error(f"Agent job {job_id} encountered error: {update.get('error')}")
+                logger.error(f"Agent job {job_id} encountered error: {sanitize_log_message(str(update.get('error')))}")
 
             # Collect summary if final message
             if update.get("type") == "agent_completed":
@@ -582,7 +583,7 @@ async def process_agent_job(
 
             await db.commit()
 
-            logger.error(f"Agent job {job_id} failed: {job.error_message}")
+            logger.error(f"Agent job {job_id} failed: {sanitize_log_message(str(job.error_message))}")
 
             # Note: agent_error message was already sent by the agent during run()
             # No need to send job_failed - it would create a duplicate message
@@ -701,7 +702,7 @@ async def process_agent_job(
                 # Don't fail the job if choice creation fails - job is already marked complete
 
     except Exception as e:
-        logger.error(f"Agent job {job_id} failed: {e}", exc_info=True)
+        logger.error(f"Agent job {job_id} failed: {sanitize_log_message(str(e))}", exc_info=True)
 
         # Mark job as failed
         job.status = JobStatus.FAILED
@@ -952,12 +953,12 @@ def worker_process(worker_id: uuid_pkg.UUID, control_queue: mp.Queue, worker_ind
                                 await db.execute(text("SELECT refresh_investigation_stats()"))
                                 await db.commit()
                             except Exception as cache_error:
-                                logger.warning(f"Failed to refresh investigation stats: {cache_error}")
+                                logger.warning(f"Failed to refresh investigation stats: {sanitize_log_message(str(cache_error))}")
                         
                         last_stale_check = now
 
             except Exception as e:
-                logger.error(f"Worker {worker_index} loop error: {e}", exc_info=True)
+                logger.error(f"Worker {worker_index} loop error: {sanitize_log_message(str(e))}", exc_info=True)
                 await asyncio.sleep(5.0)  # Wait longer on error
 
         # Cleanup
@@ -1043,7 +1044,7 @@ async def cleanup_worker_jobs(worker_id: uuid_pkg.UUID):
                     f"claimed by worker {worker_id}"
                 )
     except Exception as e:
-        logger.error(f"Error during cleanup for worker {worker_id}: {e}", exc_info=True)
+        logger.error(f"Error during cleanup for worker {worker_id}: {sanitize_log_message(str(e))}", exc_info=True)
 
 
 async def monitor_stop_signals(control_queues: dict):
@@ -1098,7 +1099,7 @@ async def monitor_stop_signals(control_queues: dict):
             await asyncio.sleep(1.0)  # Check every second
 
         except Exception as e:
-            logger.error(f"Stop signal monitor error: {e}", exc_info=True)
+            logger.error(f"Stop signal monitor error: {sanitize_log_message(str(e))}", exc_info=True)
             await asyncio.sleep(5.0)
 
 
@@ -1160,7 +1161,7 @@ def main():
                 await db.commit()
                 logger.info("Statistics caches initialized successfully")
             except Exception as e:
-                logger.warning(f"Failed to initialize statistics caches: {e}")
+                logger.warning(f"Failed to initialize statistics caches: {sanitize_log_message(str(e))}")
                 # Don't fail startup if cache initialization fails
 
     asyncio.run(recover_and_init_caches())

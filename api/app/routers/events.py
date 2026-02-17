@@ -13,6 +13,7 @@ from pathlib import Path
 from ..deps import get_db, get_current_user
 from ..models.user import User
 from ..crud.investigation import check_investigation_access
+from ..utils.security import validate_path_within_base, sanitize_filename
 
 router = APIRouter()
 
@@ -495,12 +496,17 @@ async def paste_events(
         raise HTTPException(status_code=400, detail="No records found")
 
     # Save raw paste file
-    inv_dir = Path("/data/investigations") / str(investigation_id) / "raw_files"
+    base_investigations_dir = Path("/data/investigations")
+    inv_dir = validate_path_within_base(
+        Path(str(investigation_id)) / "raw_files",
+        base_investigations_dir
+    )
     inv_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.utcnow().isoformat(timespec="seconds").replace(":", "-")
     ext = {"json": ".json", "yaml": ".yaml", "csv": ".csv"}[fmt]
-    file_path = inv_dir / f"paste_{timestamp}{ext}"
+    filename = sanitize_filename(f"paste_{timestamp}{ext}")
+    file_path = inv_dir / filename
     file_path.write_text(payload)
 
     # Insert records into events table

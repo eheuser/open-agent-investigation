@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 from worker.agents.context_manager import estimate_tokens
 
 logger = get_logger(__name__)
@@ -261,7 +262,7 @@ async def generate_chat_summary(
         return summary_text, metadata
 
     except Exception as e:
-        logger.error(f"Failed to generate LLM summary: {e}", exc_info=True)
+        logger.error(f"Failed to generate LLM summary: {sanitize_log_message(str(e))}", exc_info=True)
 
         # Fallback to simple summary
         summary_text = f"""**Investigation Progress Summary**
@@ -398,7 +399,7 @@ async def load_chat_summary(
         return "", {}
 
     except Exception as e:
-        logger.error(f"Failed to load chat summary: {e}")
+        logger.error(f"Failed to load chat summary: {sanitize_log_message(str(e))}")
         return "", {}
 
 

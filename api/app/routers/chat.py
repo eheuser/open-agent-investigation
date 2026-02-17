@@ -23,6 +23,7 @@ from ..models.job_agent import AgentJob
 from ..models.job_parsing import JobStatus
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -165,7 +166,7 @@ async def chat_websocket(
         logger.debug(f"Client disconnected from investigation {investigation_id}")
 
     except Exception as e:
-        logger.error(f"WebSocket error: {e}", exc_info=True)
+        logger.error(f"WebSocket error: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await manager.send_message(
                 websocket, {"type": "error", "message": f"Internal error: {str(e)}"}
@@ -1085,7 +1086,7 @@ async def broadcast_message(
         return {"status": "ok", "recipients": recipients}
 
     except Exception as e:
-        logger.error(f"Broadcast failed: {e}", exc_info=True)
+        logger.error(f"Broadcast failed: {sanitize_log_message(str(e))}", exc_info=True)
         # Still try to broadcast even if persistence failed
         try:
             recipients = manager.get_connection_count(investigation_id)

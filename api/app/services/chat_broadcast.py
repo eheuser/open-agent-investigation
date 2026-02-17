@@ -15,6 +15,7 @@ from .chat_persistence import (
 from ..utils.content_sanitizer import sanitize_llm_content
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -611,7 +612,7 @@ async def _handle_tool_result(
         else:
             logger.debug(f"No agent message found for tool_result (streaming_id={streaming_id})")
     except Exception as e:
-        logger.error(f"Failed to update tool_result: {e}", exc_info=True)
+        logger.error(f"Failed to update tool_result: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:
@@ -744,7 +745,7 @@ async def _handle_agent_completed(
                 f"[AGENT_COMPLETED] No agent message found (streaming_id={streaming_id})"
             )
     except Exception as e:
-        logger.error(f"[AGENT_COMPLETED] Failed to mark completed: {e}", exc_info=True)
+        logger.error(f"[AGENT_COMPLETED] Failed to mark completed: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:
@@ -1023,7 +1024,7 @@ async def _handle_tool_executing(
         else:
             logger.debug(f"No agent message found for tool_executing (streaming_id={streaming_id})")
     except Exception as e:
-        logger.error(f"Failed to create tool_executing: {e}", exc_info=True)
+        logger.error(f"Failed to create tool_executing: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:
@@ -1087,7 +1088,7 @@ async def _handle_llm_waiting(
         else:
             logger.debug(f"No agent message found for llm_waiting (streaming_id={streaming_id})")
     except Exception as e:
-        logger.error(f"Failed to update llm_waiting: {e}", exc_info=True)
+        logger.error(f"Failed to update llm_waiting: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:
@@ -1135,7 +1136,7 @@ async def _handle_llm_chunk(
         else:
             logger.debug(f"No agent message found for llm_chunk (streaming_id={streaming_id})")
     except Exception as e:
-        logger.error(f"Failed to update llm_chunk: {e}", exc_info=True)
+        logger.error(f"Failed to update llm_chunk: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:
@@ -1218,7 +1219,7 @@ async def _handle_agent_thinking(
         else:
             logger.debug(f"No agent message found for agent_thinking (streaming_id={streaming_id})")
     except Exception as e:
-        logger.error(f"Failed to update agent_thinking: {e}", exc_info=True)
+        logger.error(f"Failed to update agent_thinking: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:
@@ -1387,7 +1388,7 @@ async def _handle_agent_cancelled(
                 f"[AGENT_CANCELLED] No agent message found (streaming_id={streaming_id})"
             )
     except Exception as e:
-        logger.error(f"[AGENT_CANCELLED] Failed to mark cancelled: {e}", exc_info=True)
+        logger.error(f"[AGENT_CANCELLED] Failed to mark cancelled: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:
@@ -1477,7 +1478,7 @@ async def _handle_agent_error(
         else:
             logger.warning(f"[AGENT_ERROR] No agent message found (streaming_id={streaming_id})")
     except Exception as e:
-        logger.error(f"[AGENT_ERROR] Failed to mark error: {e}", exc_info=True)
+        logger.error(f"[AGENT_ERROR] Failed to mark error: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:
@@ -1611,7 +1612,7 @@ async def _handle_investigation_incomplete(
                 f"[INVESTIGATION_INCOMPLETE] No agent message found (streaming_id={streaming_id})"
             )
     except Exception as e:
-        logger.error(f"[INVESTIGATION_INCOMPLETE] Failed to mark incomplete: {e}", exc_info=True)
+        logger.error(f"[INVESTIGATION_INCOMPLETE] Failed to mark incomplete: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception:

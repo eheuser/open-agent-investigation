@@ -6,6 +6,7 @@ from app.services.rag.embedding import Embedder
 from app.crud.llm_config import get_active_llm_config
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -63,7 +64,7 @@ async def hybrid_search(
     vector_weight = 1.0 - bm25_weight
 
     logger.debug(
-        f"Hybrid search: query='{query[:50]}...', "
+        f"Hybrid search: query='{sanitize_log_message(query[:50])}...', "
         f"bm25_weight={bm25_weight:.2f}, limit={limit}, offset={offset}"
     )
 
@@ -102,7 +103,7 @@ async def hybrid_search(
                             embedding_available = True
                             logger.debug("Vector search enabled for hybrid search")
         except Exception as e:
-            logger.warning(f"Failed to initialize embedder for hybrid search: {e}")
+            logger.warning(f"Failed to initialize embedder for hybrid search: {sanitize_log_message(str(e))}")
 
     # If embeddings not available, fall back to BM25-only
     if not embedding_available:
@@ -355,7 +356,7 @@ async def _bm25_only_search(
     * If *limit* is zero or negative, pagination calculations default to page 1 with a single total page.
     * Vector-related score components are populated with neutral values (zero or one) because no embedding comparison is performed.
     """
-    logger.debug(f"BM25-only search: query='{query[:50]}...', limit={limit}, offset={offset}")
+    logger.debug(f"BM25-only search: query='{sanitize_log_message(query[:50])}...', limit={limit}, offset={offset}")
 
     # BM25 search with pagination
     bm25_query = f"""

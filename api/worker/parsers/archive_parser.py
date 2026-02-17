@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base_parser import BaseParser
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 from app.crud import artifact as crud
 from app.models.artifact import ArtifactClassification
 from app.crud import job as job_crud
@@ -71,7 +72,7 @@ class ArchiveParser(BaseParser):
                     return True
                     
         except Exception as e:
-            logger.debug(f"Failed to read magic bytes from {filename}: {e}")
+            logger.debug(f"Failed to read magic bytes from {sanitize_log_message(filename)}: {sanitize_log_message(str(e))}")
             return False
         
         return False
@@ -95,7 +96,7 @@ class ArchiveParser(BaseParser):
         Returns:
             Number of files extracted (not events - those come from sub-parsers)
         """
-        logger.debug(f"Extracting archive: {file_path}")
+        logger.debug(f"Extracting archive: {sanitize_log_message(str(file_path))}")
         
         # Track extraction statistics
         stats = {
@@ -113,8 +114,8 @@ class ArchiveParser(BaseParser):
             try:
                 await self._extract_archive(file_path, temp_path, stats)
             except Exception as e:
-                logger.error(f"Failed to extract archive {file_path}: {e}", exc_info=True)
-                raise RuntimeError(f"Archive extraction failed: {e}")
+                logger.error(f"Failed to extract archive {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}", exc_info=True)
+                raise RuntimeError(f"Archive extraction failed: {sanitize_log_message(str(e))}")
             
             # Recursively process extracted files
             try:
@@ -126,8 +127,8 @@ class ArchiveParser(BaseParser):
                     depth=1
                 )
             except Exception as e:
-                logger.error(f"Failed to process extracted files from {file_path}: {e}", exc_info=True)
-                raise RuntimeError(f"Processing extracted files failed: {e}")
+                logger.error(f"Failed to process extracted files from {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}", exc_info=True)
+                raise RuntimeError(f"Processing extracted files failed: {sanitize_log_message(str(e))}")
         
         logger.debug(
             f"Archive extraction complete: {stats['files_extracted']} files extracted, "
@@ -176,7 +177,7 @@ class ArchiveParser(BaseParser):
                     raise RuntimeError(f"Unknown archive format: {archive_path}")
                     
         except Exception as e:
-            logger.error(f"Failed to extract {archive_path}: {e}", exc_info=True)
+            logger.error(f"Failed to extract {sanitize_log_message(str(archive_path))}: {sanitize_log_message(str(e))}", exc_info=True)
             raise
     
     async def _extract_zip(
@@ -186,7 +187,7 @@ class ArchiveParser(BaseParser):
         stats: Dict[str, Any]
     ):
         """Extract ZIP archive."""
-        logger.debug(f"Extracting ZIP: {archive_path}")
+        logger.debug(f"Extracting ZIP: {sanitize_log_message(str(archive_path))}")
         
         with zipfile.ZipFile(archive_path, 'r') as zf:
             # Check total size before extraction
@@ -211,7 +212,7 @@ class ArchiveParser(BaseParser):
         stats: Dict[str, Any]
     ):
         """Extract 7z archive."""
-        logger.debug(f"Extracting 7z: {archive_path}")
+        logger.debug(f"Extracting 7z: {sanitize_log_message(str(archive_path))}")
         
         with py7zr.SevenZipFile(archive_path, mode='r') as archive:
             # Get file list and sizes
@@ -247,7 +248,7 @@ class ArchiveParser(BaseParser):
         stats: Dict[str, Any]
     ):
         """Extract RAR archive using unar command-line tool."""
-        logger.debug(f"Extracting RAR: {archive_path}")
+        logger.debug(f"Extracting RAR: {sanitize_log_message(str(archive_path))}")
         
         # Use unar command-line tool (installed via apt-get)
         # unar is a free alternative to unrar
@@ -327,7 +328,7 @@ class ArchiveParser(BaseParser):
             try:
                 file_bytes = item.read_bytes()
             except Exception as e:
-                logger.debug(f"Failed to read extracted file {item}: {e}")
+                logger.debug(f"Failed to read extracted file {sanitize_log_message(str(item))}: {sanitize_log_message(str(e))}")
                 continue
             
             # Get relative path for filename (preserves directory structure)
@@ -362,12 +363,12 @@ class ArchiveParser(BaseParser):
                 
             except Exception as e:
                 #logger.info(f"Failed to create artifact for {filename}: {e}")
-                logger.debug(f"Failed to create artifact for {filename}: {e}", exc_info=True)
+                logger.debug(f"Failed to create artifact for {sanitize_log_message(filename)}: {sanitize_log_message(str(e))}", exc_info=True)
                 # Rollback to prevent transaction poisoning
                 try:
                     await db.rollback()
                 except Exception as rollback_error:
-                    logger.error(f"Rollback failed: {rollback_error}")
+                    logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
                 # Continue processing other files
                 continue
 

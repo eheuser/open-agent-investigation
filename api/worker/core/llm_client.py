@@ -16,6 +16,7 @@ from app.services.llm_service import LLMService, LLMConfig
 from ..models import AssistantMessage, ToolCall
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -380,7 +381,7 @@ class LLMClient:
                         ToolCall(id=tc.get("id"), type="function", function=tc["function"])
                     )
                 except Exception as e:
-                    logger.error(f"Failed to parse tool call: {e}")
+                    logger.error(f"Failed to parse tool call: {sanitize_log_message(str(e))}")
 
             if parsed_tool_calls:
                 msg_dict["tool_calls"] = parsed_tool_calls

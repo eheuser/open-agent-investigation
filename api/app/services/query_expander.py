@@ -6,6 +6,7 @@ from ..crud.chat_history import get_investigation_messages
 from .llm_service import LLMService
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -92,10 +93,10 @@ async def expand_query(
         "list edges",
     ]
     if user_query.lower().strip() in simple_commands:
-        logger.info(f"Simple command detected, skipping expansion: {user_query}")
+        logger.info(f"Simple command detected, skipping expansion: {sanitize_log_message(user_query)}")
         return user_query
 
-    logger.info(f"Expanding query ({word_count} words): {user_query[:100]}...")
+    logger.info(f"Expanding query ({word_count} words): {sanitize_log_message(user_query[:100])}...")
 
     try:
         # Gather context components
@@ -142,11 +143,11 @@ async def expand_query(
             logger.warning(f"Expansion too long ({len(expanded_query):,} chars), using original")
             return user_query
 
-        logger.info(f"Query expanded: {user_query[:50]}... -> {expanded_query[:100]}...")
+        logger.info(f"Query expanded: {sanitize_log_message(user_query[:50])}... -> {sanitize_log_message(expanded_query[:100])}...")
         return expanded_query
 
     except Exception as e:
-        logger.error(f"Query expansion failed: {e}", exc_info=True)
+        logger.error(f"Query expansion failed: {sanitize_log_message(str(e))}", exc_info=True)
         return user_query
 
 
@@ -205,7 +206,7 @@ async def _get_chat_context(db: AsyncSession, investigation_id: UUID) -> str:
         return "\n".join(lines)
 
     except Exception as e:
-        logger.warning(f"Failed to get chat context: {e}")
+        logger.warning(f"Failed to get chat context: {sanitize_log_message(str(e))}")
         return "Chat history unavailable."
 
 
@@ -270,7 +271,7 @@ async def _get_graph_context(db: AsyncSession, investigation_id: UUID) -> str:
         return "\n".join(lines)
 
     except Exception as e:
-        logger.warning(f"Failed to get graph context: {e}")
+        logger.warning(f"Failed to get graph context: {sanitize_log_message(str(e))}")
         return "Timeline context unavailable."
 
 
@@ -359,7 +360,7 @@ async def _get_investigation_context(db: AsyncSession, investigation_id: UUID) -
         return "\n".join(lines)
 
     except Exception as e:
-        logger.warning(f"Failed to get investigation context: {e}")
+        logger.warning(f"Failed to get investigation context: {sanitize_log_message(str(e))}")
         return "Investigation metadata unavailable."
 
 

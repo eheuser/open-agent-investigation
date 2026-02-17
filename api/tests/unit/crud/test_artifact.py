@@ -104,10 +104,11 @@ class TestCreateArtifact:
         """
         return b"Sample EVTX file content"
 
-    @patch("app.crud.artifact.Path")
+    @patch("app.crud.artifact.sanitize_filename")
+    @patch("app.crud.artifact.validate_path_within_base")
     @patch("app.crud.artifact.settings")
     async def test_create_artifact_success(
-        self, mock_settings, mock_path, mock_db, sample_file_bytes
+        self, mock_settings, mock_validate_path, mock_sanitize_filename, mock_db, sample_file_bytes
     ):
         """
         Test that creating an artifact succeeds and correctly persists data.
@@ -139,11 +140,12 @@ class TestCreateArtifact:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
+        # Mock path validation and filename sanitization
         mock_dir = MagicMock()
         mock_file = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        mock_validate_path.return_value = mock_dir
         mock_dir.__truediv__.return_value = mock_file
+        mock_sanitize_filename.return_value = f"123_{filename}"
 
         # Execute
         result = await create_artifact(
@@ -177,10 +179,11 @@ class TestCreateArtifact:
         # Verify file write
         mock_file.write_bytes.assert_called_once_with(sample_file_bytes)
 
-    @patch("app.crud.artifact.Path")
+    @patch("app.crud.artifact.sanitize_filename")
+    @patch("app.crud.artifact.validate_path_within_base")
     @patch("app.crud.artifact.settings")
     async def test_create_artifact_with_different_classifications(
-        self, mock_settings, mock_path, mock_db, sample_file_bytes
+        self, mock_settings, mock_validate_path, mock_sanitize_filename, mock_db, sample_file_bytes
     ):
         """
         Test creating artifacts with various classifications and verify that each artifact is stored with the correct classification.
@@ -202,11 +205,12 @@ class TestCreateArtifact:
         """
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
+        # Mock path validation and filename sanitization
         mock_dir = MagicMock()
         mock_file = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        mock_validate_path.return_value = mock_dir
         mock_dir.__truediv__.return_value = mock_file
+        mock_sanitize_filename.side_effect = lambda x: x  # Return filename as-is
 
         classifications = [
             ArtifactClassification.LOG_FILE,
@@ -229,10 +233,11 @@ class TestCreateArtifact:
             added_artifact = mock_db.add.call_args[0][0]
             assert added_artifact.classification == classification
 
-    @patch("app.crud.artifact.Path")
+    @patch("app.crud.artifact.sanitize_filename")
+    @patch("app.crud.artifact.validate_path_within_base")
     @patch("app.crud.artifact.settings")
     async def test_create_artifact_computes_sha256(
-        self, mock_settings, mock_path, mock_db, sample_file_bytes
+        self, mock_settings, mock_validate_path, mock_sanitize_filename, mock_db, sample_file_bytes
     ):
         """
         Test that creating an artifact computes and stores the correct SHA-256 hash of the provided file bytes.
@@ -248,11 +253,12 @@ class TestCreateArtifact:
         """
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
+        # Mock path validation and filename sanitization
         mock_dir = MagicMock()
         mock_file = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        mock_validate_path.return_value = mock_dir
         mock_dir.__truediv__.return_value = mock_file
+        mock_sanitize_filename.return_value = "123_test.evtx"
 
         expected_hash = hashlib.sha256(sample_file_bytes).digest()
 
@@ -475,10 +481,11 @@ class TestArtifactCRUDEdgeCases:
         db.refresh = AsyncMock()
         return db
 
-    @patch("app.crud.artifact.Path")
+    @patch("app.crud.artifact.sanitize_filename")
+    @patch("app.crud.artifact.validate_path_within_base")
     @patch("app.crud.artifact.settings")
     async def test_create_artifact_with_special_characters_in_filename(
-        self, mock_settings, mock_path, mock_db
+        self, mock_settings, mock_validate_path, mock_sanitize_filename, mock_db
     ):
         """
         Test creating an artifact when the provided filename contains spaces and various special characters.
@@ -491,13 +498,14 @@ class TestArtifactCRUDEdgeCases:
         """
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
+        # Mock path validation and filename sanitization
         mock_dir = MagicMock()
         mock_file = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        mock_validate_path.return_value = mock_dir
         mock_dir.__truediv__.return_value = mock_file
 
         filename = "file with spaces & special-chars_123.evtx"
+        mock_sanitize_filename.return_value = f"123_{filename}"
 
         result = await create_artifact(
             db=mock_db,
@@ -510,9 +518,10 @@ class TestArtifactCRUDEdgeCases:
         added_artifact = mock_db.add.call_args[0][0]
         assert added_artifact.filename == filename
 
-    @patch("app.crud.artifact.Path")
+    @patch("app.crud.artifact.sanitize_filename")
+    @patch("app.crud.artifact.validate_path_within_base")
     @patch("app.crud.artifact.settings")
-    async def test_create_artifact_with_empty_file(self, mock_settings, mock_path, mock_db):
+    async def test_create_artifact_with_empty_file(self, mock_settings, mock_validate_path, mock_sanitize_filename, mock_db):
         """
         Test creating an artifact when the provided file content is empty.
 
@@ -523,11 +532,12 @@ class TestArtifactCRUDEdgeCases:
         """
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
+        # Mock path validation and filename sanitization
         mock_dir = MagicMock()
         mock_file = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        mock_validate_path.return_value = mock_dir
         mock_dir.__truediv__.return_value = mock_file
+        mock_sanitize_filename.return_value = "123_empty.evtx"
 
         result = await create_artifact(
             db=mock_db,

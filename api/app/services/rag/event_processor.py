@@ -10,6 +10,7 @@ from ...crud.llm_config import get_active_llm_config
 from ...models.filter_config import FilterConfig
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -170,7 +171,7 @@ async def _batch_create_embeddings(
 
             except Exception as e:
                 # Log error and rollback the batch
-                logger.error(f"Failed to bulk insert embeddings for batch: {e}")
+                logger.error(f"Failed to bulk insert embeddings for batch: {sanitize_log_message(str(e))}")
                 await db.rollback()
 
                 # Fall back to individual inserts for this batch to identify problematic events
@@ -206,7 +207,7 @@ async def _batch_create_embeddings(
                         continue
 
         except Exception as e:
-            logger.error(f"Failed to generate embeddings for batch: {e}")
+            logger.error(f"Failed to generate embeddings for batch: {sanitize_log_message(str(e))}")
             await db.rollback()
             continue
 
@@ -333,7 +334,7 @@ async def _create_embedding_for_event(
 
         return embedding_id
     except Exception as e:
-        logger.debug(f"Error generating embedding for event {event_id}: {e}")
+        logger.debug(f"Error generating embedding for event {event_id}: {sanitize_log_message(str(e))}")
         return None
 
 
@@ -884,7 +885,7 @@ async def process_interesting_events(
                 if is_interesting:
                     interesting_events.append((event_id, event_type, payload))
             except Exception as e:
-                logger.debug(f"Failed to filter event {event_id}: {e}")
+                logger.debug(f"Failed to filter event {event_id}: {sanitize_log_message(str(e))}")
                 continue
 
         logger.debug(f"Found {len(interesting_events):,} interesting events")
@@ -900,7 +901,7 @@ async def process_interesting_events(
                 # No changes made, but ensure transaction is closed
                 await db.rollback()
         except Exception as commit_error:
-            logger.debug(f"Error finalizing transaction: {commit_error}")
+            logger.debug(f"Error finalizing transaction: {sanitize_log_message(str(commit_error))}")
             await db.rollback()
 
         logger.debug(
@@ -916,7 +917,7 @@ async def process_interesting_events(
         except:
             pass
 
-        logger.error(f"Error processing interesting events for artifact {artifact_id}: {e}")
+        logger.error(f"Error processing interesting events for artifact {artifact_id}: {sanitize_log_message(str(e))}")
         raise  # Re-raise to let caller handle
 
 

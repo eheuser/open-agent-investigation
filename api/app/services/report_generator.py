@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -40,7 +41,7 @@ async def generate_investigation_report(
     Raises:
         None explicitly; if the investigation cannot be found, a dictionary containing an `error` key is returned instead of the full report.
     """
-    logger.info(f"Generating report for investigation {investigation_id}")
+    logger.info(f"Generating report for investigation {sanitize_log_message(str(investigation_id))}")
 
     # === Step 1: Gather Investigation Data ===
 
@@ -285,9 +286,9 @@ async def _generate_llm_narrative(
         return sections
 
     except Exception as e:
-        logger.error(f"LLM narrative generation failed: {e}")
+        logger.error(f"LLM narrative generation failed: {sanitize_log_message(str(e))}")
         return {
-            "executive_summary": f"Error generating narrative: {str(e)}",
+            "executive_summary": f"Error generating narrative: {sanitize_log_message(str(e))}",
             "findings": "See timeline below for detailed events.",
             "recommendations": "Review timeline manually for investigation leads.",
         }

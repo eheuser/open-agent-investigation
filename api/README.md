@@ -863,6 +863,194 @@ ws.onmessage = (event) => {
 
 ---
 
+## Security Guidelines for Developers
+
+All code contributions must follow these security practices to prevent vulnerabilities:
+
+### 1. SSRF (Server-Side Request Forgery) Protection
+
+**Always validate URLs before making HTTP requests:**
+
+```python
+from app.utils.security import validate_url_safe
+
+# In API endpoints that accept URLs
+@router.post("/test")
+async def test_endpoint(payload: ConfigPayload):
+    # Validate before making request
+    validate_url_safe(payload.api_endpoint)  # Raises HTTPException(400) if unsafe
+    
+    async with session.post(payload.api_endpoint, ...) as response:
+        return await response.json()
+```
+
+**What's blocked:**
+- Private IP ranges: 10.x.x.x, 192.168.x.x, 172.16-31.x.x
+- Localhost: 127.0.0.1, ::1
+- Link-local: 169.254.x.x (AWS metadata endpoint!)
+- Multicast and reserved ranges
+- Non-HTTP/HTTPS schemes
+
+**Use case:** Any endpoint that makes HTTP requests to user-provided URLs (LLM endpoints, webhooks, etc.)
+
+### 2. Path Traversal Protection
+
+**Always validate file paths containing user input:**
+
+```python
+from pathlib import Path
+from app.utils.security import validate_path_within_base, sanitize_filename
+
+# Example: Creating investigation directory
+base_path = Path(settings.investigations_base_path)
+inv_dir = validate_path_within_base(
+    Path(str(investigation_id)) / "raw_files",
+    base_path
+)
+
+# Example: Saving uploaded file
+safe_filename = sanitize_filename(f"{artifact_id}_{original_filename}")
+file_path = inv_dir / safe_filename
+```
+
+**Protection features:**
+- `validate_path_within_base()` ensures path stays within base directory
+- `sanitize_filename()` removes dangerous characters: `<>:"|?*`
+- Blocks `..` sequences and absolute paths
+- Handles Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+- Removes null bytes and path separators
+
+**Use case:** Any file operation involving investigation IDs, artifact IDs, or user-provided filenames
+
+### 3. Log Injection Protection
+
+**Always sanitize user-controlled data in logs:**
+
+```python
+from app.utils.security import sanitize_log_message
+
+# Sanitize exceptions and user input
+logger.error(
+    f"Failed to parse {sanitize_log_message(str(file_path))}: "
+    f"{sanitize_log_message(str(e))}"
+)
+
+# Sanitize user queries
+logger.info(f"Processing query: {sanitize_log_message(user_query)}")
+
+# Sanitize filenames and paths
+logger.warning(
+    f"Archive extraction failed for {sanitize_log_message(archive_name)}"
+)
+```
+
+**What's sanitized:**
+- Newlines (`\n`) and carriage returns (`\r`) → removed
+- Control characters → removed (except tabs)
+- Long messages → truncated to 10,000 chars with "...[truncated]" suffix
+
+**Safe to log without sanitization:**
+```python
+# Integer IDs are safe
+logger.info(f"Processing investigation {investigation_id}")  # OK
+logger.debug(f"User {user_id} created {len(results)} entries")  # OK
+
+# Counters and internal values are safe
+logger.info(f"Processed {count} events in {duration}s")  # OK
+```
+
+**Why this matters:**
+Attackers can inject fake log entries:
+```
+Input: "test\n2024-01-01 ERROR [SECURITY] Admin password changed by attacker"
+Log:   2024-01-01 INFO Processing: test
+       2024-01-01 ERROR [SECURITY] Admin password changed by attacker  ← FAKE!
+```
+
+### 4. Database Transaction Safety
+
+**Always rollback on exceptions when using AsyncSession:**
+
+```python
+async def process_items(db: AsyncSession, items: list):
+    for item in items:
+        try:
+            # Database operations
+            result = await db.execute(stmt)
+            await db.commit()
+        except Exception as e:
+            logger.error(
+                f"Failed to process {sanitize_log_message(item.name)}: "
+                f"{sanitize_log_message(str(e))}",
+                exc_info=True
+            )
+            try:
+                await db.rollback()
+            except Exception as rollback_error:
+                logger.error(
+                    f"Rollback failed: {sanitize_log_message(str(rollback_error))}"
+                )
+            # Continue processing other items or raise
+            continue
+```
+
+**Why this matters:**
+Without rollback, the session enters a "poisoned" state and ALL subsequent operations fail with:
+```
+PendingRollbackError: This Session's transaction has been rolled back due to a previous exception
+```
+
+**Critical in:**
+- Loops processing multiple database records
+- Archive extraction (multiple files)
+- Batch operations
+- Long-running workers
+
+### Security Utility API
+
+All utilities are in `app/utils/security.py`:
+
+```python
+# SSRF Protection
+validate_url_safe(url: str, allow_private: bool = False) -> str
+# Raises: HTTPException(400, "URL targets private IP address")
+
+# Path Traversal Protection
+validate_path_within_base(path: Path, base: Path, resolve: bool = True) -> Path
+# Raises: HTTPException(400, "Path escapes base directory")
+
+sanitize_path_component(component: str, allow_dots: bool = False) -> str
+# Raises: HTTPException(400, "Path component contains ..")
+
+sanitize_filename(filename: str, max_length: int = 255) -> str
+# Returns: Safe filename (doesn't raise, returns sanitized version)
+
+# Log Injection Protection
+sanitize_log_message(message: str, max_length: int = 10000) -> str
+# Returns: Sanitized message (doesn't raise, returns cleaned version)
+```
+
+### Running Security Tests
+
+```bash
+# Run security utility tests
+pytest tests/unit/utils/test_security.py -v
+
+# Test specific security feature
+pytest tests/unit/utils/test_security.py::test_validate_url_blocks_private_ips -v
+```
+
+### Code Review Checklist
+
+Before submitting PR, verify:
+
+- [ ] All HTTP requests to user-provided URLs use `validate_url_safe()`
+- [ ] All file paths with user input use `validate_path_within_base()` and `sanitize_filename()`
+- [ ] All logger statements with user data use `sanitize_log_message()`
+- [ ] All database exception handlers include `await db.rollback()`
+- [ ] New security-sensitive code has unit tests
+- [ ] No hardcoded credentials or secrets
+
 ## Development
 
 ### Running Locally
@@ -876,6 +1064,9 @@ pip install pytest pytest-asyncio httpx black isort flake8
 
 # Run tests
 pytest tests/
+
+# Run security tests specifically
+pytest tests/unit/utils/test_security.py -v
 
 # Format code
 black app/

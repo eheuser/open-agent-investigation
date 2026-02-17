@@ -43,9 +43,9 @@ class TestCreateInvestigation:
         db.refresh = AsyncMock()
         return db
 
-    @patch("app.crud.investigation.Path")
+    @patch("app.crud.investigation.validate_path_within_base")
     @patch("app.crud.investigation.settings")
-    async def test_create_investigation_minimal(self, mock_settings, mock_path, mock_db):
+    async def test_create_investigation_minimal(self, mock_settings, mock_validate_path, mock_db):
         """
         Test creating an investigation with only the required fields.
 
@@ -60,9 +60,11 @@ class TestCreateInvestigation:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
-        mock_dir = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        # Mock path validation to return a mock directory
+        mock_inv_dir = MagicMock()
+        mock_raw_files_dir = MagicMock()
+        mock_inv_dir.__truediv__.return_value = mock_raw_files_dir
+        mock_validate_path.return_value = mock_inv_dir
 
         result = await create_investigation(
             db=mock_db,
@@ -82,12 +84,12 @@ class TestCreateInvestigation:
         assert added_investigation.title == title
         assert isinstance(added_investigation.investigation_id, UUID)
 
-        # Verify directory creation
-        mock_dir.mkdir.assert_called_once_with(parents=True, exist_ok=True)
+        # Verify directory creation (raw_files subdirectory)
+        mock_raw_files_dir.mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
-    @patch("app.crud.investigation.Path")
+    @patch("app.crud.investigation.validate_path_within_base")
     @patch("app.crud.investigation.settings")
-    async def test_create_investigation_with_owner(self, mock_settings, mock_path, mock_db):
+    async def test_create_investigation_with_owner(self, mock_settings, mock_validate_path, mock_db):
         """
         Test that creating an investigation correctly assigns the specified owner.
 
@@ -114,9 +116,11 @@ class TestCreateInvestigation:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
-        mock_dir = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        # Mock path validation to return a mock directory
+        mock_inv_dir = MagicMock()
+        mock_raw_files_dir = MagicMock()
+        mock_inv_dir.__truediv__.return_value = mock_raw_files_dir
+        mock_validate_path.return_value = mock_inv_dir
 
         result = await create_investigation(
             db=mock_db,
@@ -127,11 +131,11 @@ class TestCreateInvestigation:
         added_investigation = mock_db.add.call_args[0][0]
         assert added_investigation.owner_user_id == owner_user_id
 
-    @patch("app.crud.investigation.Path")
+    @patch("app.crud.investigation.validate_path_within_base")
     @patch("app.crud.investigation.settings")
     @patch("app.crud.investigation.logger")
     async def test_create_investigation_directory_creation_fails(
-        self, mock_logger, mock_settings, mock_path, mock_db
+        self, mock_logger, mock_settings, mock_validate_path, mock_db
     ):
         """
         Test that creating an investigation succeeds even when the underlying directory creation raises an exception.
@@ -147,8 +151,8 @@ class TestCreateInvestigation:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path to raise exception
-        mock_path.return_value.__truediv__.side_effect = Exception("Permission denied")
+        # Mock path validation to raise exception
+        mock_validate_path.side_effect = Exception("Permission denied")
 
         # Should not raise, but log warning
         result = await create_investigation(
@@ -456,9 +460,9 @@ class TestDeleteInvestigation:
         db.commit = AsyncMock()
         return db
 
-    @patch("app.crud.investigation.Path")
+    @patch("app.crud.investigation.validate_path_within_base")
     @patch("app.crud.investigation.settings")
-    async def test_delete_investigation_success(self, mock_settings, mock_path, mock_db):
+    async def test_delete_investigation_success(self, mock_settings, mock_validate_path, mock_db):
         """
         Test that an investigation is successfully deleted, ensuring the database delete operation and commit are invoked, while handling filesystem path resolution using mocked settings and path objects.
         """
@@ -467,10 +471,10 @@ class TestDeleteInvestigation:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
+        # Mock path validation to return a mock directory that exists
         mock_dir = MagicMock()
         mock_dir.exists.return_value = True
-        mock_path.return_value.__truediv__.return_value = mock_dir
+        mock_validate_path.return_value = mock_dir
 
         await delete_investigation(
             db=mock_db,
@@ -482,11 +486,11 @@ class TestDeleteInvestigation:
         mock_db.execute.assert_called_once()
         mock_db.commit.assert_called_once()
 
-    @patch("app.crud.investigation.Path")
+    @patch("app.crud.investigation.validate_path_within_base")
     @patch("app.crud.investigation.settings")
     @patch("app.crud.investigation.logger")
     async def test_delete_investigation_filesystem_cleanup_fails(
-        self, mock_logger, mock_settings, mock_path, mock_db
+        self, mock_logger, mock_settings, mock_validate_path, mock_db
     ):
         """
         Test that an investigation can be deleted even when the filesystem cleanup step raises an exception.
@@ -506,8 +510,8 @@ class TestDeleteInvestigation:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path to raise exception
-        mock_path.return_value.__truediv__.side_effect = Exception("Permission denied")
+        # Mock path validation to raise exception
+        mock_validate_path.side_effect = Exception("Permission denied")
 
         # Should not raise, but log warning
         await delete_investigation(
@@ -522,10 +526,10 @@ class TestDeleteInvestigation:
         # Verify database deletion still completed
         mock_db.commit.assert_called_once()
 
-    @patch("app.crud.investigation.Path")
+    @patch("app.crud.investigation.validate_path_within_base")
     @patch("app.crud.investigation.settings")
     async def test_delete_investigation_directory_not_exists(
-        self, mock_settings, mock_path, mock_db
+        self, mock_settings, mock_validate_path, mock_db
     ):
         """
         Test deletion of an investigation when its directory does not exist on the filesystem.
@@ -552,10 +556,10 @@ class TestDeleteInvestigation:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock directory doesn't exist
+        # Mock path validation to return a directory that doesn't exist
         mock_dir = MagicMock()
         mock_dir.exists.return_value = False
-        mock_path.return_value.__truediv__.return_value = mock_dir
+        mock_validate_path.return_value = mock_dir
 
         await delete_investigation(
             db=mock_db,
@@ -890,9 +894,9 @@ class TestInvestigationCRUDEdgeCases:
         db.refresh = AsyncMock()
         return db
 
-    @patch("app.crud.investigation.Path")
+    @patch("app.crud.investigation.validate_path_within_base")
     @patch("app.crud.investigation.settings")
-    async def test_create_investigation_with_unicode_title(self, mock_settings, mock_path, mock_db):
+    async def test_create_investigation_with_unicode_title(self, mock_settings, mock_validate_path, mock_db):
         """
         Test that creating an investigation with a Unicode title correctly stores the title in the database.
 
@@ -904,9 +908,11 @@ class TestInvestigationCRUDEdgeCases:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
-        mock_dir = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        # Mock path validation to return a mock directory
+        mock_inv_dir = MagicMock()
+        mock_raw_files_dir = MagicMock()
+        mock_inv_dir.__truediv__.return_value = mock_raw_files_dir
+        mock_validate_path.return_value = mock_inv_dir
 
         result = await create_investigation(
             db=mock_db,
@@ -917,10 +923,10 @@ class TestInvestigationCRUDEdgeCases:
         added_investigation = mock_db.add.call_args[0][0]
         assert added_investigation.title == title
 
-    @patch("app.crud.investigation.Path")
+    @patch("app.crud.investigation.validate_path_within_base")
     @patch("app.crud.investigation.settings")
     async def test_create_investigation_with_very_long_title(
-        self, mock_settings, mock_path, mock_db
+        self, mock_settings, mock_validate_path, mock_db
     ):
         """
         Test creating an investigation when the title exceeds typical length limits.
@@ -941,9 +947,11 @@ class TestInvestigationCRUDEdgeCases:
 
         mock_settings.investigations_base_path = "/tmp/investigations"
 
-        # Mock Path operations
-        mock_dir = MagicMock()
-        mock_path.return_value.__truediv__.return_value.__truediv__.return_value = mock_dir
+        # Mock path validation to return a mock directory
+        mock_inv_dir = MagicMock()
+        mock_raw_files_dir = MagicMock()
+        mock_inv_dir.__truediv__.return_value = mock_raw_files_dir
+        mock_validate_path.return_value = mock_inv_dir
 
         result = await create_investigation(
             db=mock_db,

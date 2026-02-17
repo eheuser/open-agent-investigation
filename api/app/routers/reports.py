@@ -19,6 +19,7 @@ from ..crud import report as report_crud
 from worker.core.llm_client import LLMClient
 
 from ..utils.log_setup import get_logger
+from ..utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -129,7 +130,7 @@ async def generate_report(
         return GenerateReportResponse(**result)
 
     except Exception as e:
-        logger.error(f"Report generation failed: {e}", exc_info=True)
+        logger.error(f"Report generation failed: {sanitize_log_message(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
 
@@ -180,7 +181,7 @@ async def get_latest_report(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to retrieve report: {e}", exc_info=True)
+        logger.error(f"Failed to retrieve report: {sanitize_log_message(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve report: {str(e)}")
 
 
@@ -210,7 +211,7 @@ async def check_report_exists(
             return ReportExistsResponse(exists=False, report_id=None)
     
     except Exception as e:
-        logger.error(f"Failed to check report existence: {e}", exc_info=True)
+        logger.error(f"Failed to check report existence: {sanitize_log_message(str(e))}", exc_info=True)
         # Return false on error to prevent breaking the UI
         return ReportExistsResponse(exists=False, report_id=None)
 
@@ -257,7 +258,7 @@ async def get_latest_report_metadata(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to retrieve report metadata: {e}", exc_info=True)
+        logger.error(f"Failed to retrieve report metadata: {sanitize_log_message(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve report metadata: {str(e)}")
 
 
@@ -369,7 +370,7 @@ async def download_report_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"PDF generation failed: {e}", exc_info=True)
+        logger.error(f"PDF generation failed: {sanitize_log_message(str(e))}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 

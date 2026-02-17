@@ -10,6 +10,7 @@ from ..llm_service import LLMService
 from ..context_manager import TimelineContextManager
 
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -202,12 +203,12 @@ async def handle_timeline_query(
         return result
 
     except Exception as e:
-        logger.error(f"[TIMELINE_HANDLER] Critical error: {e}", exc_info=True)
+        logger.error(f"[TIMELINE_HANDLER] Critical error: {sanitize_log_message(str(e))}", exc_info=True)
         # Ensure transaction is clean
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"[TIMELINE_HANDLER] Rollback failed: {rollback_error}")
+            logger.error(f"[TIMELINE_HANDLER] Rollback failed: {sanitize_log_message(str(rollback_error))}")
 
         return {
             "type": "error",
@@ -431,7 +432,7 @@ async def _execute_timeline_llm_loop(
             }
 
     except Exception as e:
-        logger.error(f"Timeline LLM loop failed: {e}", exc_info=True)
+        logger.error(f"Timeline LLM loop failed: {sanitize_log_message(str(e))}", exc_info=True)
         return {
             "type": "error",
             "message": f"Error processing timeline query: {str(e)}",
@@ -507,14 +508,14 @@ async def _execute_timeline_tool_with_retry(
         except Exception as e:
             last_error = str(e)
             logger.warning(
-                f"[TIMELINE_HANDLER] Tool {tool_name} exception (attempt {attempt + 1}/{max_retries}): {e}"
+                f"[TIMELINE_HANDLER] Tool {tool_name} exception (attempt {attempt + 1}/{max_retries}): {sanitize_log_message(str(e))}"
             )
             # Rollback the savepoint if it exists
             if savepoint is not None:
                 try:
                     await savepoint.rollback()
                 except Exception as rollback_error:
-                    logger.error(f"[TIMELINE_HANDLER] Savepoint rollback failed: {rollback_error}")
+                    logger.error(f"[TIMELINE_HANDLER] Savepoint rollback failed: {sanitize_log_message(str(rollback_error))}")
             # Continue to next retry attempt
 
     # All retries failed - return error
@@ -734,7 +735,7 @@ async def _tool_query_timeline(
             "total": len(entries),
         }
     except Exception as e:
-        logger.error(f"Query timeline failed: {e}", exc_info=True)
+        logger.error(f"Query timeline failed: {sanitize_log_message(str(e))}", exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -847,7 +848,7 @@ async def _tool_add_timeline_entry(
             "title": row[2],
         }
     except Exception as e:
-        logger.error(f"Add timeline entry failed: {e}", exc_info=True)
+        logger.error(f"Add timeline entry failed: {sanitize_log_message(str(e))}", exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -969,7 +970,7 @@ async def _tool_update_timeline_entry(
             "title": row[1],
         }
     except Exception as e:
-        logger.error(f"Update timeline entry failed: {e}", exc_info=True)
+        logger.error(f"Update timeline entry failed: {sanitize_log_message(str(e))}", exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -1065,7 +1066,7 @@ async def _tool_delete_timeline_entry(
             "title": title,
         }
     except Exception as e:
-        logger.error(f"Delete timeline entry failed: {e}", exc_info=True)
+        logger.error(f"Delete timeline entry failed: {sanitize_log_message(str(e))}", exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -1150,7 +1151,7 @@ async def _tool_get_timeline_stats(
             "tags": tags,
         }
     except Exception as e:
-        logger.error(f"Get timeline stats failed: {e}", exc_info=True)
+        logger.error(f"Get timeline stats failed: {sanitize_log_message(str(e))}", exc_info=True)
         return {
             "success": False,
             "error": str(e),

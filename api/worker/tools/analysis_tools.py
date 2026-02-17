@@ -8,6 +8,7 @@ from app.analysis.execution_evidence import ExecutionEvidenceAnalyzer
 from app.analysis.browsed_urls import BrowsedURLsAnalyzer
 from app.analysis.logons import LogonsAnalyzer
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -241,14 +242,14 @@ async def query_analysis_module(
         return result
         
     except Exception as e:
-        logger.error(f"Analysis module query failed for {module_id}: {e}", exc_info=True)
+        logger.error(f"Analysis module query failed for {sanitize_log_message(module_id)}: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
         return {
             "status": "error",
-            "error_msg": f"Analysis module query failed: {str(e)}",
+            "error_msg": f"Analysis module query failed: {sanitize_log_message(str(e))}",
         }
 
 
@@ -322,14 +323,14 @@ async def list_analysis_modules(
         }
         
     except Exception as e:
-        logger.error(f"Failed to list analysis modules: {e}", exc_info=True)
+        logger.error(f"Failed to list analysis modules: {sanitize_log_message(str(e))}", exc_info=True)
         try:
             await db.rollback()
         except Exception as rollback_error:
-            logger.error(f"Rollback failed: {rollback_error}")
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
         return {
             "status": "error",
-            "error_msg": f"Failed to list analysis modules: {str(e)}",
+            "error_msg": f"Failed to list analysis modules: {sanitize_log_message(str(e))}",
         }
 
 
