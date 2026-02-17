@@ -220,8 +220,121 @@ All inter‑process communication occurs over HTTP/HTTPS; no direct socket expos
 | **Data protection** | API keys encrypted with `pg_crypto`; no plaintext passwords stored |
 | **Input sanitisation** | Parameterised queries via SQLAlchemy; prepared statements prevent injection |
 | **Isolation** | Workers run in separate containers; artifact processing confined to a non‑privileged user |
+| **SSRF Protection** | URL validation blocks private IPs, localhost, cloud metadata endpoints |
+| **Path Traversal Protection** | File path validation prevents directory escape attacks |
+| **Log Injection Protection** | Log message sanitization removes newlines and control characters |
 
 ---
+
+## Security Best Practices for Contributors
+
+When contributing code, follow these security guidelines to maintain the platform's security posture:
+
+### 1. SSRF (Server-Side Request Forgery) Protection
+
+**Always validate user-provided URLs before making HTTP requests:**
+
+```python
+from app.utils.security import validate_url_safe
+
+# Validate URL before making request
+validate_url_safe(user_provided_url)  # Raises HTTPException(400) if unsafe
+async with session.get(user_provided_url) as response:
+    ...
+```
+
+**Blocked by default:**
+- Private IP ranges (10.x.x.x, 192.168.x.x, 172.16-31.x.x)
+- Localhost (127.0.0.1, ::1)
+- Link-local addresses (169.254.x.x) - AWS metadata endpoint
+- Non-HTTP/HTTPS schemes
+
+### 2. Path Traversal Protection
+
+**Always validate file paths that include user input:**
+
+```python
+from pathlib import Path
+from app.utils.security import validate_path_within_base, sanitize_filename
+
+# Validate directory paths
+base_path = Path(settings.investigations_base_path)
+inv_dir = validate_path_within_base(
+    Path(str(investigation_id)) / "raw_files",
+    base_path
+)
+
+# Sanitize filenames
+safe_filename = sanitize_filename(user_provided_filename)
+file_path = inv_dir / safe_filename
+```
+
+**Protection features:**
+- Blocks `..` sequences and absolute paths
+- Removes null bytes and path separators
+- Handles Windows reserved names (CON, PRN, AUX, etc.)
+- Ensures paths stay within base directory
+
+### 3. Log Injection Protection
+
+**Always sanitize user-controlled data in log messages:**
+
+```python
+from app.utils.security import sanitize_log_message
+
+# Sanitize all user-controlled variables
+logger.error(
+    f"Failed to parse {sanitize_log_message(str(file_path))}: "
+    f"{sanitize_log_message(str(e))}"
+)
+logger.info(f"Query: {sanitize_log_message(user_query)}")
+```
+
+**Protection features:**
+- Removes newlines (\n) and carriage returns (\r)
+- Strips control characters (except tabs)
+- Truncates to max length (default 10,000 chars)
+- Prevents fake log entry injection
+
+**Safe to log without sanitization:**
+- Integer IDs (user_id, event_id, investigation_id)
+- Counters (len(), count, total)
+- Internal constants and enums
+
+### 4. Database Transaction Safety
+
+**Always rollback on exceptions when using AsyncSession:**
+
+```python
+try:
+    # Database operations
+    await db.execute(stmt)
+    await db.commit()
+except Exception as e:
+    logger.error(f"Operation failed: {sanitize_log_message(str(e))}", exc_info=True)
+    try:
+        await db.rollback()
+    except Exception as rollback_error:
+        logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+    raise  # or return error response
+```
+
+**Critical in:**
+- Loops processing multiple items (archive extraction, batch operations)
+- Long-running operations with multiple DB calls
+- Error handlers that continue execution after exceptions
+
+### Security Utility Reference
+
+All security utilities are available in `api/app/utils/security.py`:
+
+- `validate_url_safe(url, allow_private=False)` - SSRF protection
+- `validate_path_within_base(path, base, resolve=True)` - Path traversal protection
+- `sanitize_path_component(component, allow_dots=False)` - Path component sanitization
+- `sanitize_filename(filename, max_length=255)` - Filename sanitization
+- `sanitize_log_message(message, max_length=10000)` - Log injection protection
+
+See `api/tests/unit/utils/test_security.py` for comprehensive usage examples.
 
 ## Contributing
 
@@ -233,7 +346,7 @@ Contributions are encouraged. Areas of interest include:
 * Documentation improvements and example investigations
 * Security hardening and audit logging
 
-Please read `CONTRIBUTING.md` for workflow guidelines and code standards. Security vulnerabilities must be reported privately via `SECURITY.md`.
+Please read `CONTRIBUTING.md` for workflow guidelines and code standards. **All code contributions must follow the security best practices above.** Security vulnerabilities must be reported privately via `SECURITY.md`.
 
 ---
 
