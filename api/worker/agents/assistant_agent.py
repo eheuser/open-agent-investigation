@@ -762,7 +762,6 @@ class AssistantAgent:
                 async for ev in self._execute_tools(planned_calls):
                     if ev["type"] == "_investigation_completed":
                         investigation_completed_in_execution = True
-                        completion_summary_execution = ev["summary"]
                     elif ev["type"] == "_internal_tool_result":
                         # Collect tool result for LLM context
                         tool_res: ToolResult = ev["tool_result_obj"]
