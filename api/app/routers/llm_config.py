@@ -8,7 +8,7 @@ import asyncio
 from ..deps import get_db, get_current_user
 from typing import cast
 from ..models.user import User
-from ..utils.security import validate_url_safe, sanitize_log_message
+from ..utils.security import validate_url_safe
 from ..models.llm_config import LLMProviderConfig
 from ..schemas.llm_config import (
     LLMConfigCreate,
