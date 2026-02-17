@@ -238,16 +238,25 @@ def validate_path_within_base(path: Path, base: Path, resolve: bool = True) -> P
     if resolve:
         try:
             # Resolve to absolute paths
-            resolved_base = base.resolve()
-            resolved_path = (base / path).resolve()
+            resolved_base = base.resolve(strict=False)
+            # Construct the full path and resolve it
+            full_path = base / path
+            resolved_path = full_path.resolve(strict=False)
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid path: {str(e)}"
+                detail=f"Invalid path: {sanitize_log_message(str(e))}"
             )
     else:
         resolved_base = base
-        resolved_path = base / path
+        # Still need to construct the full path safely
+        try:
+            resolved_path = base / path
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid path: {sanitize_log_message(str(e))}"
+            )
     
     # Check if resolved_path is within resolved_base
     try:

@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import aiohttp
 import asyncio
 
 from ..deps import get_db, get_current_user
-from typing import cast
 from ..models.user import User
 from ..utils.security import validate_url_safe
 from ..models.llm_config import LLMProviderConfig

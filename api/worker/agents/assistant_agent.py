@@ -757,7 +757,6 @@ class AssistantAgent:
 
                 # ---------- Phase 1 – Execution ----------
                 investigation_completed_in_execution = False
-                completion_summary_execution = None
                 tool_results_for_llm: List[Dict[str, Any]] = []  # Collect tool results for LLM
                 
                 async for ev in self._execute_tools(planned_calls):
@@ -803,11 +802,11 @@ class AssistantAgent:
                 chat_log.extend(tool_results_for_llm)
                 
                 # Check if investigation completed in execution phase
-                if investigation_completed_in_execution and completion_summary_execution:
-                    logger.info(f"Investigation completed in execution phase: {completion_summary_execution[:100]}...")
+                if investigation_completed_in_execution:
+                    logger.info("Investigation completed in execution phase")
                     yield {
                         "type": "agent_completed",
-                        "summary": completion_summary_execution,
+                        "summary": "Investigation completed",
                         "stats": self._stats_snapshot(),
                     }
                     return
@@ -859,24 +858,22 @@ class AssistantAgent:
 
                 analysis_summary = None
                 investigation_completed = False
-                completion_summary = None
                 
                 async for ev in self._analyze_results(chat_log, analysis_tools_def, tool_summary):
                     if ev["type"] == "analysis_complete":
                         analysis_summary = ev["summary"]
                     elif ev["type"] == "_investigation_completed":
                         investigation_completed = True
-                        completion_summary = ev["summary"]
                     if ev["type"] not in ("_internal_tool_result", "_investigation_completed"):
                         # Only yield non-internal events to WebSocket
                         yield ev
                 
                 # Check if investigation completed
-                if investigation_completed and completion_summary:
-                    logger.info(f"Investigation completed! Summary: {completion_summary[:100]}...")
+                if investigation_completed:
+                    logger.info("Investigation completed!")
                     yield {
                         "type": "agent_completed",
-                        "summary": completion_summary,
+                        "summary": analysis_summary or "Investigation completed",
                         "stats": self._stats_snapshot(),
                     }
                     return
