@@ -45,7 +45,7 @@ weasyprint==60.*
 pydyf==0.10.*  # Pin pydyf for WeasyPrint compatibility
 
 # Windows Artifact Parsers
-evtx==0.8.9
+evtx==0.11.0
 mft==0.6.1
 git+https://github.com/strozfriedberg/notatin.git#subdirectory=pynotatin
 regipy[full]==5.2.0  # Includes pyfwsi for ShellBags
