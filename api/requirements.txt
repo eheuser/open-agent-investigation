@@ -25,7 +25,7 @@ beautifulsoup4==4.12.*
 PyYAML==6.0.*
 
 # Agent dependencies
-aiofiles==24.1.*
+aiofiles==25.1.*
 
 # Observability
 prometheus-client==0.20.*
