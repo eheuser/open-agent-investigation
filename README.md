@@ -12,15 +12,16 @@ A micro‑forensics workbench that ingests forensic artifacts, accepts natural�
 
 ## Overview
 
-Open Agent Investigation (OAI) provides an end‑to‑end workflow for Windows host investigations:
+Open Agent Investigation (OAI) is a micro‑forensics workbench that streamlines Windows host investigations from evidence ingestion to reporting:
 
-* **Automated artifact ingestion** – ZIP/7z/RAR collections are unpacked recursively; supported formats include EVTX, Registry hives, $MFT, Prefetch, LNK, Jump Lists, browser histories, scheduled tasks, SRUM, and more.
-* **Natural‑language driven analysis** – Queries such as “find evidence of lateral movement” are mapped to a predefined playbook that executes the appropriate parsers, correlation logic, and timeline updates.
-* **Hybrid retrieval** – Event data is indexed with both BM25 keyword search and vector embeddings (PGVector) enabling fast semantic lookup.
-* **Playbook engine** – Over 20 built‑in MITRE ATT&CK‑aligned playbooks; users can clone and customize them in Markdown.
-* **Timeline construction** – Chronological aggregation of deduplicated events, with support for manual annotation and export to PDF/Markdown.
-* **Performance optimization** – Materialized views, aggregate caches, and statistical sampling provide <200ms status modal loading (25-50x faster); automatically refreshed after jobs complete.
-* **Extensible architecture** – Workers run as asynchronous multiprocess tasks; new parsers or tools are added via a plugin interface.
+- **Automated ingestion** - ZIP/7z/RAR archives unpacked recursively; supports EVTX, Registry hives, $MFT, browser histories, and more
+- **Artifact parsing** - Parsers convert binary artifacts into queryable events (EVTX, Registry, Prefetch, LNK, etc.)
+- **Natural‑language querying** - LLM agent interprets intent and routes queries to specialized handlers (semantic search, timeline, playbook execution)
+- **Inline Investigator Agent** - A steerable agent that can execute advanced queries on the parsed events and register evidence on the investigation timeline
+- **Hybrid retrieval** - BM25 keyword search + vector embeddings (+ optional reranker) enable fast semantic lookup across millions of events
+- **Timeline construction** - Evidence is kept in chronological order and automatically annotated by the agents
+- **Playbook automation** - 20+ MITRE ATT&CK‑aligned playbooks for common investigation workflows
+- **One‑click reporting** - PDF and Markdown exports with timeline entries, event excerpts, and playbook rationale
 
 ## Visual Overview
 
@@ -80,7 +81,7 @@ Routing is performed by an LLM‑based intent classifier; manual selection is al
 
 ### 2. Artifact Processing
 * **Archive handling:** Automatic extraction of nested archives up to 5 levels deep (max 10 GB, 50 000 files). Path information is encoded in filenames (`Windows__System32__Security.evtx`).
-* **Supported Windows artifacts** – EVTX logs, Registry hives, $MFT, Prefetch, LNK shortcuts, Jump Lists, Chrome/Firefox/Edge histories, scheduled tasks, SRUM, Windows Search index, and generic file metadata (hashes, entropy, strings, PE headers). See `api/worker/parsers/README.md` for the full list.
+* **Supported Windows artifacts** - EVTX logs, Registry hives, $MFT, Prefetch, LNK shortcuts, Jump Lists, Chrome/Firefox/Edge histories, scheduled tasks, SRUM, Windows Search index, and generic file metadata (hashes, entropy, strings, PE headers). See `api/worker/parsers/README.md` for the full list.
 * **Parsing stack:** Rust‑based EVTX parser, Regipy, MFT parser, prefetch2es, LnkParse3, olefile, pyesedb, and custom SQLite adapters.
 * **Analysis modules:** Dedicated views for common investigation patterns—Autoruns (persistence mechanisms), Execution Evidence (ShimCache, AmCache, Prefetch, SRUM), Browsed URLs (browser history), and Logons (authentication events). Results are cached for performance.
 
@@ -114,7 +115,7 @@ Routing is performed by an LLM‑based intent classifier; manual selection is al
 | Component | Minimum Version |
 |-----------|-----------------|
 | Docker & Docker Compose | 20.10 / 2.0 |
-| LLM endpoint (OpenAI, Ollama, Azure) | – |
+| LLM endpoint (OpenAI, Ollama, Azure) | - |
 | RAM | 4 GB (8 GB recommended) |
 | Disk space | 20 GB for artifacts + database |
 
@@ -165,7 +166,7 @@ EMBEDDING_BATCH_SIZE=100 docker compose up -d embedding-worker
 
 #### Post‑deployment configuration
 1. **Login** with the default credentials.
-2. **Configure LLM endpoint** – You will be automatically redirected to Settings on first login. Configure your LLM provider (API key, model name, temperature, etc.). Without this configuration, the system cannot process queries.
+2. **Configure LLM endpoint** - You will be automatically redirected to Settings on first login. Configure your LLM provider (API key, model name, temperature, etc.). Without this configuration, the system cannot process queries.
 3. **Create an investigation**, upload artifacts, and begin querying.
 
 #### Replace existing installation with new (upgrades only supported with full releases)
@@ -352,7 +353,7 @@ Please read `CONTRIBUTING.md` for workflow guidelines and code standards. **All 
 
 ## Community & Support
 
-* **Documentation:** `docs/` – Getting Started, User Guide, Playbooks, Architecture, API reference
+* **Documentation:** `docs/` - Getting Started, User Guide, Playbooks, Architecture, API reference
 * **Discussions:** GitHub Discussions (link)
 * **Issue Tracker:** GitHub Issues (link)
 * **Security Reports:** `SECURITY.md`
@@ -361,7 +362,7 @@ Please read `CONTRIBUTING.md` for workflow guidelines and code standards. **All 
 
 ## License
 
-GNU General Public License v3.0 – see `LICENSE`.
+GNU General Public License v3.0 - see `LICENSE`.
 
 --- 
 
