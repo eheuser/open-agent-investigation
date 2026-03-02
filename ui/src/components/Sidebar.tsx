@@ -1,4 +1,3 @@
-// ui/src/components/Sidebar.tsx
 import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -28,6 +27,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useJobs } from '../contexts/JobsContext';
 import ThemeToggle from './ThemeToggle';
 import StatusModal from './StatusModal';
+import InvestigationActivityIndicator from './InvestigationActivityIndicator';
 
 const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, onToggle }) => {
   const [list, setList] = useState<Investigation[]>([]);
@@ -286,11 +286,17 @@ const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, 
                           : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                         }`
                       }
-                    >
+                    >                      {/* Chat Icon - always show */}
                       <ChatBubbleLeftIcon className="w-4 h-4 flex-shrink-0" />
+                      
                       <span className="flex-1 text-sm truncate">
                         {inv.title || 'Untitled'}
                       </span>
+                      
+                      {/* Activity Indicator - shows on the right end when active */}
+                      {inv.investigation_id ? (
+                        <InvestigationActivityIndicator investigationId={inv.investigation_id} />
+                      ) : null}
                       <div className="hidden group-hover:flex items-center gap-1">
                         <button
                           onClick={(e) => startEdit(inv, e)}
@@ -366,8 +372,7 @@ const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, 
                 >
                   <ChartBarIcon className="w-4 h-4 flex-shrink-0" />
                   <span className="text-sm">Status</span>
-                </button>
-
+                  </button>
                 <NavLink
                   to="/playbooks"
                   onClick={() => setUserMenuOpen(false)}
@@ -381,7 +386,6 @@ const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, 
                   <BookOpenIcon className="w-4 h-4 flex-shrink-0" />
                   <span className="text-sm">Playbooks</span>
                 </NavLink>
-
                 <NavLink
                   to="/settings"
                   onClick={() => setUserMenuOpen(false)}
@@ -449,7 +453,6 @@ const Sidebar: React.FC<{ isOpen: boolean; onToggle: () => void }> = ({ isOpen, 
         )}
 
       </aside>
-
       {/* Delete Confirmation Modal */}
       {deleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
