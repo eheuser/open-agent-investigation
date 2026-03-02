@@ -154,6 +154,29 @@ class ToolExecutor:
                     await savepoint.rollback()
                     logger.debug(f"Rolled back savepoint after tool {tool_name} failure")
                 except Exception as rollback_error:
-                    logger.error(f"Failed to rollback savepoint: {sanitize_log_message(str(rollback_error))}")
+                    # If rollback fails, the transaction itself might be aborted/poisoned
+                    # We need to recover the session for subsequent operations
+                    logger.warning(
+                        f"Failed to rollback savepoint for {sanitize_log_message(tool_name)}: "
+                        f"{sanitize_log_message(str(rollback_error))}. Recovering session state."
+                    )
+                    try:
+                        await self.db.rollback()
+                        logger.debug(f"Performed full session rollback after tool {tool_name} failure")
+                    except Exception as session_rollback_error:
+                        # Even the session rollback might fail if transaction is completely closed
+                        logger.warning(
+                            f"Session rollback also failed for {sanitize_log_message(tool_name)}: "
+                            f"{sanitize_log_message(str(session_rollback_error))}. Expiring all objects."
+                        )
+                    # Expire all objects to clear any stale state from the aborted transaction
+                    try:
+                        self.db.expire_all()
+                        logger.debug(f"Expired all session objects after tool {tool_name} failure")
+                    except Exception as expire_error:
+                        logger.error(
+                            f"Failed to expire session objects for {sanitize_log_message(tool_name)}: "
+                            f"{sanitize_log_message(str(expire_error))}"
+                        )
             
             return ToolResult(status="error", error_msg=str(e))

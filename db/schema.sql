@@ -635,6 +635,7 @@ CREATE TRIGGER update_playbooks_updated_at
 -- This provides <5 minute staleness while avoiding trigger overhead
 
 -- Analysis results cache table (for analysis modules like Autoruns, Execution Evidence, etc.)
+-- Cache is permanent until event count changes (no time-based expiration)
 CREATE TABLE IF NOT EXISTS analysis_results (
     result_id BIGSERIAL PRIMARY KEY,
     investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
@@ -644,8 +645,9 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     results JSONB NOT NULL,  -- Cached analysis results
     entry_count INTEGER,  -- Number of entries in results
     categories_analyzed TEXT[],  -- Categories/filters that were analyzed
+    event_count_when_cached BIGINT,  -- Event count at cache time (for invalidation)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ,  -- NULL = never expires, or timestamp for cache expiration
+    expires_at TIMESTAMPTZ,  -- Deprecated: kept for backward compatibility, but no longer used
     CONSTRAINT uq_analysis_cache_key UNIQUE (investigation_id, analysis_type, parameters)
 );
 

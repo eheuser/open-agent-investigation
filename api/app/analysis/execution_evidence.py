@@ -423,13 +423,12 @@ class ExecutionEvidenceAnalyzer:
                 params_json = json.dumps(params_dict, sort_keys=True)
 
                 query = """
-                    SELECT results, created_at
+                    SELECT results, created_at, event_count_when_cached
                     FROM analysis_results
                     WHERE investigation_id = :investigation_id
                       AND analysis_type = 'execution_evidence'
                       AND analysis_version = :version
                       AND parameters = CAST(:parameters AS jsonb)
-                      AND (expires_at IS NULL OR expires_at > NOW())
                     ORDER BY created_at DESC
                     LIMIT 1
                 """
@@ -444,19 +443,39 @@ class ExecutionEvidenceAnalyzer:
                 )
 
                 row = result.fetchone()
-                if row:
-                    results_json = row[0]
-                    created_at = row[1]
-                    logger.debug(f"Found cached execution evidence results from {created_at}")
+                if not row:
+                    return None
 
-                    # Convert JSON back to ExecutionEntry objects
-                    entries = []
-                    for entry_dict in results_json:
-                        entries.append(ExecutionEntry(**entry_dict))
+                results_json = row[0]
+                created_at = row[1]
+                cached_event_count = row[2]
 
-                    return entries
+                # Check if event count has changed since caching
+                current_count_query = text(
+                    """
+                        SELECT COUNT(*) as count
+                        FROM events
+                        WHERE investigation_id = :investigation_id
+                    """
+                )
+                count_result = await db.execute(current_count_query, {"investigation_id": str(investigation_id)})
+                current_event_count = count_result.scalar() or 0
 
-                return None
+                if cached_event_count != current_event_count:
+                    logger.debug(
+                        f"Cache stale: event count changed from {cached_event_count} to {current_event_count}. "
+                        f"Returning None to trigger refresh."
+                    )
+                    return None
+
+                logger.debug(f"Found cached execution evidence results from {created_at} ({len(results_json)} entries, event count: {cached_event_count})")
+
+                # Convert JSON back to ExecutionEntry objects
+                entries = []
+                for entry_dict in results_json:
+                    entries.append(ExecutionEntry(**entry_dict))
+
+                return entries
 
         except Exception as e:
             logger.warning(f"Failed to retrieve cached results: {sanitize_log_message(str(e))}")
@@ -465,7 +484,7 @@ class ExecutionEvidenceAnalyzer:
     async def _cache_results(
         self, investigation_id: UUID, categories: Optional[List[str]], entries: List[ExecutionEntry]
     ) -> None:
-        """Cache analysis results."""
+        """Cache analysis results permanently."""
         try:
             async with async_session_factory() as cache_db:
                 # Build parameters for cache key
@@ -478,18 +497,26 @@ class ExecutionEvidenceAnalyzer:
                 # Extract categories from entries
                 categories_analyzed = list(set(entry.category for entry in entries))
 
-                # Set expiration (cache for 12 hour)
-                expires_at = datetime.utcnow() + timedelta(hours=12)
+                # Get current event count for cache invalidation tracking
+                count_query = text(
+                    """
+                        SELECT COUNT(*) as count
+                        FROM events
+                        WHERE investigation_id = :investigation_id
+                    """
+                )
+                count_result = await cache_db.execute(count_query, {"investigation_id": str(investigation_id)})
+                current_event_count = count_result.scalar() or 0
 
-                # Insert or update cache
+                # Insert or update cache (no expiration - permanent until events change)
                 query = """
                     INSERT INTO analysis_results (
                         investigation_id, analysis_type, analysis_version, parameters,
-                        results, entry_count, categories_analyzed, expires_at
+                        results, entry_count, categories_analyzed, event_count_when_cached
                     )
                     VALUES (
                         :investigation_id, 'execution_evidence', :version, CAST(:parameters AS jsonb),
-                        CAST(:results AS jsonb), :entry_count, :categories_analyzed, :expires_at
+                        CAST(:results AS jsonb), :entry_count, :categories_analyzed, :event_count_when_cached
                     )
                     ON CONFLICT (investigation_id, analysis_type, parameters)
                     DO UPDATE SET
@@ -497,8 +524,8 @@ class ExecutionEvidenceAnalyzer:
                         results = EXCLUDED.results,
                         entry_count = EXCLUDED.entry_count,
                         categories_analyzed = EXCLUDED.categories_analyzed,
-                        created_at = NOW(),
-                        expires_at = EXCLUDED.expires_at
+                        event_count_when_cached = EXCLUDED.event_count_when_cached,
+                        created_at = NOW()
                 """
 
                 await cache_db.execute(
@@ -510,12 +537,12 @@ class ExecutionEvidenceAnalyzer:
                         "results": results_json,
                         "entry_count": len(entries),
                         "categories_analyzed": categories_analyzed,
-                        "expires_at": expires_at,
+                        "event_count_when_cached": current_event_count,
                     },
                 )
                 await cache_db.commit()
 
-                logger.debug(f"Cached {len(entries)} execution evidence entries (expires in 12 hours)")
+                logger.debug(f"Cached {len(entries)} execution evidence entries permanently (event count: {current_event_count})")
 
         except Exception as e:
             logger.error(f"Failed to cache results: {sanitize_log_message(str(e))}", exc_info=True)

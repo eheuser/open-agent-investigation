@@ -193,6 +193,11 @@ class AssistantAgent:
                 logger.info(f"Job {self.job_id} cancelled by user")
                 return True
         except Exception as e:
+            # Rollback to prevent poisoning the transaction
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass  # Ignore rollback errors here
             logger.warning(f"Cancel check failed: {sanitize_log_message(str(e))}")
         return False
 
