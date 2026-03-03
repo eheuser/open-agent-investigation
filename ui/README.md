@@ -559,13 +559,50 @@ Top navigation bar with:
 #### Sidebar.tsx
 
 Left sidebar navigation:
-- Dashboard link
-- Settings link
-- Documentation link
-- Audit log link
+- Investigation list with activity indicators
+- Create new investigation
+- Rename and delete investigations
+- Jobs queue button with active job count
+- User menu with settings, playbooks, and logout
+- **Activity indicators** - Shows real-time job status per investigation:
+  - **Blue spinning icon**: Parsing artifacts
+  - **Green spinning icon**: Generating embeddings
+  - **Purple pulsing dot**: Agent investigation running
+  - **Combined icons**: Multiple activities running simultaneously
+  - Updates every 2 seconds
 
 ```tsx
 <Sidebar currentPath="/investigations" />
+```
+
+#### InvestigationActivityIndicator.tsx
+
+Real-time activity indicator for investigations:
+- Polls job status every 2 seconds
+- Shows parsing, embedding, and agent job activity
+- Displays appropriate icon based on active job types
+- Replaces chat icon when investigation has active jobs
+- Automatically hides when all jobs complete
+
+**Activity Types**:
+- **Parsing**: Blue spinning circle (artifact parsing in progress)
+- **Embedding**: Green spinning circle (embedding generation in progress)
+- **Agent**: Purple pulsing dot (agent investigation running)
+- **Combined**: Shows spinner + agent dot when both are active
+
+**Display Logic**:
+- Parsing and embedding **never show together** (only one spinner at a time)
+- Parsing takes priority over embedding when both are active
+- Agent dot can appear alongside either parsing or embedding spinner
+- Possible combinations:
+  - Blue spinner only (parsing)
+  - Green spinner only (embedding)
+  - Purple dot only (agent)
+  - Blue spinner + purple dot (parsing + agent)
+  - Green spinner + purple dot (embedding + agent)
+
+```tsx
+<InvestigationActivityIndicator investigationId={investigationId} />
 ```
 
 ### Chat Components

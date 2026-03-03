@@ -244,7 +244,10 @@ class AssistantAgent:
                         raise asyncio.CancelledError()
                     i += 1
 
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    choices = chunk.get("choices", [])
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta", {})
                     if "content" in delta:
                         content += delta["content"] or ""
                     if "tool_calls" in delta:
@@ -763,6 +766,7 @@ class AssistantAgent:
                 # ---------- Phase 1 – Execution ----------
                 investigation_completed_in_execution = False
                 tool_results_for_llm: List[Dict[str, Any]] = []  # Collect tool results for LLM
+                tool_result_index = 0  # Track current tool result index
                 
                 async for ev in self._execute_tools(planned_calls):
                     if ev["type"] == "_investigation_completed":
@@ -770,9 +774,14 @@ class AssistantAgent:
                     elif ev["type"] == "_internal_tool_result":
                         # Collect tool result for LLM context
                         tool_res: ToolResult = ev["tool_result_obj"]
-                        # Find the corresponding tool call ID
-                        tc_id = planned_calls[len(tool_results_for_llm)].id if len(tool_results_for_llm) < len(planned_calls) else f"tc_{len(tool_results_for_llm)}"
-                        tool_name = planned_calls[len(tool_results_for_llm)].function.get("name", "unknown") if len(tool_results_for_llm) < len(planned_calls) else "unknown"
+                        # Find the corresponding tool call ID safely
+                        if tool_result_index < len(planned_calls):
+                            tc_id = planned_calls[tool_result_index].id or f"tc_{tool_result_index}"
+                            tool_name = planned_calls[tool_result_index].function.get("name", "unknown")
+                        else:
+                            tc_id = f"tc_{tool_result_index}"
+                            tool_name = "unknown"
+                            logger.warning(f"Tool result index {tool_result_index} exceeds planned_calls length {len(planned_calls)}")
                         
                         # Format result for LLM - include actual data
                         if tool_res.status == "ok" and tool_res.result:
@@ -786,6 +795,7 @@ class AssistantAgent:
                             "name": tool_name,
                             "content": content
                         })
+                        tool_result_index += 1
                     elif ev["type"] != "_internal_tool_result":
                         # Only yield non-internal events to WebSocket
                         yield ev
