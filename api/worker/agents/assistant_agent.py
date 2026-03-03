@@ -149,6 +149,7 @@ class AssistantAgent:
         )
         self.llm_max_context = llm_max_context
         self.llm_temp = llm_temperature
+        self.llm_timeout = llm_timeout
 
         # Tool executor & stats
         self.stats = {
@@ -233,7 +234,7 @@ class AssistantAgent:
                     top_p=self.llm_client._service.config.top_p,
                     top_k=self.llm_client._service.config.top_k,
                     min_p=self.llm_client._service.config.min_p,
-                    timeout=self.llm_client._service.config.timeout,
+                    timeout=self.llm_timeout,
                 )
 
                 content, tool_calls = "", []

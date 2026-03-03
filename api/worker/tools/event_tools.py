@@ -946,6 +946,344 @@ async def get_available_jsonb_fields(
         return []
 
 
+def _calculate_field_budget(llm_max_context: int) -> int:
+    """
+    Calculate the number of JSONB fields to show based on LLM context window size.
+    
+    Sliding window budget:
+    - <= 32k = 10 keys
+    - <= 64k = 25 keys
+    - <= 128k = 50 keys
+    - <= 256k = 100 keys
+    - <= 512k = 200 keys
+    - <= 1M = 300 keys
+    
+    Args:
+        llm_max_context: Maximum context length for the LLM
+        
+    Returns:
+        Number of top fields to include in context
+    """
+    if llm_max_context <= 32768:
+        return 10
+    elif llm_max_context <= 65536:
+        return 25
+    elif llm_max_context <= 131072:
+        return 50
+    elif llm_max_context <= 262144:
+        return 100
+    elif llm_max_context <= 524288:
+        return 200
+    else:  # <= 1M or larger
+        return 300
+
+
+def _extract_nested_fields(payload: Dict[str, Any], prefix: str = "", max_depth: int = 3) -> Dict[str, Any]:
+    """
+    Recursively extract nested JSONB fields with their paths and sample values.
+    
+    Args:
+        payload: JSONB payload dictionary
+        prefix: Current path prefix (e.g., "event_data")
+        max_depth: Maximum nesting depth to explore
+        
+    Returns:
+        Dictionary mapping field paths to sample values
+    """
+    fields = {}
+    
+    if max_depth <= 0:
+        return fields
+    
+    for key, value in payload.items():
+        # Build dotted path
+        path = f"{prefix}.{key}" if prefix else key
+        
+        # Store the value
+        if isinstance(value, dict) and max_depth > 1:
+            # Recursively extract nested fields
+            nested = _extract_nested_fields(value, path, max_depth - 1)
+            fields.update(nested)
+        else:
+            # Store leaf value (convert to string for consistency)
+            if value is not None:
+                # Truncate long values
+                str_value = str(value)
+                if len(str_value) > 100:
+                    str_value = str_value[:97] + "..."
+                fields[path] = str_value
+            else:
+                fields[path] = None
+    
+    return fields
+
+
+async def get_enhanced_jsonb_fields(
+    db: AsyncSession,
+    investigation_id: str,
+    event_type: Optional[str] = None,
+    sample_size: int = 10,
+    llm_max_context: int = 32768,
+) -> Dict[str, Any]:
+    """
+    Get enhanced JSONB field metadata with frequency, sample values, and nested structure.
+    
+    This is Tier 1 of the field discovery system - provides rich context about available
+    fields to help LLMs build better queries.
+    
+    Args:
+        db: AsyncSession for database queries
+        investigation_id: UUID of the investigation
+        event_type: Optional event type filter (supports wildcards)
+        sample_size: Number of events to sample per event type
+        llm_max_context: LLM context window size (determines field budget)
+        
+    Returns:
+        Dictionary containing:
+        - field_metadata: List of field info dicts with path, frequency, samples, type
+        - total_events: Total event count
+        - field_groups: Fields grouped by common prefixes
+        - budget_info: Info about field budget and total available
+    """
+    try:
+        # Calculate field budget based on context window
+        field_budget = _calculate_field_budget(llm_max_context)
+        
+        # Get total event count
+        count_query = """
+            SELECT COUNT(*) FROM events WHERE investigation_id = :investigation_id
+        """
+        count_params: Dict[str, Any] = {"investigation_id": investigation_id}
+        
+        if event_type:
+            pattern = event_type.replace("*", "%")
+            count_query += " AND event_type LIKE :pattern"
+            count_params["pattern"] = pattern
+        
+        count_result = await db.execute(text(count_query), count_params)
+        total_events = count_result.scalar() or 0
+        
+        if total_events == 0:
+            return {
+                "field_metadata": [],
+                "total_events": 0,
+                "field_groups": {},
+                "budget_info": {
+                    "field_budget": field_budget,
+                    "total_fields": 0,
+                    "showing_fields": 0,
+                }
+            }
+        
+        # Sample events to extract field information
+        query = f"""
+            SELECT event_type, payload
+            FROM (
+                SELECT event_type, payload,
+                       ROW_NUMBER() OVER (PARTITION BY event_type ORDER BY event_ts DESC) as rn
+                FROM events
+                WHERE investigation_id = :investigation_id
+        """
+        params: Dict[str, Any] = {"investigation_id": investigation_id, "sample_size": sample_size}
+        
+        if event_type:
+            pattern = event_type.replace("*", "%")
+            query += " AND event_type LIKE :pattern"
+            params["pattern"] = pattern
+        
+        query += f"""
+            ) AS ranked
+            WHERE rn <= :sample_size
+            ORDER BY event_type, rn
+        """
+        
+        result = await db.execute(text(query), params)
+        rows = result.fetchall()
+        
+        # Track field occurrences and sample values
+        field_stats: Dict[str, Dict[str, Any]] = {}
+        
+        for row in rows:
+            payload = row[1]
+            
+            # Convert to dict if needed
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+            
+            if not isinstance(payload, dict):
+                continue
+            
+            # Extract nested fields
+            nested_fields = _extract_nested_fields(payload, prefix="", max_depth=3)
+            
+            for field_path, sample_value in nested_fields.items():
+                if field_path not in field_stats:
+                    field_stats[field_path] = {
+                        "path": field_path,
+                        "count": 0,
+                        "samples": [],
+                        "types": set(),
+                    }
+                
+                field_stats[field_path]["count"] += 1
+                
+                # Collect sample values (up to 3 unique)
+                if sample_value is not None and len(field_stats[field_path]["samples"]) < 3:
+                    if sample_value not in field_stats[field_path]["samples"]:
+                        field_stats[field_path]["samples"].append(sample_value)
+                
+                # Track value types
+                if sample_value is not None:
+                    value_type = type(sample_value).__name__
+                    field_stats[field_path]["types"].add(value_type)
+        
+        # Calculate frequency percentages
+        total_sampled = len(rows)
+        for field_info in field_stats.values():
+            field_info["frequency_pct"] = (field_info["count"] / total_sampled * 100) if total_sampled > 0 else 0
+            field_info["types"] = list(field_info["types"])
+        
+        # Sort by frequency (most common first)
+        sorted_fields = sorted(
+            field_stats.values(),
+            key=lambda x: x["frequency_pct"],
+            reverse=True
+        )
+        
+        # Apply field budget
+        top_fields = sorted_fields[:field_budget]
+        
+        # Group fields by common prefixes
+        field_groups: Dict[str, List[Dict[str, Any]]] = {}
+        
+        for field_info in top_fields:
+            path = field_info["path"]
+            
+            # Determine group
+            if "." in path:
+                prefix = path.split(".")[0]
+                group_name = f"{prefix}.*"
+            else:
+                group_name = "top_level"
+            
+            if group_name not in field_groups:
+                field_groups[group_name] = []
+            
+            field_groups[group_name].append(field_info)
+        
+        logger.info(
+            f"Enhanced field discovery: {len(top_fields)}/{len(sorted_fields)} fields "
+            f"(budget={field_budget}, sampled={total_sampled} events)"
+        )
+        
+        return {
+            "field_metadata": top_fields,
+            "total_events": total_events,
+            "field_groups": field_groups,
+            "budget_info": {
+                "field_budget": field_budget,
+                "total_fields": len(sorted_fields),
+                "showing_fields": len(top_fields),
+                "llm_max_context": llm_max_context,
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"get_enhanced_jsonb_fields failed: {sanitize_log_message(str(e))}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {
+            "field_metadata": [],
+            "total_events": 0,
+            "field_groups": {},
+            "budget_info": {
+                "field_budget": _calculate_field_budget(llm_max_context),
+                "total_fields": 0,
+                "showing_fields": 0,
+            }
+        }
+
+
+async def discover_jsonb_fields(
+    db: AsyncSession,
+    investigation_id: str,
+    event_type: Optional[str] = None,
+    sample_size: int = 10,
+    limit: int = 50,
+    stats: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Tier 2: Just-in-time field discovery tool for targeted event type inspection.
+    
+    This tool allows agents to explore JSONB fields for specific event types when needed,
+    without front-loading all field data into context.
+    
+    Args:
+        db: AsyncSession for database queries
+        investigation_id: UUID of the investigation
+        event_type: Event type pattern to inspect (supports wildcards)
+        sample_size: Number of events to sample per event type
+        limit: Maximum number of fields to return
+        stats: Optional stats dictionary to update
+        
+    Returns:
+        Dictionary containing:
+        - event_type: The event type pattern queried
+        - total_events: Total events matching the pattern
+        - fields: List of field metadata (path, frequency, samples)
+        - sample_events: Number of events sampled
+    """
+    try:
+        # Get enhanced field metadata (use full budget for targeted discovery)
+        enhanced_data = await get_enhanced_jsonb_fields(
+            db=db,
+            investigation_id=investigation_id,
+            event_type=event_type,
+            sample_size=sample_size,
+            llm_max_context=1000000,  # Use max budget for targeted discovery
+        )
+        
+        # Apply limit
+        fields = enhanced_data["field_metadata"][:limit]
+        
+        # Format for tool response
+        formatted_fields = []
+        for field_info in fields:
+            formatted_fields.append({
+                "path": field_info["path"],
+                "frequency_pct": round(field_info["frequency_pct"], 1),
+                "sample_values": field_info["samples"][:3],
+                "types": field_info["types"],
+            })
+        
+        logger.info(
+            f"discover_jsonb_fields: event_type={sanitize_log_message(str(event_type))}, "
+            f"found {len(formatted_fields)} fields"
+        )
+        
+        return {
+            "event_type": event_type or "*",
+            "total_events": enhanced_data["total_events"],
+            "fields": formatted_fields,
+            "sample_events": sample_size,
+            "showing": len(formatted_fields),
+            "total_fields": enhanced_data["budget_info"]["total_fields"],
+        }
+        
+    except Exception as e:
+        logger.error(f"discover_jsonb_fields failed: {sanitize_log_message(str(e))}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        return {"error": f"Failed to discover JSONB fields: {sanitize_log_message(str(e))}"}
+
+
 async def count_events(
     db: AsyncSession,
     investigation_id: str,

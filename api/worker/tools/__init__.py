@@ -6,6 +6,8 @@ from .event_tools import (
     count_events,
     query_jsonb_field,
     aggregate_jsonb_field,
+    get_enhanced_jsonb_fields,
+    discover_jsonb_fields,
 )
 from .timeline_tools import (
     register_timeline_entry,
@@ -29,6 +31,8 @@ __all__ = [
     "count_events",
     "query_jsonb_field",
     "aggregate_jsonb_field",
+    "get_enhanced_jsonb_fields",
+    "discover_jsonb_fields",
     "register_timeline_entry",
     "register_finding",
     "link_to_event",

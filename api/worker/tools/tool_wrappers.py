@@ -303,6 +303,55 @@ async def aggregate_jsonb_field_wrapper(
     )
 
 
+async def discover_jsonb_fields_wrapper(
+    db: AsyncSession,
+    investigation_id: str,
+    stats: Dict[str, Any],
+    event_type: Optional[str] = None,
+    sample_size: int = 10,
+    limit: int = 50,
+    description: str = "",
+) -> Dict[str, Any]:
+    """
+    Discover available JSONB fields for a specific event type with sample values.
+    
+    This is a Tier 2 just-in-time field discovery tool that allows agents to explore
+    what fields are available in specific event types when they need more detail than
+    the initial context provides.
+    
+    Parameters
+    ----------
+    db : AsyncSession
+        Asynchronous database session.
+    investigation_id : str
+        Investigation identifier.
+    stats : Dict[str, Any]
+        Statistics dictionary.
+    event_type : Optional[str], default None
+        Event type pattern to inspect (supports wildcards like 'evtx_security_*').
+        If omitted, discovers fields across all event types.
+    sample_size : int, default 10
+        Number of events to sample per event type.
+    limit : int, default 50
+        Maximum number of fields to return.
+    description : str, default ""
+        Brief description of what you're investigating (shown in UI).
+    
+    Returns
+    -------
+    Dict[str, Any]
+        Field discovery results with paths, frequencies, and sample values.
+    """
+    return await event_tools.discover_jsonb_fields(
+        db=db,
+        investigation_id=investigation_id,
+        event_type=event_type,
+        sample_size=sample_size,
+        limit=limit,
+        stats=stats,
+    )
+
+
 async def register_timeline_entry_wrapper(
     db: AsyncSession,
     investigation_id: str,
@@ -956,6 +1005,39 @@ def register_all_tools():
                 "additionalProperties": False,
             },
             impl=aggregate_jsonb_field_wrapper,
+        )
+    )
+
+    tool_registry.register(
+        ToolSpec(
+            name="discover_jsonb_fields",
+            description="Discover available JSONB fields for specific event types with frequency and sample values. Use this when you need to know what fields exist in a particular event type before querying. Shows field paths, how often they appear, and example values. This helps you build accurate query_jsonb_field queries.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "event_type": {
+                        "type": "string",
+                        "description": "Event type pattern to inspect (e.g., 'evtx_security_4624', 'evtx_sysmon_*'). If omitted, discovers fields across all event types.",
+                    },
+                    "sample_size": {
+                        "type": "integer",
+                        "description": "Number of events to sample per event type (default 10)",
+                        "default": 10,
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of fields to return (default 50)",
+                        "default": 50,
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Brief description of what you're investigating (shown in UI)",
+                    },
+                },
+                "required": ["description"],
+                "additionalProperties": False,
+            },
+            impl=discover_jsonb_fields_wrapper,
         )
     )
 
