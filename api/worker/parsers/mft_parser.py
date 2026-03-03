@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mft.mft import PyMftParser
 
 from .base_parser import BaseParser
+from .utils import sanitize_for_jsonb
 
 from app.utils.log_setup import get_logger
 
@@ -306,6 +307,9 @@ class MftParser(BaseParser):
                     "fn_physical_size": fn_physical_size,
                 }
 
+                # Sanitize payload to handle encoding issues
+                payload = sanitize_for_jsonb(payload)
+                
                 event_batch.append(
                     {
                         "event_ts": event_ts,

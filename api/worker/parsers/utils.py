@@ -75,9 +75,12 @@ def sanitize_for_jsonb(obj: Any) -> Any:
     - Null bytes (\u0000) in strings
     - Invalid Unicode sequences
     - Certain control characters
+    - Surrogate pairs (unpaired UTF-16 surrogates)
     
     This function:
     - Removes null bytes from strings
+    - Handles invalid Unicode sequences
+    - Removes problematic control characters
     - Converts non-serializable types to strings
     - Recursively processes dicts and lists
     
@@ -92,21 +95,36 @@ def sanitize_for_jsonb(obj: Any) -> Any:
     elif isinstance(obj, list):
         return [sanitize_for_jsonb(item) for item in obj]
     elif isinstance(obj, str):
-        # Remove null bytes and other problematic characters
-        # Replace \u0000 with empty string
+        # Remove null bytes
         cleaned = obj.replace('\x00', '')
-        # Also handle other control characters that might cause issues
+        
+        # Encode to UTF-8 and decode with error handling to remove invalid sequences
+        # This handles surrogate pairs and other invalid Unicode
+        try:
+            cleaned = cleaned.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            # If encoding/decoding fails, convert to safe representation
+            cleaned = repr(obj)
+        
+        # Remove control characters except newline, carriage return, and tab
         cleaned = ''.join(char for char in cleaned if ord(char) >= 32 or char in '\n\r\t')
+        
         return cleaned
     elif isinstance(obj, bytes):
-        # Convert bytes to hex string for safe storage
-        return obj.hex()
+        # Try to decode as UTF-8 first, fall back to hex representation
+        try:
+            decoded = obj.decode('utf-8', errors='ignore')
+            # Recursively sanitize the decoded string
+            return sanitize_for_jsonb(decoded)
+        except:
+            # If decoding fails, return hex representation
+            return obj.hex()
     elif obj is None or isinstance(obj, (bool, int, float)):
         # Primitives are safe
         return obj
     else:
-        # Convert unknown types to string
-        return str(obj)
+        # Convert unknown types to string and sanitize
+        return sanitize_for_jsonb(str(obj))
 
 
 def safe_json_dumps(obj: Any) -> str:

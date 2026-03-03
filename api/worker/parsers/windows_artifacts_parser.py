@@ -11,7 +11,7 @@ import pyesedb
 import xml.etree.ElementTree as ET
 
 from .base_parser import BaseParser
-from .utils import flatten_dict
+from .utils import flatten_dict, sanitize_for_jsonb
 from app.utils.log_setup import get_logger
 
 logger = get_logger(__name__)
@@ -172,7 +172,7 @@ class WindowsArtifactsParser(BaseParser):
                     # Try to decode the URL (match original logic exactly)
                     url_bytes = header[116:116+url_size]
                     url_chars = struct.unpack(f"{url_size}c", url_bytes)
-                    url = b"".join(url_chars).decode("utf-16-le")[0:-1]  # Slice off last char
+                    url = b"".join(url_chars).decode("utf-16-le", errors='ignore')[0:-1]  # Slice off last char
                     
                     # URL should be non-empty
                     if url and len(url) > 0:
@@ -312,6 +312,9 @@ class WindowsArtifactsParser(BaseParser):
                     "file_path": str(file_path.name)
                 })
                 
+                # Sanitize payload
+                payload = sanitize_for_jsonb(payload)
+                
                 events.append({
                     "timestamp": event_ts,
                     "event_type": "cryptnet_cache",
@@ -339,6 +342,9 @@ class WindowsArtifactsParser(BaseParser):
                 "file_size": len(data),
                 "file_path": str(file_path)
             })
+            
+            # Sanitize payload
+            payload = sanitize_for_jsonb(payload)
             
             events.append({
                 "timestamp": event_ts,
@@ -378,6 +384,9 @@ class WindowsArtifactsParser(BaseParser):
                 "file_size": len(data),
                 "file_path": str(file_path)
             })
+            
+            # Sanitize payload
+            payload = sanitize_for_jsonb(payload)
             
             events.append({
                 "timestamp": event_ts,
@@ -476,6 +485,9 @@ class WindowsArtifactsParser(BaseParser):
                 "file_path": str(file_path)
             })
             
+            # Sanitize payload
+            payload = sanitize_for_jsonb(payload)
+            
             events.append({
                 "timestamp": event_ts,
                 "event_type": "scheduled_task",
@@ -549,8 +561,23 @@ class WindowsArtifactsParser(BaseParser):
                                     # Store value
                                     if value is not None:
                                         if isinstance(value, bytes):
+                                            # Try to decode as UTF-16-LE, but validate result
                                             try:
-                                                record_data[col_name] = value.decode('utf-16-le', errors='ignore').strip('\x00')
+                                                decoded = value.decode('utf-16-le', errors='ignore').strip('\x00')
+                                                
+                                                # Validate that it's actually text (not binary garbage)
+                                                # Check if at least 70% of characters are printable
+                                                if decoded and len(decoded) > 0:
+                                                    printable_count = sum(1 for c in decoded if c.isprintable())
+                                                    if printable_count / len(decoded) >= 0.7:
+                                                        # Looks like valid text
+                                                        record_data[col_name] = decoded
+                                                    else:
+                                                        # Binary garbage - use hex
+                                                        record_data[col_name] = value.hex()
+                                                else:
+                                                    # Empty after decode - use hex
+                                                    record_data[col_name] = value.hex()
                                             except:
                                                 record_data[col_name] = value.hex()
                                         else:
@@ -642,8 +669,23 @@ class WindowsArtifactsParser(BaseParser):
                                         
                                         if value is not None:
                                             if isinstance(value, bytes):
+                                                # Try to decode as UTF-16-LE, but validate result
                                                 try:
-                                                    record_data[col_name] = value.decode('utf-16-le', errors='ignore').strip('\x00')
+                                                    decoded = value.decode('utf-16-le', errors='ignore').strip('\x00')
+                                                    
+                                                    # Validate that it's actually text (not binary garbage)
+                                                    # Check if at least 70% of characters are printable
+                                                    if decoded and len(decoded) > 0:
+                                                        printable_count = sum(1 for c in decoded if c.isprintable())
+                                                        if printable_count / len(decoded) >= 0.7:
+                                                            # Looks like valid text
+                                                            record_data[col_name] = decoded
+                                                        else:
+                                                            # Binary garbage - use hex
+                                                            record_data[col_name] = value.hex()
+                                                    else:
+                                                        # Empty after decode - use hex
+                                                        record_data[col_name] = value.hex()
                                                 except:
                                                     record_data[col_name] = value.hex()
                                             else:
@@ -726,6 +768,9 @@ class WindowsArtifactsParser(BaseParser):
                 "note": "Bitmap cache contains thumbnail/icon images"
             })
             
+            # Sanitize payload
+            payload = sanitize_for_jsonb(payload)
+            
             events.append({
                 "timestamp": event_ts,
                 "event_type": "bitmap_cache",
@@ -785,6 +830,9 @@ class WindowsArtifactsParser(BaseParser):
                     "expiry_time": expiry,
                     "source_file": file_path.name
                 })
+                
+                # Sanitize payload
+                payload = sanitize_for_jsonb(payload)
                 
                 events.append({
                     "timestamp": timestamp,

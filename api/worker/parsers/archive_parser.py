@@ -334,11 +334,27 @@ class ArchiveParser(BaseParser):
             # Get relative path for filename (preserves directory structure)
             try:
                 rel_path = item.relative_to(directory)
+                # Convert path to string, handling encoding issues
+                # Use as_posix() to get forward slashes consistently
+                path_str = rel_path.as_posix()
+                
                 # Replace path separators with double underscore to preserve structure
                 # but avoid filesystem path issues
-                filename = str(rel_path).replace('\\', '__').replace('/', '__')
+                filename = path_str.replace('/', '__')
+                
+                # Sanitize filename to handle non-ASCII characters safely
+                # Encode to UTF-8 and decode with error handling
+                try:
+                    filename = filename.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
+                except (UnicodeDecodeError, UnicodeEncodeError):
+                    # If encoding fails, fall back to safe ASCII representation
+                    filename = item.name.encode('ascii', errors='replace').decode('ascii')
             except ValueError:
-                filename = item.name
+                # If relative_to fails, use just the filename
+                try:
+                    filename = item.name.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
+                except (UnicodeDecodeError, UnicodeEncodeError):
+                    filename = item.name.encode('ascii', errors='replace').decode('ascii')
             
             # Create artifact for extracted file
             try:

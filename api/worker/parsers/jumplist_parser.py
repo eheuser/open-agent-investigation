@@ -10,7 +10,7 @@ import olefile
 import LnkParse3
 
 from .base_parser import BaseParser
-from .utils import flatten_dict
+from .utils import flatten_dict, sanitize_for_jsonb
 from app.utils.log_setup import get_logger
 
 logger = get_logger(__name__)
@@ -171,8 +171,9 @@ class JumplistParser(BaseParser):
                                 elif "string_data" in lnk_data and isinstance(lnk_data["string_data"], dict):
                                     target_path = lnk_data["string_data"].get("relative_path", "unknown")
                             
-                            # Sanitize lnk_data to make it JSON-serializable
+                            # Sanitize lnk_data to make it JSON-serializable and handle encoding issues
                             sanitized_lnk_data = _sanitize_lnk_data(lnk_data) if isinstance(lnk_data, dict) else {}
+                            sanitized_lnk_data = sanitize_for_jsonb(sanitized_lnk_data)
                             
                             payload = flatten_dict({
                                 "jumplist_type": "automatic_destinations",
@@ -263,8 +264,9 @@ class JumplistParser(BaseParser):
                                     elif "string_data" in lnk_data and isinstance(lnk_data["string_data"], dict):
                                         target_path = lnk_data["string_data"].get("relative_path", "unknown")
                                 
-                                # Sanitize lnk_data to make it JSON-serializable
+                                # Sanitize lnk_data to make it JSON-serializable and handle encoding issues
                                 sanitized_lnk_data = _sanitize_lnk_data(lnk_data) if isinstance(lnk_data, dict) else {}
+                                sanitized_lnk_data = sanitize_for_jsonb(sanitized_lnk_data)
                                 
                                 payload = flatten_dict({
                                     "jumplist_type": "custom_destinations",

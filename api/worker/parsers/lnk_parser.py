@@ -66,6 +66,10 @@ class LnkParser(BaseParser):
 
         # Convert datetime objects to timestamps
         data = _walk_data(data)
+        
+        # Sanitize data to handle encoding issues from LNK parser
+        from .utils import sanitize_for_jsonb
+        data = sanitize_for_jsonb(data)
 
         # Extract timestamp for event (try various fields)
         # Forensically valid: use timestamps from the LNK file, not current time

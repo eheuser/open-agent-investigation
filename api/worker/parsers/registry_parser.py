@@ -17,7 +17,7 @@ from regipy.plugins.ntuser.shellbags_ntuser import ShellBagNtuserPlugin
 from notatin import PyNotatinParser
 
 from .base_parser import BaseParser
-from .utils import flatten_dict, safe_json_dumps
+from .utils import flatten_dict, safe_json_dumps, sanitize_for_jsonb
 
 from app.utils.log_setup import get_logger
 from app.utils.security import sanitize_log_message
@@ -441,6 +441,9 @@ class RegistryParser(BaseParser):
 
                 # Flatten the payload to enable better JSONB queries
                 payload = flatten_dict(payload)
+                
+                # Sanitize payload to handle encoding issues
+                payload = sanitize_for_jsonb(payload)
 
                 events.append(
                     {

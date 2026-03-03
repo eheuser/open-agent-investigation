@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from evtx import PyEvtxParser  # type: ignore
 
 from .base_parser import BaseParser
-from .utils import flatten_dict
+from .utils import flatten_dict, sanitize_for_jsonb
 
 from app.utils.log_setup import get_logger
 
@@ -405,6 +405,9 @@ class EvtxParser(BaseParser):
                 # Flatten the payload (creates dotted keys like "system.Task", "event_data.LogonType")
                 # Do NOT promote event_data to root - keep the namespace clear
                 payload = flatten_dict(payload)
+                
+                # Sanitize payload to handle any encoding issues
+                payload = sanitize_for_jsonb(payload)
 
                 # Build event type from channel and event ID
                 event_type = _build_event_type(channel, event_id)
