@@ -15,6 +15,9 @@ data/investigations/
 # SSL Certificates
 certs/
 
+# LLM Configuration (contains API keys)
+.llm_config.env
+
 # node
 node_modules/*
 

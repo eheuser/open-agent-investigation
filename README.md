@@ -164,7 +164,34 @@ EMBEDDING_BATCH_SIZE=100 docker compose up -d embedding-worker
 - **Slow embedding API**: Increase `NUM_EMBEDDING_WORKERS` (more parallel jobs)
 - **Rate-limited API**: Decrease `MAX_CONCURRENT_EMBEDDING_BATCHES` (avoid hitting limits)
 
-#### Post‑deployment configuration
+#### Automated LLM Configuration (Optional)
+
+For headless deployments or automated setups, you can configure the LLM provider without using the UI:
+
+```bash
+# Copy the example configuration file
+cp .llm_config.env.example .llm_config.env
+
+# Edit with your LLM provider settings
+nano .llm_config.env
+
+# Start the system - configuration will be applied automatically
+docker compose up -d
+```
+
+The `.llm_config.env` file supports:
+- **Basic LLM settings**: Provider, API endpoint, API key, model name, context length, temperature
+- **Advanced parameters**: Top-p, top-k, min-p, timeout, concurrent calls
+- **Embedding configuration**: Embedding provider, model, reranker (for RAG/semantic search)
+
+See `.llm_config.env.example` for detailed configuration options and examples for OpenAI, Ollama, Azure, and other providers.
+
+**Security Note:** The `.llm_config.env` file contains API keys and is automatically excluded from git. Keep it secure!
+
+#### Manual UI Configuration
+
+If you prefer to configure via the UI or skip automated configuration:
+
 1. **Login** with the default credentials.
 2. **Configure LLM endpoint** - You will be automatically redirected to Settings on first login. Configure your LLM provider (API key, model name, temperature, etc.). Without this configuration, the system cannot process queries.
 3. **Create an investigation**, upload artifacts, and begin querying.

@@ -429,6 +429,8 @@ CREATE TABLE llm_provider_config (
 
 **Trigger**: `enforce_single_active_config` - Ensures only one active config per user
 
+**Automated Configuration**: LLM settings can be automatically applied from a `.llm_config.env` file on container startup. See [LLM Configuration Guide](../docs/llm-configuration.md) for details. The `api/scripts/apply_llm_config.py` script reads the file and creates/updates the admin user's active configuration.
+
 #### chat_messages
 
 Conversation history in OpenAI message format.
