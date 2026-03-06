@@ -16,13 +16,13 @@ class TestExecutionEvidenceAnalyzer:
         
         Verifies that:
         - The analyzer initializes successfully
-        - It has 4 categories configured (Prefetch, SRUM, Jump Lists, LNK Files)
+        - It has 8 categories configured (Prefetch, ShimCache, AmCache, UserAssist, PCA, BAM/DAM, Jump Lists, LNK Files)
         - Each category has required metadata fields
         """
         analyzer = ExecutionEvidenceAnalyzer()
         
         assert analyzer is not None
-        assert len(analyzer.CATEGORIES) == 4
+        assert len(analyzer.CATEGORIES) == 8
         
         # Verify all categories have required fields
         for category_key, category_info in analyzer.CATEGORIES.items():
@@ -46,7 +46,7 @@ class TestExecutionEvidenceAnalyzer:
         categories = analyzer.get_categories()
         
         assert isinstance(categories, list)
-        assert len(categories) == 4
+        assert len(categories) == 8
         
         for category in categories:
             assert "key" in category
@@ -75,22 +75,22 @@ class TestExecutionEvidenceAnalyzer:
         assert prefetch["event_type"] == "prefetch_execution"
         assert "execution time" in prefetch["timestamp_meaning"].lower()
 
-    def test_srum_category_metadata(self):
+    def test_shimcache_category_metadata(self):
         """
-        Test that SRUM category has correct metadata.
+        Test that ShimCache category has correct metadata.
         
         Verifies that:
-        - SRUM proves execution (True)
-        - SRUM does NOT prove presence (False)
-        - Event type is "srum_data"
+        - ShimCache proves execution (True)
+        - ShimCache proves presence (True)
+        - Event type is "registry_shimcache"
         """
         analyzer = ExecutionEvidenceAnalyzer()
-        srum = analyzer.CATEGORIES["srum"]
+        shimcache = analyzer.CATEGORIES["shimcache"]
         
-        assert srum["name"] == "SRUM Database"
-        assert srum["proves_execution"] is True
-        assert srum["proves_presence"] is False
-        assert srum["event_type"] == "srum_data"
+        assert shimcache["name"] == "ShimCache (AppCompatCache)"
+        assert shimcache["proves_execution"] is True
+        assert shimcache["proves_presence"] is True
+        assert shimcache["event_type"] == "registry_shimcache"
 
     def test_lnk_files_category_metadata(self):
         """
@@ -166,45 +166,45 @@ class TestExecutionEvidenceAnalyzer:
         path2 = analyzer._extract_executable_path("prefetch", payload2)
         assert path2 == "C:\\Windows\\Prefetch\\NOTEPAD.EXE-ABC123.pf"
 
-    def test_extract_executable_path_srum(self):
+    def test_extract_executable_path_amcache(self):
         """
-        Test executable path extraction from SRUM payload.
+        Test executable path extraction from AmCache payload.
         
         Verifies that:
-        - The method extracts path from "app_id" field
-        - Falls back to "application" if "app_id" is not present
+        - The method extracts path from "name" field
+        - Falls back to "lower_case_long_path" if "name" is not present
         """
         analyzer = ExecutionEvidenceAnalyzer()
         
-        # Test with app_id
-        payload1 = {"app_id": "\\Device\\HarddiskVolume2\\Windows\\System32\\svchost.exe"}
-        path1 = analyzer._extract_executable_path("srum", payload1)
-        assert path1 == "\\Device\\HarddiskVolume2\\Windows\\System32\\svchost.exe"
+        # Test with name field
+        payload1 = {"name": "c:\\windows\\system32\\notepad.exe"}
+        path1 = analyzer._extract_executable_path("amcache", payload1)
+        assert path1 == "c:\\windows\\system32\\notepad.exe"
         
-        # Test with application fallback
-        payload2 = {"application": "chrome.exe"}
-        path2 = analyzer._extract_executable_path("srum", payload2)
-        assert path2 == "chrome.exe"
+        # Test with lower_case_long_path fallback
+        payload2 = {"lower_case_long_path": "c:\\program files\\app\\app.exe"}
+        path2 = analyzer._extract_executable_path("amcache", payload2)
+        assert path2 == "c:\\program files\\app\\app.exe"
 
     def test_extract_executable_path_lnk(self):
         """
         Test executable path extraction from LNK file payload.
         
         Verifies that:
-        - The method extracts path from "target_path" field
-        - Falls back to "local_path" if "target_path" is not present
+        - The method extracts path from "link_info.local_base_path" field
+        - Falls back to "data.relative_path" if "link_info.local_base_path" is not present
         """
         analyzer = ExecutionEvidenceAnalyzer()
         
-        # Test with target_path
-        payload1 = {"target_path": "C:\\Program Files\\App\\app.exe"}
+        # Test with link_info.local_base_path
+        payload1 = {"link_info.local_base_path": "C:\\Program Files\\App\\app.exe"}
         path1 = analyzer._extract_executable_path("lnk_files", payload1)
         assert path1 == "C:\\Program Files\\App\\app.exe"
         
-        # Test with local_path fallback
-        payload2 = {"local_path": "C:\\Users\\test\\Desktop\\shortcut.lnk"}
+        # Test with data.relative_path fallback
+        payload2 = {"data.relative_path": "..\\..\\Desktop\\shortcut.lnk"}
         path2 = analyzer._extract_executable_path("lnk_files", payload2)
-        assert path2 == "C:\\Users\\test\\Desktop\\shortcut.lnk"
+        assert path2 == "..\\..\\Desktop\\shortcut.lnk"
 
     def test_extract_executable_path_returns_none_when_missing(self):
         """
@@ -227,96 +227,82 @@ class TestExecutionEvidenceAnalyzer:
         Test extraction of additional data from Prefetch payload.
         
         Verifies that:
-        - run_count is extracted
         - file_size is extracted
-        - hash is extracted
-        - execution_times array is extracted and split into last_run and previous_runs
+        - last_execution_time is extracted
+        - original_path is extracted
         """
         analyzer = ExecutionEvidenceAnalyzer()
         
         payload = {
-            "run_count": 42,
             "file_size": 12345,
-            "hash": "ABC123DEF456",
-            "execution_times": [
-                "2024-01-15T10:00:00Z",
-                "2024-01-14T09:00:00Z",
-                "2024-01-13T08:00:00Z"
-            ]
+            "last_execution_time": "2024-01-15T10:00:00Z",
+            "original_path": "C:\\Windows\\Prefetch\\NOTEPAD.EXE-ABC123.pf"
         }
         
         additional = analyzer._extract_additional_data("prefetch", payload)
         
-        assert additional["run_count"] == 42
         assert additional["file_size"] == 12345
-        assert additional["hash"] == "ABC123DEF456"
-        assert additional["execution_times"] == payload["execution_times"]
-        assert additional["last_run_time"] == "2024-01-15T10:00:00Z"
-        assert len(additional["previous_run_times"]) == 2
-        assert additional["previous_run_times"][0] == "2024-01-14T09:00:00Z"
+        assert additional["last_execution_time"] == "2024-01-15T10:00:00Z"
+        assert additional["original_path"] == "C:\\Windows\\Prefetch\\NOTEPAD.EXE-ABC123.pf"
 
-    def test_extract_additional_data_srum(self):
+    def test_extract_additional_data_amcache(self):
         """
-        Test extraction of additional data from SRUM payload.
+        Test extraction of additional data from AmCache payload.
         
         Verifies that:
-        - bytes_sent is extracted
-        - bytes_received is extracted
-        - network interface is extracted
-        - user_sid is extracted
+        - sha1 is extracted
+        - file_size is extracted
+        - publisher is extracted
+        - version is extracted
         """
         analyzer = ExecutionEvidenceAnalyzer()
         
         payload = {
-            "bytes_sent": 1024000,
-            "bytes_received": 2048000,
-            "interface_luid": "0x123456",
-            "user_sid": "S-1-5-21-123456789-123456789-123456789-1001"
+            "sha1": "abc123def456",
+            "size": 1024000,
+            "publisher": "Microsoft Corporation",
+            "version": "10.0.19041.1"
         }
         
-        additional = analyzer._extract_additional_data("srum", payload)
+        additional = analyzer._extract_additional_data("amcache", payload)
         
-        assert additional["bytes_sent"] == 1024000
-        assert additional["bytes_received"] == 2048000
-        assert additional["network_interface"] == "0x123456"
-        assert additional["user_sid"] == "S-1-5-21-123456789-123456789-123456789-1001"
+        assert additional["sha1"] == "abc123def456"
+        assert additional["file_size"] == 1024000
+        assert additional["publisher"] == "Microsoft Corporation"
+        assert additional["version"] == "10.0.19041.1"
 
     def test_extract_additional_data_lnk(self):
         """
         Test extraction of additional data from LNK file payload.
         
         Verifies that:
-        - File timestamps are extracted
-        - File attributes are extracted
-        - Working directory is extracted
-        - Command line arguments are extracted
-        - Drive information is extracted
+        - File timestamps are extracted from header fields
+        - Working directory is extracted from data fields
+        - Drive information is extracted from link_info fields
         """
         analyzer = ExecutionEvidenceAnalyzer()
         
         payload = {
-            "file_size": 4096,
-            "file_attributes": 32,
-            "creation_time": "2024-01-01T00:00:00Z",
-            "access_time": "2024-01-15T10:00:00Z",
-            "write_time": "2024-01-10T15:30:00Z",
-            "working_directory": "C:\\Users\\test\\Documents",
-            "command_line_arguments": "--verbose --debug",
-            "drive_type": "FIXED",
-            "volume_serial_number": "12345678"
+            "header.file_size": 4096,
+            "header.creation_time": "2024-01-01T00:00:00Z",
+            "header.accessed_time": "2024-01-15T10:00:00Z",
+            "header.modified_time": "2024-01-10T15:30:00Z",
+            "data.working_directory": "C:\\Users\\test\\Documents",
+            "data.relative_path": "..\\..\\Desktop\\file.txt",
+            "link_info.location_info.drive_type": "FIXED",
+            "link_info.location_info.drive_serial_number": "12345678"
         }
         
         additional = analyzer._extract_additional_data("lnk_files", payload)
         
         assert additional["file_size"] == 4096
-        assert additional["file_attributes"] == 32
         assert additional["creation_time"] == "2024-01-01T00:00:00Z"
-        assert additional["access_time"] == "2024-01-15T10:00:00Z"
-        assert additional["write_time"] == "2024-01-10T15:30:00Z"
+        assert additional["accessed_time"] == "2024-01-15T10:00:00Z"
+        assert additional["modified_time"] == "2024-01-10T15:30:00Z"
         assert additional["working_directory"] == "C:\\Users\\test\\Documents"
-        assert additional["command_line_args"] == "--verbose --debug"
+        assert additional["relative_path"] == "..\\..\\Desktop\\file.txt"
         assert additional["drive_type"] == "FIXED"
-        assert additional["volume_serial"] == "12345678"
+        assert additional["drive_serial"] == "12345678"
 
     def test_extract_additional_data_filters_none_values(self):
         """
@@ -329,16 +315,16 @@ class TestExecutionEvidenceAnalyzer:
         analyzer = ExecutionEvidenceAnalyzer()
         
         payload = {
-            "run_count": 5,
-            "file_size": None,
-            "hash": None
+            "file_size": 12345,
+            "last_execution_time": None,
+            "original_path": None
         }
         
         additional = analyzer._extract_additional_data("prefetch", payload)
         
-        assert "run_count" in additional
-        assert "file_size" not in additional
-        assert "hash" not in additional
+        assert "file_size" in additional
+        assert "last_execution_time" not in additional
+        assert "original_path" not in additional
 
     @pytest.mark.asyncio
     async def test_analyze_with_no_categories_analyzes_all(self):
@@ -346,7 +332,7 @@ class TestExecutionEvidenceAnalyzer:
         Test that analyze() queries all categories when no specific categories are provided.
         
         Verifies that:
-        - All 4 categories are analyzed when categories parameter is None
+        - All 8 categories are analyzed when categories parameter is None
         - The method calls _query_category for each category
         """
         analyzer = ExecutionEvidenceAnalyzer()
@@ -358,8 +344,8 @@ class TestExecutionEvidenceAnalyzer:
                 with patch.object(analyzer, '_cache_results', new=AsyncMock()):
                     await analyzer.analyze(db_mock, investigation_id, categories=None, use_cache=False)
                     
-                    # Should call _query_category 4 times (once per category)
-                    assert mock_query.call_count == 4
+                    # Should call _query_category 8 times (once per category)
+                    assert mock_query.call_count == 8
 
     @pytest.mark.asyncio
     async def test_analyze_with_specific_categories(self):
@@ -380,12 +366,12 @@ class TestExecutionEvidenceAnalyzer:
                     await analyzer.analyze(
                         db_mock, 
                         investigation_id, 
-                        categories=["prefetch", "srum"], 
+                        categories=["prefetch"], 
                         use_cache=False
                     )
                     
-                    # Should call _query_category 2 times (only for prefetch and srum)
-                    assert mock_query.call_count == 2
+                    # Should call _query_category 1 time (only for prefetch)
+                    assert mock_query.call_count == 1
 
     @pytest.mark.asyncio
     async def test_analyze_returns_cached_results_when_available(self):
@@ -435,9 +421,8 @@ class TestExecutionEvidenceAnalyzer:
         category_info = analyzer.CATEGORIES["prefetch"]
         payload = {
             "executable_name": "NOTEPAD.EXE",
-            "run_count": 10,
             "file_size": 12345,
-            "hash": "ABC123"
+            "last_execution_time": "2024-01-15T10:00:00Z"
         }
         
         entry = analyzer._create_entry(
@@ -457,7 +442,7 @@ class TestExecutionEvidenceAnalyzer:
         assert entry.artifact_sequence_id == 42
         assert entry.proves_execution is True
         assert entry.proves_presence is True
-        assert entry.additional_data["run_count"] == 10
+        assert entry.additional_data["file_size"] == 12345
 
     @pytest.mark.asyncio
     async def test_create_entry_returns_none_when_no_executable_path(self):

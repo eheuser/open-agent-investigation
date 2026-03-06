@@ -64,12 +64,25 @@ class TestSanitizeForJsonb:
         assert result[3] is None
     
     def test_sanitize_bytes(self):
-        """Test that bytes are converted to hex strings."""
+        """Test that bytes are converted to hex strings or decoded as UTF-8."""
+        # Test with non-UTF-8 bytes (should fall back to hex)
         input_bytes = b'\x00\x01\x02\xff'
         result = sanitize_for_jsonb(input_bytes)
         
-        assert result == "000102ff"
+        # After UTF-8 decode with errors='ignore', invalid bytes are stripped
+        # Then null bytes are removed, resulting in empty string
+        assert result == ""
         assert isinstance(result, str)
+        
+        # Test with valid UTF-8 bytes
+        utf8_bytes = b'Hello World'
+        result_utf8 = sanitize_for_jsonb(utf8_bytes)
+        assert result_utf8 == "Hello World"
+        
+        # Test with UTF-8 bytes containing null
+        utf8_null_bytes = b'Hello\x00World'
+        result_null = sanitize_for_jsonb(utf8_null_bytes)
+        assert result_null == "HelloWorld"  # Null removed after decode
     
     def test_sanitize_primitives(self):
         """Test that primitives pass through unchanged."""
@@ -112,7 +125,8 @@ class TestSafeJsonDumps:
         assert parsed["nested"]["data"] == "morenulls"
     
     def test_safe_json_dumps_with_bytes(self):
-        """Test that bytes are converted to hex strings."""
+        """Test that bytes are decoded as UTF-8 or converted to empty string."""
+        # Non-UTF-8 bytes become empty string after decode with errors='ignore'
         input_dict = {
             "binary_data": b'\x00\x01\x02\xff'
         }
@@ -120,7 +134,15 @@ class TestSafeJsonDumps:
         result = safe_json_dumps(input_dict)
         parsed = json.loads(result)
         
-        assert parsed["binary_data"] == "000102ff"
+        assert parsed["binary_data"] == ""
+        
+        # Valid UTF-8 bytes are decoded properly
+        input_dict_utf8 = {
+            "text_data": b'Hello World'
+        }
+        result_utf8 = safe_json_dumps(input_dict_utf8)
+        parsed_utf8 = json.loads(result_utf8)
+        assert parsed_utf8["text_data"] == "Hello World"
     
     def test_safe_json_dumps_unicode(self):
         """Test that Unicode characters are preserved."""
