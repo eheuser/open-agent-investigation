@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
@@ -452,18 +453,26 @@ class LLMService:
             payload["tools"] = tools
             if tool_choice is not None:
                 payload["tool_choice"] = tool_choice
+        elif tool_choice == "none":
+            # Some models don't support tool_choice="none" when no tools are provided
+            # Just omit it entirely to avoid 400 errors
+            pass
 
         # Prepare authentication
         headers, cookies = prepare_llm_auth(self.config.api_key)
 
-        # Retry loop
+        # Retry loop - create fresh payload copy for each attempt
         last_error = None
         for attempt in range(self.max_retries):
+            # Make a fresh copy of the payload for this attempt
+            # This ensures modifications during retries don't persist to next iteration
+            current_payload = copy.deepcopy(payload)
+            
             try:
                 async with aiohttp.ClientSession(cookies=cookies) as session:
                     async with session.post(
                         self.config.api_endpoint,
-                        json=payload,
+                        json=current_payload,
                         headers=headers,
                         timeout=aiohttp.ClientTimeout(total=self.config.timeout),
                     ) as response:
@@ -482,12 +491,27 @@ class LLMService:
 
             except Exception as e:
                 last_error = e
+                error_str = str(e)
+                
+                # Check if this is a 400 error related to tool_choice
+                is_tool_choice_error = (
+                    "400" in error_str and 
+                    ("bad request" in error_str.lower() or "tool" in error_str.lower())
+                )
+                
                 logger.error(
                     f"LLM call failed (attempt {attempt + 1}/{self.max_retries}): {e}",
                     exc_info=True,
                 )
 
                 if attempt < self.max_retries - 1:
+                    # If it's a tool_choice error, remove tools for NEXT retry attempt only
+                    if is_tool_choice_error and "tools" in payload:
+                        logger.info("Detected tool_choice incompatibility, retrying without tools")
+                        # Remove tools from the base payload so next iteration's copy won't have them
+                        payload.pop("tools", None)
+                        payload.pop("tool_choice", None)
+                    
                     wait_time = self.retry_backoff_base ** (attempt + 1)
                     logger.info(f"Retrying in {wait_time}s...")
                     await asyncio.sleep(wait_time)
@@ -562,18 +586,26 @@ class LLMService:
             payload["tools"] = tools
             if tool_choice is not None:
                 payload["tool_choice"] = tool_choice
+        elif tool_choice == "none":
+            # Some models don't support tool_choice="none" when no tools are provided
+            # Just omit it entirely to avoid 400 errors
+            pass
 
         # Prepare authentication
         headers, cookies = prepare_llm_auth(self.config.api_key)
 
-        # Retry loop
+        # Retry loop - create fresh payload copy for each attempt
         last_error = None
         for attempt in range(self.max_retries):
+            # Make a fresh copy of the payload for this attempt
+            # This ensures modifications during retries don't persist to next iteration
+            current_payload = copy.deepcopy(payload)
+            
             try:
                 async with aiohttp.ClientSession(cookies=cookies) as session:
                     async with session.post(
                         self.config.api_endpoint,
-                        json=payload,
+                        json=current_payload,
                         headers=headers,
                         timeout=aiohttp.ClientTimeout(total=self.config.timeout),
                     ) as response:
@@ -609,12 +641,27 @@ class LLMService:
 
             except Exception as e:
                 last_error = e
+                error_str = str(e)
+                
+                # Check if this is a 400 error related to tool_choice
+                is_tool_choice_error = (
+                    "400" in error_str and 
+                    ("bad request" in error_str.lower() or "tool" in error_str.lower())
+                )
+                
                 logger.error(
                     f"LLM stream failed (attempt {attempt + 1}/{self.max_retries}): {e}",
                     exc_info=True,
                 )
 
                 if attempt < self.max_retries - 1:
+                    # If it's a tool_choice error, remove tools for NEXT retry attempt only
+                    if is_tool_choice_error and "tools" in payload:
+                        logger.info("Detected tool_choice incompatibility, retrying without tools")
+                        # Remove tools from the base payload so next iteration's copy won't have them
+                        payload.pop("tools", None)
+                        payload.pop("tool_choice", None)
+                    
                     wait_time = self.retry_backoff_base ** (attempt + 1)
                     logger.info(f"Retrying stream in {wait_time}s...")
                     await asyncio.sleep(wait_time)

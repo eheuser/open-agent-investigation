@@ -573,6 +573,26 @@ async def process_agent_job(
                 summary_parts.append(update["summary"])
                 investigation_incomplete = update.get("incomplete", False)
                 agent_stats = update.get("stats", {})
+            
+            # Send timeline_entry_added message when agent registers NEW timeline entries
+            if update.get("type") == "tool_result" and update.get("success"):
+                tool_name = update.get("tool", "")
+                result = update.get("result", {})
+                
+                # Check if this is a timeline registration tool
+                if tool_name in ("register_timeline_entry", "register_finding"):
+                    result_data = result.get("result", {})
+                    # Only send notification if entry was actually created (not a duplicate)
+                    if result_data.get("entry_id") and not result_data.get("is_duplicate", False):
+                        await notify_websocket_clients(
+                            investigation_id=investigation_id,
+                            message={
+                                "type": "timeline_entry_added",
+                                "entry_id": result_data["entry_id"],
+                                "title": result_data.get("title", ""),
+                                "entry_type": result_data.get("entry_type", "event"),
+                            },
+                        )
 
         # Check if agent had an error
         if agent_error:

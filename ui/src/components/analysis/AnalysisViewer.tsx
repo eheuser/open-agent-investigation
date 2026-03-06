@@ -3,11 +3,13 @@ import AutorunsViewer from './AutorunsViewer';
 import ExecutionEvidenceViewer from './ExecutionEvidenceViewer';
 import BrowsedURLsViewer from './BrowsedURLsViewer';
 import LogonsViewer from './LogonsViewer';
+import UserActivityViewer from './UserActivityViewer';
 import {
   RocketLaunchIcon,
   PlayCircleIcon,
   GlobeAltIcon,
   UserCircleIcon,
+  UserIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 
@@ -15,7 +17,7 @@ interface Props {
   investigationId: string;
 }
 
-type AnalysisModule = 'autoruns' | 'execution_evidence' | 'browsed_urls' | 'logons' | null;
+type AnalysisModule = 'autoruns' | 'execution_evidence' | 'browsed_urls' | 'logons' | 'user_activity' | null;
 
 const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
   const [selectedModule, setSelectedModule] = useState<AnalysisModule>('autoruns');
@@ -35,6 +37,13 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
       description: 'Windows execution artifacts (ShimCache, AmCache, Prefetch, SRUM, etc.)',
       icon: PlayCircleIcon,
       color: 'purple',
+    },
+    {
+      id: 'user_activity' as const,
+      name: 'User Activity',
+      description: 'Windows user activity (ShellBags, RecentDocs, OpenSaveMRU, TypedPaths, etc.)',
+      icon: UserIcon,
+      color: 'cyan',
     },
     {
       id: 'browsed_urls' as const,
@@ -124,6 +133,9 @@ const AnalysisViewer: React.FC<Props> = ({ investigationId }) => {
         )}
         {selectedModule === 'execution_evidence' && (
           <ExecutionEvidenceViewer investigationId={investigationId} />
+        )}
+        {selectedModule === 'user_activity' && (
+          <UserActivityViewer investigationId={investigationId} />
         )}
         {selectedModule === 'browsed_urls' && (
           <BrowsedURLsViewer investigationId={investigationId} />

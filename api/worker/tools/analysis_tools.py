@@ -7,6 +7,7 @@ from app.analysis.autoruns import AutorunsAnalyzer
 from app.analysis.execution_evidence import ExecutionEvidenceAnalyzer
 from app.analysis.browsed_urls import BrowsedURLsAnalyzer
 from app.analysis.logons import LogonsAnalyzer
+from app.analysis.user_activity import UserActivityAnalyzer
 from app.utils.log_setup import get_logger
 from app.utils.security import sanitize_log_message
 
@@ -43,6 +44,13 @@ ANALYSIS_MODULES = {
         "filter_param": None,  # Multiple filter types
         "get_filters": None,  # Dynamic filters
     },
+    "user_activity": {
+        "name": "User Activity",
+        "description": "Windows user activity artifacts (ShellBags, RecentDocs, OpenSaveMRU, TypedPaths, RunMRU, WordWheelQuery)",
+        "analyzer_class": UserActivityAnalyzer,
+        "filter_param": "categories",
+        "get_filters": lambda a: [cat["key"] for cat in a.get_categories()],
+    },
 }
 
 
@@ -63,6 +71,7 @@ async def query_analysis_module(
     - **execution_evidence**: Program execution artifacts (ShimCache, AmCache, Prefetch, SRUM, UserAssist, BAM/DAM)
     - **browsed_urls**: Browser history from Chrome, Firefox, and Edge
     - **logons**: Logon, logoff, and failed logon events from Windows Event Logs
+    - **user_activity**: Windows user activity artifacts (ShellBags, RecentDocs, OpenSaveMRU, TypedPaths, RunMRU, WordWheelQuery)
     
     Use this tool to explore processed forensic data instead of querying raw events directly.
     Results are paginated (max 50 per page) to keep responses focused.
@@ -78,6 +87,7 @@ async def query_analysis_module(
     - **execution_evidence**: categories (e.g., ["shimcache", "prefetch", "amcache"])
     - **browsed_urls**: browsers (e.g., ["chrome_chromium", "firefox", "edge"])
     - **logons**: logon_types (e.g., ["Interactive", "RemoteInteractive"]), source_ips, usernames
+    - **user_activity**: categories (e.g., ["shellbags", "recentdocs", "opensavemru", "typedpaths", "runmru", "wordwheelquery"])
     
     Args:
         db: Database session
@@ -169,7 +179,7 @@ async def query_analysis_module(
                     analyze_kwargs["browsers"] = filters["browsers"]
                     applied_filters["browsers"] = filters["browsers"]
             else:
-                # Autoruns and Execution Evidence use "categories" parameter
+                # Autoruns, Execution Evidence, and User Activity use "categories" parameter
                 if "categories" in filters:
                     analyze_kwargs["categories"] = filters["categories"]
                     applied_filters["categories"] = filters["categories"]
@@ -217,6 +227,10 @@ async def query_analysis_module(
                 # Count by event action
                 action = entry.event_action
                 summary[f"action_{action}"] = summary.get(f"action_{action}", 0) + 1
+        elif module_id == "user_activity":
+            for entry in entries:
+                category = entry.category
+                summary[category] = summary.get(category, 0) + 1
         
         result = {
             "status": "ok",
@@ -243,10 +257,7 @@ async def query_analysis_module(
         
     except Exception as e:
         logger.error(f"Analysis module query failed for {sanitize_log_message(module_id)}: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {
             "status": "error",
             "error_msg": f"Analysis module query failed: {sanitize_log_message(str(e))}",
@@ -306,6 +317,9 @@ async def list_analysis_modules(
                 # Logons has static logon types
                 filter_cats = analyzer.get_filter_categories()
                 available_filters = [lt["key"] for lt in filter_cats.get("logon_types", [])]
+            elif module_id == "user_activity":
+                # User Activity has categories
+                available_filters = [cat["key"] for cat in analyzer.get_categories()]
             elif module_info["get_filters"]:
                 available_filters = module_info["get_filters"](analyzer)
             
@@ -324,10 +338,7 @@ async def list_analysis_modules(
         
     except Exception as e:
         logger.error(f"Failed to list analysis modules: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {
             "status": "error",
             "error_msg": f"Failed to list analysis modules: {sanitize_log_message(str(e))}",

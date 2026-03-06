@@ -10,14 +10,19 @@ playbook: |
   
   ### Key Indicators to Investigate:
   
-  1. **Ransomware Execution (Event ID 4688, Sysmon 1, 11)**
-     - Mass file encryption
-     - Indicators:
-       - Sysmon 11: Rapid file creation (encrypted copies)
-       - File extensions: .encrypted, .locked, .crypt, .enc
-       - Ransom notes: README.txt, HOW_TO_DECRYPT.html
-     - Fields: event_data.TargetFilename, event_data.NewProcessName
-     - Query: `search_events_by_content` for ransom extensions
+  1. **Ransomware Execution Detection**
+     - **PRIORITY**: Use execution artifacts to identify ransomware:
+       - **Prefetch** (event_type='prefetch_execution'): Search for unusual executable patterns
+       - **AmCache** (event_type='registry_amcache'): Get SHA-1 hashes for threat intel lookup
+       - **ShimCache** (event_type='registry_shimcache'): Detect ransomware presence even if deleted
+     - **Process Creation** (event_type='evtx_sysmon_1'):
+       - Fields: event_data.Image, event_data.CommandLine, event_data.Hashes
+       - Look for: Unusual process names, execution from Temp/AppData
+     - **File Creation** (event_type='evtx_sysmon_11'):
+       - Rapid file creation (encrypted copies)
+       - Look for encrypted file extensions and ransom notes
+       - Fields: event_data.TargetFilename, event_data.Image
+       - Query: `search_events_by_content` for encryption patterns
      - Patterns:
        - Single process modifying hundreds/thousands of files
        - Original files deleted, encrypted copies created

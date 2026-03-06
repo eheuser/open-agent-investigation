@@ -13,6 +13,7 @@ from ..analysis.autoruns import AutorunsAnalyzer
 from ..analysis.execution_evidence import ExecutionEvidenceAnalyzer
 from ..analysis.browsed_urls import BrowsedURLsAnalyzer
 from ..analysis.logons import LogonsAnalyzer
+from ..analysis.user_activity import UserActivityAnalyzer
 from app.utils.log_setup import get_logger
 
 logger = get_logger(__name__)
@@ -669,6 +670,113 @@ async def analyze_logons(
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
+@router.get("/user-activity/categories")
+async def list_user_activity_categories(
+    user: User = Depends(get_current_user),
+):
+    """
+    List available User Activity analysis categories.
+
+    Returns:
+        List of category dictionaries with metadata
+    """
+    analyzer = UserActivityAnalyzer()
+    categories = analyzer.get_categories()
+    return {"categories": categories, "total": len(categories)}
+
+
+@router.get("/user-activity/{investigation_id}")
+async def analyze_user_activity(
+    investigation_id: UUID,
+    categories: Optional[List[str]] = Query(None, description="Specific categories to analyze"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Analyze Windows user activity artifacts for an investigation.
+
+    This endpoint queries user activity artifacts like ShellBags, RecentDocs,
+    OpenSaveMRU, TypedPaths, RunMRU, and WordWheelQuery.
+
+    Args:
+        investigation_id: UUID of the investigation to analyze
+        categories: Optional list of category keys to analyze (e.g., ["shellbags", "recentdocs"])
+                   If not provided, all categories are analyzed.
+        db: Database session (injected)
+        user: Current user (injected)
+
+    Returns:
+        Dictionary containing:
+            - entries: List of user activity entries found
+            - total: Total number of entries
+            - categories_analyzed: List of category names that were analyzed
+            - summary: Summary statistics by category
+
+    Raises:
+        HTTPException 403: If user doesn't have access to the investigation
+        HTTPException 500: If analysis fails
+    """
+    # Check access
+    await check_investigation_access(db, investigation_id, user)
+
+    try:
+        # Check if parsing is still in progress
+        parsing_status = await check_parsing_status(db, investigation_id)
+        
+        if parsing_status["has_pending_jobs"]:
+            # Wait for parsing to complete (up to 30 seconds)
+            logger.debug(
+                f"Parsing in progress for investigation {investigation_id}: "
+                f"{parsing_status['pending_count']} pending, {parsing_status['running_count']} running. "
+                f"Waiting for completion..."
+            )
+            
+            completed = await wait_for_parsing_completion(db, investigation_id, max_wait_seconds=30)
+            
+            if not completed:
+                # Return partial results with a warning
+                logger.warning(
+                    f"Analysis started before parsing completed for investigation {investigation_id}. "
+                    f"Results may be incomplete."
+                )
+        
+        # Initialize analyzer
+        analyzer = UserActivityAnalyzer()
+
+        # Run analysis
+        entries = await analyzer.analyze(
+            db=db, investigation_id=investigation_id, categories=categories
+        )
+
+        # Convert entries to dicts
+        entries_data = [entry.to_dict() for entry in entries]
+
+        # Generate summary statistics by category
+        summary: Dict[str, int] = {}
+        for entry in entries:
+            category = entry.category
+            summary[category] = summary.get(category, 0) + 1
+
+        # Get list of analyzed categories
+        if categories:
+            categories_analyzed = categories
+        else:
+            categories_analyzed = [cat["key"] for cat in analyzer.get_categories()]
+
+        return {
+            "entries": entries_data,
+            "total": len(entries_data),
+            "categories_analyzed": categories_analyzed,
+            "summary": summary,
+        }
+
+    except Exception as e:
+        import logging
+
+        logging.error(f"User activity analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
 @router.get("/modules")
 async def list_analysis_modules(
     user: User = Depends(get_current_user),
@@ -707,6 +815,13 @@ async def list_analysis_modules(
             "description": "Logon, logoff, and failed logon event analysis",
             "icon": "user-circle",
             "categories": 3,  # Three filter categories: logon types, source IPs, logon IDs
+        },
+        {
+            "id": "user_activity",
+            "name": "User Activity",
+            "description": "Windows user activity analysis (ShellBags, RecentDocs, OpenSaveMRU, TypedPaths, etc.)",
+            "icon": "user",
+            "categories": len(UserActivityAnalyzer().get_categories()),
         },
     ]
 

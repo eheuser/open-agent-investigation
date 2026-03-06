@@ -175,13 +175,18 @@ class JumplistParser(BaseParser):
                             sanitized_lnk_data = _sanitize_lnk_data(lnk_data) if isinstance(lnk_data, dict) else {}
                             sanitized_lnk_data = sanitize_for_jsonb(sanitized_lnk_data)
                             
+                            # Restore original path from sanitized filename
+                            # Archive parser replaces / with __ to preserve directory structure
+                            original_path = str(file_path.name).replace('__', '\\')
+                            
                             payload = flatten_dict({
                                 "jumplist_type": "automatic_destinations",
                                 "app_id": app_id,
                                 "stream_name": stream_name,
                                 "target_path": target_path,
                                 "lnk_data": sanitized_lnk_data,
-                                "file_path": str(file_path.name)
+                                "file_path": str(file_path.name),  # Sanitized filename on disk
+                                "original_path": original_path  # Reconstructed original path
                             })
                             
                             events.append({
@@ -268,6 +273,10 @@ class JumplistParser(BaseParser):
                                 sanitized_lnk_data = _sanitize_lnk_data(lnk_data) if isinstance(lnk_data, dict) else {}
                                 sanitized_lnk_data = sanitize_for_jsonb(sanitized_lnk_data)
                                 
+                                # Restore original path from sanitized filename
+                                # Archive parser replaces / with __ to preserve directory structure
+                                original_path = str(file_path.name).replace('__', '\\')
+                                
                                 payload = flatten_dict({
                                     "jumplist_type": "custom_destinations",
                                     "app_id": app_id,
@@ -275,7 +284,8 @@ class JumplistParser(BaseParser):
                                     "offset": offset,
                                     "target_path": target_path,
                                     "lnk_data": sanitized_lnk_data,
-                                    "file_path": str(file_path.name)
+                                    "file_path": str(file_path.name),  # Sanitized filename on disk
+                                    "original_path": original_path  # Reconstructed original path
                                 })
                                 
                                 events.append({

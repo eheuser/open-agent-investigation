@@ -245,8 +245,13 @@ async def parse_artifact(
                         "registry_userassist",
                         "registry_bam",
                         "registry_shellbags_ntuser",
-                        "registry_shimcache"
-
+                        "registry_shimcache",
+                        "registry_recentdocs",
+                        "registry_opensavemru",
+                        "registry_lastvisitedmru",
+                        "registry_typedpaths",
+                        "registry_runmru",
+                        "registry_wordwheelquery",
                     ):
                         is_interesting = True
                         

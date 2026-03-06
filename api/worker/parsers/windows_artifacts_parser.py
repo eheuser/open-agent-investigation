@@ -304,12 +304,17 @@ class WindowsArtifactsParser(BaseParser):
                 
                 event_ts = datetime.fromtimestamp(last_download_time, tz=timezone.utc)
                 
+                # Restore original path from sanitized filename
+                # Archive parser replaces / with __ to preserve directory structure
+                original_path = str(file_path.name).replace('__', '\\')
+                
                 payload = flatten_dict({
                     "artifact_type": "cryptnet_url_cache",
                     "url": url,
                     "last_download_time": last_download_time,
                     "last_modification_time": last_modification_time_header,
-                    "file_path": str(file_path.name)
+                    "file_path": str(file_path.name),  # Sanitized filename on disk
+                    "original_path": original_path  # Reconstructed original path
                 })
                 
                 # Sanitize payload
@@ -334,13 +339,50 @@ class WindowsArtifactsParser(BaseParser):
             with open(file_path, "rb") as f:
                 data = f.read()
             
-            event_ts = datetime.fromtimestamp(file_path.stat().st_mtime)
+            event_ts = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
+            
+            # Try to extract executable path from PCA filename
+            # PCA files are typically named like: PROGRAM.EXE-GUID.pca
+            executable_name = None
+            if file_path.name.lower().endswith('.pca'):
+                # Extract program name from filename (before the first dash)
+                parts = file_path.stem.split('-')
+                if parts:
+                    executable_name = parts[0]
+            
+            # Try to extract strings from the binary data to find executable paths
+            # PCA files contain .NET serialized data with embedded strings
+            executable_path = None
+            try:
+                # Look for common executable path patterns in the data
+                text = data.decode('utf-16-le', errors='ignore')
+                # Remove null bytes
+                text = text.replace('\x00', '')
+                
+                # Search for common path patterns
+                import re
+                # Match paths like C:\Program Files\...\.exe or C:\Users\...\program.exe
+                path_pattern = r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]+\.exe'
+                matches = re.findall(path_pattern, text, re.IGNORECASE)
+                
+                if matches:
+                    # Use the first match as the executable path
+                    executable_path = matches[0]
+                elif executable_name:
+                    # Fall back to just the executable name from filename
+                    executable_path = executable_name
+            except Exception:
+                # If string extraction fails, use filename-based name
+                if executable_name:
+                    executable_path = executable_name
             
             payload = flatten_dict({
                 "artifact_type": "pca_launch",
                 "file_name": file_path.name,
                 "file_size": len(data),
-                "file_path": str(file_path)
+                "file_path": str(file_path),
+                "executable_name": executable_name,
+                "executable_path": executable_path,  # Add this field for analyzer
             })
             
             # Sanitize payload

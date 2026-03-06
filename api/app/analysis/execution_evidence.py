@@ -75,13 +75,45 @@ class ExecutionEvidenceAnalyzer:
             "proves_presence": True,
             "event_type": "prefetch_execution",
         },
-        "srum": {
-            "name": "SRUM Database",
-            "description": "System Resource Usage Monitor - Tracks application resource usage, network activity, and execution metrics",
-            "timestamp_meaning": "Time when application was actively using resources",
+        "shimcache": {
+            "name": "ShimCache (AppCompatCache)",
+            "description": "Application Compatibility Cache - Tracks executables run on the system for compatibility purposes",
+            "timestamp_meaning": "Last modification time of the executable file",
             "proves_execution": True,
-            "proves_presence": False,
-            "event_type": "srum_data",
+            "proves_presence": True,
+            "event_type": "registry_shimcache",
+        },
+        "amcache": {
+            "name": "AmCache",
+            "description": "AmCache.hve registry hive - Records application execution, installation, and file metadata",
+            "timestamp_meaning": "First execution time or file modification time",
+            "proves_execution": True,
+            "proves_presence": True,
+            "event_type": "registry_amcache",
+        },
+        "userassist": {
+            "name": "UserAssist",
+            "description": "UserAssist registry keys - Tracks GUI-based program execution via Windows Explorer",
+            "timestamp_meaning": "Last execution time",
+            "proves_execution": True,
+            "proves_presence": True,
+            "event_type": "registry_userassist",
+        },
+        "pca_execution": {
+            "name": "Program Compatibility Assistant",
+            "description": "PCA launch events - Created when programs are executed and compatibility issues are detected",
+            "timestamp_meaning": "Program execution time",
+            "proves_execution": True,
+            "proves_presence": True,
+            "event_type": "pca_execution",
+        },
+        "bam_dam": {
+            "name": "BAM/DAM",
+            "description": "Background Activity Moderator / Desktop Activity Moderator - Windows 10+ execution tracking",
+            "timestamp_meaning": "Last execution time",
+            "proves_execution": True,
+            "proves_presence": True,
+            "event_type": "registry_bam",
         },
         "jump_lists": {
             "name": "Jump Lists",
@@ -278,41 +310,43 @@ class ExecutionEvidenceAnalyzer:
 
     def _extract_executable_path(self, category_key: str, payload: Dict[str, Any]) -> Optional[str]:
         """Extract executable path from payload based on category."""
-        # Category-specific extraction (check first for best accuracy)
-        if category_key == "srum":
-            # SRUM stores executable in data.IdBlob field (flattened)
-            path = payload.get("data.IdBlob") or payload.get("app_id") or payload.get("application")
-            if path and isinstance(path, str) and len(path) > 0:
-                return path
+        # Category-specific extraction based on actual field structures from diagnostic output
+        if category_key == "prefetch":
+            # Prefetch: executable_name, file_path, original_path
+            return payload.get("executable_name") or payload.get("file_path")
         elif category_key == "shimcache":
+            # ShimCache: path field (from regipy plugin)
             return payload.get("path") or payload.get("file_path")
         elif category_key == "amcache":
-            return payload.get("file_path") or payload.get("full_path")
-        elif category_key == "prefetch":
-            return payload.get("executable_name") or payload.get("file_path")
+            # AmCache: name field is primary, lower_case_long_path is secondary
+            return payload.get("name") or payload.get("lower_case_long_path")
         elif category_key == "userassist":
-            return payload.get("value_name") or payload.get("program_name")
+            # UserAssist: name field
+            return payload.get("name")
+        elif category_key == "pca_execution":
+            # PCA: executable_path, executable_name, file_name
+            return payload.get("executable_path") or payload.get("executable_name") or payload.get("file_name")
         elif category_key == "bam_dam":
-            return payload.get("image_path") or payload.get("executable_path")
+            # BAM/DAM: executable field
+            return payload.get("executable")
         elif category_key == "jump_lists":
+            # JumpLists: target_path, file_path
             return payload.get("target_path") or payload.get("file_path")
         elif category_key == "lnk_files":
-            return payload.get("target_path") or payload.get("local_path")
-        elif category_key == "syscache":
-            return payload.get("file_path") or payload.get("path")
-        elif category_key == "shimdb":
-            return payload.get("database_path") or payload.get("shim_name")
+            # LNK files: complex nested structure
+            # Check link_info.local_base_path, data.relative_path
+            local_base = payload.get("link_info.local_base_path")
+            if local_base:
+                return local_base
+            return payload.get("data.relative_path") or payload.get("target_path")
 
-        # Common field names for executable paths (fallback)
+        # Generic fallback for unknown categories
         path_fields = [
             "path",
             "file_path",
             "executable_path",
             "image_path",
-            "application_path",
-            "target_path",
-            "program_name",
-            "app_id",
+            "name",
         ]
 
         for field in path_fields:
@@ -323,75 +357,78 @@ class ExecutionEvidenceAnalyzer:
         return None
 
     def _extract_additional_data(self, category_key: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract category-specific additional data."""
+        """Extract category-specific additional data based on actual field structures."""
         additional = {}
 
-        if category_key == "shimcache":
+        if category_key == "prefetch":
+            # Prefetch fields: executable_name, file_path, file_size, last_execution_time, original_path
             additional["file_size"] = payload.get("file_size")
-            additional["insertion_flags"] = payload.get("insertion_flags")
-            additional["shim_flags"] = payload.get("shim_flags")
+            additional["last_execution_time"] = payload.get("last_execution_time")
+            additional["original_path"] = payload.get("original_path")
+
+        elif category_key == "shimcache":
+            # ShimCache fields: path, timestamp, plugin
+            additional["plugin"] = payload.get("plugin")
 
         elif category_key == "amcache":
+            # AmCache fields: name, sha1, size, version, publisher, usn, link_date, product_name, language, binary_type, etc.
             additional["sha1"] = payload.get("sha1")
-            additional["file_size"] = payload.get("file_size")
+            additional["file_size"] = payload.get("size")
             additional["publisher"] = payload.get("publisher")
             additional["version"] = payload.get("version")
             additional["binary_type"] = payload.get("binary_type")
-
-        elif category_key == "prefetch":
-            additional["run_count"] = payload.get("run_count")
-            additional["file_size"] = payload.get("file_size")
-            additional["hash"] = payload.get("hash")
-            # Prefetch can have multiple execution times
-            exec_times = payload.get("execution_times", [])
-            if exec_times:
-                additional["execution_times"] = exec_times
-                additional["last_run_time"] = exec_times[0] if len(exec_times) > 0 else None
-                additional["previous_run_times"] = exec_times[1:] if len(exec_times) > 1 else []
-
-        elif category_key == "srum":
-            additional["bytes_sent"] = payload.get("bytes_sent")
-            additional["bytes_received"] = payload.get("bytes_received")
-            additional["network_interface"] = payload.get("interface_luid")
-            additional["user_sid"] = payload.get("user_sid")
+            additional["usn"] = payload.get("usn")
+            additional["link_date"] = payload.get("link_date")
+            additional["product_name"] = payload.get("product_name")
+            additional["language"] = payload.get("language")
+            additional["file_id"] = payload.get("file_id")
+            additional["program_id"] = payload.get("program_id")
+            additional["original_file_name"] = payload.get("original_file_name")
 
         elif category_key == "userassist":
-            additional["run_count"] = payload.get("run_count")
+            # UserAssist fields: name, run_counter, focus_count, total_focus_time_ms, session_id, timestamp
+            additional["run_counter"] = payload.get("run_counter")
             additional["focus_count"] = payload.get("focus_count")
-            additional["focus_time"] = payload.get("focus_time")
+            additional["total_focus_time_ms"] = payload.get("total_focus_time_ms")
+            additional["session_id"] = payload.get("session_id")
+
+        elif category_key == "pca_execution":
+            # PCA fields: file_name, file_path, file_size, artifact_type, executable_name, executable_path
+            additional["file_size"] = payload.get("file_size")
+            additional["file_name"] = payload.get("file_name")
+            additional["artifact_type"] = payload.get("artifact_type")
 
         elif category_key == "bam_dam":
-            additional["user_sid"] = payload.get("user_sid")
-            additional["source"] = payload.get("source")  # BAM or DAM
+            # BAM/DAM fields: executable, sid, timestamp, sequence_number, version, key_path, plugin
+            additional["sid"] = payload.get("sid")
+            additional["sequence_number"] = payload.get("sequence_number")
+            additional["version"] = payload.get("version")
+            additional["key_path"] = payload.get("key_path")
+            additional["plugin"] = payload.get("plugin")
 
         elif category_key == "jump_lists":
+            # JumpList fields: app_id, file_path, stream_name, target_path, jumplist_type, lnk_data.*
             additional["app_id"] = payload.get("app_id")
-            additional["file_size"] = payload.get("file_size")
-            additional["file_attributes"] = payload.get("file_attributes")
-            additional["creation_time"] = payload.get("creation_time")
-            additional["access_time"] = payload.get("access_time")
-            additional["write_time"] = payload.get("write_time")
+            additional["stream_name"] = payload.get("stream_name")
+            additional["jumplist_type"] = payload.get("jumplist_type")
+            # LNK header data
+            additional["file_size"] = payload.get("lnk_data.header.file_size")
+            additional["creation_time"] = payload.get("lnk_data.header.creation_time")
+            additional["accessed_time"] = payload.get("lnk_data.header.accessed_time")
+            additional["modified_time"] = payload.get("lnk_data.header.modified_time")
 
         elif category_key == "lnk_files":
-            additional["file_size"] = payload.get("file_size")
-            additional["file_attributes"] = payload.get("file_attributes")
-            additional["creation_time"] = payload.get("creation_time")
-            additional["access_time"] = payload.get("access_time")
-            additional["write_time"] = payload.get("write_time")
-            additional["working_directory"] = payload.get("working_directory")
-            additional["command_line_args"] = payload.get("command_line_arguments")
-            additional["drive_type"] = payload.get("drive_type")
-            additional["volume_serial"] = payload.get("volume_serial_number")
-
-        elif category_key == "syscache":
-            additional["file_size"] = payload.get("file_size")
-            additional["sha1"] = payload.get("sha1")
-
-        elif category_key == "shimdb":
-            additional["database_guid"] = payload.get("database_guid")
-            additional["database_type"] = payload.get("database_type")
-            additional["shim_name"] = payload.get("shim_name")
-            additional["command_line"] = payload.get("command_line")
+            # LNK fields: header.*, link_info.*, data.*, target.items, extra.*
+            additional["file_size"] = payload.get("header.file_size")
+            additional["creation_time"] = payload.get("header.creation_time")
+            additional["accessed_time"] = payload.get("header.accessed_time")
+            additional["modified_time"] = payload.get("header.modified_time")
+            additional["working_directory"] = payload.get("data.working_directory")
+            additional["relative_path"] = payload.get("data.relative_path")
+            additional["drive_type"] = payload.get("link_info.location_info.drive_type")
+            additional["drive_serial"] = payload.get("link_info.location_info.drive_serial_number")
+            additional["volume_label"] = payload.get("link_info.location_info.volume_label")
+            additional["machine_id"] = payload.get("extra.DISTRIBUTED_LINK_TRACKER_BLOCK.machine_identifier")
 
         # Remove None values
         return {k: v for k, v in additional.items() if v is not None}

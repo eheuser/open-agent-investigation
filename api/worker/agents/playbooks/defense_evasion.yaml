@@ -10,105 +10,113 @@ playbook: |
   
   ### Key Indicators to Investigate:
   
-  1. **Security Tool Tampering (Event ID 4688, Sysmon 1)**
-     - Disabling antivirus, firewall, logging
-     - Fields: event_data.CommandLine, event_data.NewProcessName
-     - Query: `search_events_by_content` for 'Set-MpPreference', 'netsh advfirewall', 'sc stop'
-     - Red flags: Commands disabling Windows Defender, stopping security services
-     - Example patterns:
-       - `Set-MpPreference -DisableRealtimeMonitoring $true`
-       - `netsh advfirewall set allprofiles state off`
-       - `sc stop WinDefend`
+  1. **Security Tool Tampering Detection**
+     - **PRIORITY**: Use execution artifacts to detect tampering tools:
+       - **Prefetch** (event_type='prefetch_execution')
+       - **AmCache** (event_type='registry_amcache')
+       - **ShimCache** (event_type='registry_shimcache')
+     - **Process Creation** (event_type='evtx_sysmon_1' or 'evtx_security_4688'):
+       - Fields: event_data.Image, event_data.CommandLine, event_data.ParentImage
+       - Query: `search_events_by_content` for security tool tampering patterns
+     - Red flags: Commands disabling security tools, stopping security services
   
-  2. **Event Log Clearing (Event ID 1102, 104)**
+  2. **Event Log Clearing**
+     - **Security Log Cleared** (event_type='evtx_security_1102'): Security log clearing
+     - **System Log Cleared** (event_type='evtx_system_104'): System log clearing
      - Attackers clear logs to hide activity
-     - Event ID 1102: Security log cleared
-     - Event ID 104: System log cleared
      - Fields: event_data.SubjectUserName
-     - Query: event_type='evtx_security_1102' or 'evtx_system_104'
      - Look for: When logs were cleared (gap in timeline), who cleared them
   
-  3. **File Deletion / Timestomping (Sysmon 23, 2)**
-     - Sysmon 23: File deletions (requires ArchiveDirectory config)
-     - Sysmon 2: File creation time changes
+  3. **File Deletion / Timestomping**
+     - **File Delete** (event_type='evtx_sysmon_23'): File deletions (requires ArchiveDirectory config)
+     - **Process Creation Time Changed** (event_type='evtx_sysmon_2'): File creation time changes
      - Fields: event_data.TargetFilename, event_data.CreationUtcTime
-     - Query: event_type='evtx_sysmon_23' or 'evtx_sysmon_2'
      - Red flags: Deletion of tools, timestomping to match legitimate files
   
-  4. **Obfuscated Commands (Event ID 4688, Sysmon 1)**
-     - Base64 encoding, XOR, character substitution
-     - Fields: event_data.CommandLine
-     - Query: `search_events_by_content` for 'encodedcommand', 'frombase64', '-enc', '^'
-     - Patterns to look for:
-       - PowerShell: `-EncodedCommand`, `-enc`, `-e`
-       - Character obfuscation: `c^m^d`, `p^o^w^e^r^s^h^e^l^l`
-       - Environment variable abuse: `%COMSPEC%`, `%PUBLIC%`
+  4. **Obfuscated Commands Detection**
+     - **Process Creation** (event_type='evtx_sysmon_1' or 'evtx_security_4688'):
+       - Fields: event_data.CommandLine, event_data.Image
+       - Query: `search_events_by_content` for obfuscation patterns
+     - **Prefetch** (event_type='prefetch_execution'): Search for scripting engine execution
+     - Look for encoding, character obfuscation, and environment variable abuse patterns
   
-  5. **Process Injection (Sysmon 8, 10)**
-     - Sysmon 8: CreateRemoteThread
-     - Sysmon 10: ProcessAccess (cross-process memory access)
+  5. **Process Injection**
+     - **CreateRemoteThread** (event_type='evtx_sysmon_8'): Remote thread creation
+     - **ProcessAccess** (event_type='evtx_sysmon_10'): Cross-process memory access
      - Fields: event_data.SourceImage, event_data.TargetImage, event_data.GrantedAccess
-     - Query: event_type='evtx_sysmon_8' or 'evtx_sysmon_10'
-     - Red flags: Unusual processes accessing lsass.exe, svchost.exe
-     - Look for: GrantedAccess 0x1010 (PROCESS_VM_READ), 0x1F0FFF (PROCESS_ALL_ACCESS)
+     - Red flags: Unusual processes accessing system processes
+     - Look for suspicious GrantedAccess patterns
   
-  6. **Masquerading (Sysmon 1, Event ID 4688)**
-     - Malware disguised as legitimate processes
-     - Fields: event_data.NewProcessName, event_data.OriginalFileName
-     - Query: `search_events_by_content` for 'svchost.exe' NOT in System32
+  6. **Masquerading Detection**
+     - **PRIORITY**: Use execution artifacts to detect masquerading:
+       - **Prefetch** (event_type='prefetch_execution'): Search for 'svchost.exe', 'lsass.exe', 'csrss.exe' in unusual paths
+       - **AmCache** (event_type='registry_amcache'): Check OriginalFileName vs file path
+       - **ShimCache** (event_type='registry_shimcache'): Detect suspicious file locations
+     - **Process Creation** (event_type='evtx_sysmon_1' or 'evtx_security_4688'):
+       - Fields: event_data.Image, event_data.OriginalFileName, event_data.CurrentDirectory
+       - Query: `search_events_by_content` for system process names in unusual paths
      - Red flags: 
-       - svchost.exe running from Temp, Downloads, AppData
-       - Misspellings: svch0st.exe, scvhost.exe
+       - System processes running from non-system directories
+       - Misspelled system process names
        - Legitimate names in wrong locations
   
-  7. **Indicator Removal (MFT, Prefetch, Registry)**
-     - Deletion of prefetch files to hide execution
-     - Registry key deletion (Sysmon 12)
+  7. **Indicator Removal**
+     - **MFT** (event_type='mft_entry'): File system timeline
+     - **Prefetch** (event_type='prefetch_execution'): Execution artifacts
+     - **Registry Object Created/Deleted** (event_type='evtx_sysmon_12'): Registry key deletion
      - Fields: event_data.TargetObject (registry), event_data.TargetFilename (files)
-     - Query: `query_jsonb_field` for 'Prefetch' or check MFT for deleted entries
      - Look for: Gaps in forensic artifacts
   
-  8. **Disabling Windows Defender (Registry, Event ID 5001)**
-     - Event ID 5001: Windows Defender disabled
-     - Registry: DisableAntiSpyware, DisableRealtimeMonitoring
-     - Fields: event_data.TargetObject (Sysmon 13)
-     - Query: `query_jsonb_field` with jsonb_path='event_data.TargetObject', value='%DisableAntiSpyware%'
-     - Red flags: Registry changes to Defender policies
+  8. **Disabling Windows Defender**
+     - **Defender Disabled** (event_type='evtx_defender_5001'): Windows Defender disabled
+     - **Registry Value Set** (event_type='evtx_sysmon_13'): Registry modifications
+     - Fields: event_data.TargetObject
+     - Query: `query_jsonb_field` with jsonb_path='event_data.TargetObject', value='%Disable%'
+     - Red flags: Registry changes to security policies
   
   9. **DLL Side-Loading / Hijacking**
+     - **Image Loaded** (event_type='evtx_sysmon_7'): DLL load events
      - Placing malicious DLL in application directory
-     - Sysmon 7: Image loaded events
      - Fields: event_data.ImageLoaded, event_data.Signed, event_data.SignatureStatus
      - Query: event_type='evtx_sysmon_7' with Signed='false'
      - Red flags: Unsigned DLLs loaded by legitimate processes
   
   10. **Alternate Data Streams (ADS)**
+     - **MFT** (event_type='mft_entry'): File system metadata
      - Hiding data in NTFS alternate streams
-     - Check MFT for: Filenames with `:` (e.g., `file.txt:hidden.exe`)
-     - Query: `search_events_by_content` for ':%'
+     - Query: `search_events_by_content` for alternate stream patterns
      - Red flags: Executables hidden in ADS
   
   ### Investigation Strategy:
   
   **Phase 1 - Identify Evasion Techniques**
-  - Check for log clearing events (1102, 104)
+  - Check for log clearing events (event_type='evtx_security_1102' or 'evtx_system_104')
   - Query for security tool tampering commands
   - Look for obfuscated PowerShell/cmd commands
+  - **Use Prefetch/AmCache**: Even if logs are cleared, execution artifacts survive
   
-  **Phase 2 - Timeline Gaps**
+  **Phase 2 - Timeline Gaps & Artifact Reconstruction**
   - Identify when logs were cleared (missing time periods)
-  - Cross-reference with other data sources (MFT, Prefetch)
-  - Reconstruct activity from surviving artifacts
+  - **CRITICAL**: Cross-reference with execution artifacts that survive log clearing:
+    - **Prefetch** (event_type='prefetch_execution') - Survives log clearing, shows last 8 execution times
+    - **AmCache** (event_type='registry_amcache') - Survives log clearing, contains SHA-1 hashes
+    - **ShimCache** (event_type='registry_shimcache') - Survives log clearing, proves file presence
+    - **SRUM** (event_type='srum_data') - Survives log clearing, shows network activity
+    - **MFT** (event_type='mft_entry') - Survives log clearing, file system timeline
+  - **Use Analysis Module**: `query_analysis_module` with module_id='execution_evidence' for comprehensive view
   
   **Phase 3 - Process Analysis**
-  - Check for process injection (Sysmon 8, 10)
+  - Process injection (event_type='evtx_sysmon_8' or 'evtx_sysmon_10')
+  - Process creation (event_type='evtx_sysmon_1' or 'evtx_security_4688') with command line
+  - Image load (event_type='evtx_sysmon_7') for DLL side-loading
   - Identify masquerading (legitimate names in wrong paths)
-  - Validate digital signatures (unsigned executables)
+  - **AmCache for signatures**: Check event_type='registry_amcache' for unsigned executables
   
-  **Phase 4 - Artifact Removal**
-  - Check for deleted files (Sysmon 23, MFT)
-  - Look for timestomping (Sysmon 2)
-  - Identify missing prefetch files
+  **Phase 4 - Artifact Removal Detection**
+  - Check for deleted files (event_type='evtx_sysmon_23' or 'mft_entry')
+  - Look for timestomping (event_type='evtx_sysmon_2')
+  - **Prefetch analysis**: Missing prefetch files indicate cleanup attempts
+  - **Registry analysis**: Deleted registry keys
   
   ### Common Patterns:
   

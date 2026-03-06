@@ -172,6 +172,7 @@ class AssistantAgent:
         self.total_tools_executed = 0
         self.tool_execution_log: List[Dict[str, Any]] = []
         self.query_signatures: set[str] = set()  # Track unique query signatures to prevent repetition
+        self.tools_not_supported = False  # Track if model doesn't support tools
 
         # Compaction trigger (80 % of model context)
         self.compact_threshold = int(llm_max_context * COMPAT_TOKEN_THRESHOLD)
@@ -609,6 +610,54 @@ class AssistantAgent:
             "timeline_entries_created": self.stats.get("timeline_entries_created", 0),
             "tools_called": dict(self.stats.get("tools_called", {})),
         }
+    
+    def _generate_fallback_summary(self, incomplete: bool = False) -> str:
+        """
+        Generate a fallback summary when LLM summary generation fails.
+        Uses the tool execution log to create a basic summary.
+        """
+        parts = []
+        
+        # Add status
+        if incomplete:
+            parts.append(
+                f"Investigation reached the maximum of {self.max_iterations} turns. "
+                f"Executed {self.total_tools_executed} tools across {self.iteration} turns."
+            )
+        else:
+            parts.append(
+                f"Investigation completed after {self.iteration} turns with "
+                f"{self.total_tools_executed} tool executions."
+            )
+        
+        # Add timeline entries created
+        timeline_count = self.stats.get("timeline_entries_created", 0)
+        if timeline_count > 0:
+            parts.append(f"Created {timeline_count} timeline entries documenting key findings.")
+        
+        # Add tools used summary
+        tools_called = self.stats.get("tools_called", {})
+        if tools_called:
+            tool_list = ", ".join(f"{name} ({count}x)" for name, count in sorted(tools_called.items(), key=lambda x: -x[1])[:5])
+            parts.append(f"Primary tools used: {tool_list}.")
+        
+        # Add events analyzed
+        events_count = self.stats.get("events_analyzed", 0)
+        if events_count > 0:
+            parts.append(f"Analyzed {events_count} forensic events.")
+        
+        # Add recent findings from tool execution log
+        if self.tool_execution_log:
+            recent_findings = []
+            for entry in self.tool_execution_log[-5:]:
+                if entry.get("result_count", 0) > 0:
+                    recent_findings.append(
+                        f"{entry['tool_name']}: {entry.get('summary', 'executed')}"
+                    )
+            if recent_findings:
+                parts.append("\n\nRecent findings:\n" + "\n".join(f"- {f}" for f in recent_findings))
+        
+        return " ".join(parts)
 
     async def _batch_generate_embeddings(self) -> None:
         try:
@@ -702,8 +751,8 @@ class AssistantAgent:
                     }
                 ]
                 
-                # allow completion after a few turns
-                if self.iteration >= 4:
+                # Only allow completion on the LAST iteration
+                if self.iteration == self.max_iterations:
                     comp_tool = [
                         t for t in tool_registry.get_openai_format()
                         if t.get("function", {}).get("name") == "complete_investigation"
@@ -716,9 +765,30 @@ class AssistantAgent:
                     if ev["type"] == "_internal_plan_result":
                         planner_msg, planned_calls = ev["message"], ev.get("tool_calls", [])
                         logger.info(f"Received plan with {len(planned_calls)} tools")
+                    elif ev["type"] == "llm_error":
+                        # Check if this is a persistent tool incompatibility
+                        error_msg = str(ev.get("error", ""))
+                        if "400" in error_msg and self.iteration > 1:
+                            logger.error("Model does not support function calling - aborting investigation")
+                            self.tools_not_supported = True
+                            yield {
+                                "type": "agent_error",
+                                "error": (
+                                    "The selected LLM model does not support function calling (tools), "
+                                    "which is required for investigations. Please select a different model "
+                                    "that supports OpenAI function calling (e.g., GPT-4, GPT-3.5-turbo, "
+                                    "Claude 3.5 Sonnet, or compatible open models like Qwen, Llama 3.1 70B+)."
+                                )
+                            }
+                            return
+                        yield ev
                     elif ev["type"] != "_internal_plan_result":
                         # Only yield non-internal events to WebSocket
                         yield ev
+                
+                # If tools aren't supported, abort
+                if self.tools_not_supported:
+                    return
                 
                 # Remove strategy guidance from chat log (it was just for planning context)
                 if chat_log and chat_log[-1].get("role") == "system" and "INVESTIGATION STRATEGY" in chat_log[-1].get("content", ""):
@@ -766,12 +836,14 @@ class AssistantAgent:
 
                 # ---------- Phase 1 – Execution ----------
                 investigation_completed_in_execution = False
+                completion_summary = None  # Track completion summary from tool
                 tool_results_for_llm: List[Dict[str, Any]] = []  # Collect tool results for LLM
                 tool_result_index = 0  # Track current tool result index
                 
                 async for ev in self._execute_tools(planned_calls):
                     if ev["type"] == "_investigation_completed":
                         investigation_completed_in_execution = True
+                        completion_summary = ev.get("summary", "Investigation completed")
                     elif ev["type"] == "_internal_tool_result":
                         # Collect tool result for LLM context
                         tool_res: ToolResult = ev["tool_result_obj"]
@@ -819,9 +891,48 @@ class AssistantAgent:
                 # Check if investigation completed in execution phase
                 if investigation_completed_in_execution:
                     logger.info("Investigation completed in execution phase")
+                    
+                    # Always add the completion summary to chat log first
+                    if completion_summary and completion_summary != "Investigation completed":
+                        # We have a good summary from the tool - add it to chat log
+                        chat_log.append({"role": "assistant", "content": completion_summary})
+                    else:
+                        # Generate a final summary if we don't have one from complete_investigation tool
+                        # Ask LLM to generate a summary of findings
+                        summary_prompt = (
+                            "The investigation has been completed. Please provide a concise summary of:\n"
+                            "1. What you investigated\n"
+                            "2. Key findings and evidence discovered\n"
+                            "3. Timeline entries created\n"
+                            "4. Overall conclusions\n\n"
+                            "Keep it brief but comprehensive (2-3 paragraphs)."
+                        )
+                        chat_log.append({"role": "user", "content": summary_prompt})
+                        
+                        # Get summary from LLM (without tools to avoid compatibility issues)
+                        try:
+                            async for ev in self._llm_stream(chat_log, [], tool_choice="none"):
+                                if ev["type"] == "llm_response" and ev["success"]:
+                                    msg: Optional[AssistantMessage] = ev["message"]
+                                    if msg and msg.content:
+                                        completion_summary = msg.content
+                                        # Add to chat log for future reference
+                                        chat_log.append({"role": "assistant", "content": completion_summary})
+                                    break
+                                elif ev["type"] == "llm_error":
+                                    logger.warning(f"Failed to generate completion summary: {ev.get('error')}")
+                                    # Use fallback summary
+                                    completion_summary = self._generate_fallback_summary()
+                                    chat_log.append({"role": "assistant", "content": completion_summary})
+                                    break
+                        except Exception as e:
+                            logger.warning(f"Failed to generate completion summary: {sanitize_log_message(str(e))}")
+                            completion_summary = self._generate_fallback_summary()
+                        chat_log.append({"role": "assistant", "content": completion_summary})
+                    
                     yield {
                         "type": "agent_completed",
-                        "summary": "Investigation completed",
+                        "summary": completion_summary or "Investigation completed",
                         "stats": self._stats_snapshot(),
                     }
                     return
@@ -864,7 +975,8 @@ class AssistantAgent:
                 analysis_tools_def = filter_tools_for_phase(
                     tool_registry.get_openai_format(), "analysis"
                 )
-                if self.iteration < 4:
+                # Only allow completion on the LAST iteration
+                if self.iteration < self.max_iterations:
                     analysis_tools_def = [
                         t
                         for t in analysis_tools_def
@@ -909,14 +1021,39 @@ class AssistantAgent:
 
             # max-iterations reached without explicit completion
             if not self.cancelled:
+                # Generate a summary of what was accomplished
+                summary_prompt = (
+                    "The investigation has reached its turn limit. Please provide a summary of:\n"
+                    "1. What you investigated\n"
+                    "2. Key findings and evidence discovered so far\n"
+                    "3. Timeline entries created\n"
+                    "4. What still needs investigation (if anything)\n\n"
+                    "Keep it brief but comprehensive (2-3 paragraphs)."
+                )
+                chat_log.append({"role": "user", "content": summary_prompt})
+                
+                final_summary = self._generate_fallback_summary(incomplete=True)
+                
+                # Try to get a better summary from LLM
+                try:
+                    async for ev in self._llm_stream(chat_log, [], tool_choice="none"):
+                        if ev["type"] == "llm_response" and ev["success"]:
+                            msg: Optional[AssistantMessage] = ev["message"]
+                            if msg and msg.content:
+                                final_summary = msg.content
+                                # Add to chat log for future reference
+                                chat_log.append({"role": "assistant", "content": final_summary})
+                            break
+                        elif ev["type"] == "llm_error":
+                            logger.warning(f"Failed to generate final summary: {ev.get('error')}")
+                            break
+                except Exception as e:
+                    logger.warning(f"Failed to generate final summary: {sanitize_log_message(str(e))}")
+                    # Fallback is already set above
+                
                 yield {
                     "type": "agent_completed",
-                    "summary": (
-                        f"Reached max iterations ({self.max_iterations}) "
-                        f"without final `complete_investigation`. "
-                        f"{self.total_tools_executed} tools run, "
-                        f"{self.stats.get('timeline_entries_created', 0)} timeline entries."
-                    ),
+                    "summary": final_summary,
                     "stats": self._stats_snapshot(),
                     "incomplete": True,  # Signal that investigation is incomplete
                 }

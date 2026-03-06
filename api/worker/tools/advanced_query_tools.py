@@ -100,10 +100,12 @@ async def execute_sql(
     logger.info(f"Executing SQL query: {sanitize_log_message(query[:200])}...")
 
     try:
-        # Execute with timeout (5 seconds)
-        # Note: PostgreSQL statement_timeout should be set at connection level
+        # Set timeout for this query (30 seconds for forensic analysis)
+        await db.execute(text("SET LOCAL statement_timeout = '30s'"))
+        
+        # Execute the actual query
         result = await db.execute(
-            text(f"SET LOCAL statement_timeout = '5s'; {query}"),
+            text(query),
             {"investigation_id": investigation_id},
         )
 
@@ -132,15 +134,12 @@ async def execute_sql(
     except Exception as e:
         error_msg = str(e)
         logger.error(f"SQL query failed: {sanitize_log_message(error_msg)}")
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
 
         # Sanitize error message (don't leak schema details)
         if "timeout" in error_msg.lower():
             return {
-                "error": "Query timeout (5 second limit). Simplify your query or add more filters."
+                "error": "Query timeout (30 second limit). Simplify your query or add more filters."
             }
         elif "syntax" in error_msg.lower():
             return {"error": f"SQL syntax error: {sanitize_log_message(error_msg[:200])}"}

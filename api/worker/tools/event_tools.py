@@ -136,10 +136,7 @@ async def search_events_by_type(
         }
     except Exception as e:
         logger.error(f"search_events_by_type failed: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {"error": f"Failed to search events by type: {sanitize_log_message(str(e))}"}
 
 
@@ -293,10 +290,7 @@ async def search_events_by_timerange(
         }
     except Exception as e:
         logger.error(f"search_events_by_timerange failed: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {"error": f"Failed to search events by timerange: {sanitize_log_message(str(e))}"}
 
 
@@ -446,10 +440,7 @@ async def search_events_by_content(
         }
     except Exception as e:
         logger.error(f"search_events_by_content failed: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {"error": f"Failed to search events by content: {sanitize_log_message(str(e))}"}
 
 
@@ -516,10 +507,7 @@ async def get_event_by_id(
         }
     except Exception as e:
         logger.error(f"get_event_by_id failed: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {"error": f"Failed to get event by ID: {sanitize_log_message(str(e))}"}
 
 
@@ -939,10 +927,7 @@ async def get_available_jsonb_fields(
         return fields
     except Exception as e:
         logger.error(f"get_available_jsonb_fields failed: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return []
 
 
@@ -1193,10 +1178,7 @@ async def get_enhanced_jsonb_fields(
         
     except Exception as e:
         logger.error(f"get_enhanced_jsonb_fields failed: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {
             "field_metadata": [],
             "total_events": 0,
@@ -1277,10 +1259,7 @@ async def discover_jsonb_fields(
         
     except Exception as e:
         logger.error(f"discover_jsonb_fields failed: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {"error": f"Failed to discover JSONB fields: {sanitize_log_message(str(e))}"}
 
 
@@ -1366,8 +1345,5 @@ async def count_events(
         return {"count": count}
     except Exception as e:
         logger.error(f"count_events failed: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {"error": f"Failed to count events: {sanitize_log_message(str(e))}"}

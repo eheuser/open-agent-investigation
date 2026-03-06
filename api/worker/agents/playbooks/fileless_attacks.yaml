@@ -11,102 +11,94 @@ playbook: |
   ### Key Indicators to Investigate:
   
   1. **PowerShell In-Memory Execution**
+     - **PowerShell Script Block** (event_type='evtx_powershell_4104'): PowerShell script content
+     - **Process Creation** (event_type='evtx_sysmon_1'): PowerShell command lines
      - PowerShell loading scripts directly into memory
-     - Commands:
-       - `IEX(New-Object Net.WebClient).DownloadString('http://...')`
-       - `Invoke-Expression (Invoke-WebRequest -Uri '...' -UseBasicParsing).Content`
-       - `[Reflection.Assembly]::Load([byte[]]...)`
-       - `[System.Reflection.Assembly]::LoadWithPartialName()`
-     - Fields: event_data.CommandLine, event_data.ScriptBlockText (Sysmon 4104)
-     - Query: `search_events_by_content` for 'IEX', 'DownloadString', 'Reflection.Assembly'
+     - Fields: event_data.CommandLine, event_data.ScriptBlockText
+     - Query: `search_events_by_content` for in-memory execution patterns
      - Red flags: Remote script execution, assembly loading, obfuscated commands
   
   2. **WMI Event Subscriptions (Permanent)**
+     - **WMI Event Filter** (event_type='evtx_sysmon_19'): WMI event filter creation
+     - **WMI Event Consumer** (event_type='evtx_sysmon_20'): WMI event consumer creation
+     - **WMI Consumer Binding** (event_type='evtx_sysmon_21'): Filter-to-consumer binding
      - Fileless persistence via WMI
-     - Event IDs: Sysmon 19 (WmiEventFilter), 20 (WmiEventConsumer), 21 (Binding)
      - Fields: event_data.EventNamespace, event_data.Query, event_data.Destination
-     - Query: event_type='evtx_sysmon_19' or 'evtx_sysmon_20' or 'evtx_sysmon_21'
      - Red flags: ANY WMI event subscription is suspicious (rarely used legitimately)
      - Common pattern: Filter triggers on event → Consumer executes script
   
   3. **Process Injection (Code Injection)**
+     - **CreateRemoteThread** (event_type='evtx_sysmon_8'): CreateRemoteThread detected
+     - **ProcessAccess** (event_type='evtx_sysmon_10'): Cross-process memory access
      - Injecting malicious code into legitimate processes
-     - Sysmon 8: CreateRemoteThread detected
-     - Sysmon 10: ProcessAccess (cross-process memory access)
      - Fields: event_data.SourceImage, event_data.TargetImage, event_data.GrantedAccess
-     - Query: event_type='evtx_sysmon_8' or 'evtx_sysmon_10'
-     - Target processes: explorer.exe, svchost.exe, notepad.exe
+     - Target processes: System processes
      - Red flags: Unusual processes accessing legitimate process memory
   
   4. **Reflective DLL Injection**
      - Loading DLLs directly into memory without touching disk
+     - **File Creation** (event_type='evtx_sysmon_11'): Check for absence of file creation
      - Indicators:
        - PowerShell Reflection.Assembly.Load
-       - Unusual memory allocations (VirtualAlloc)
-       - No corresponding file creation (Sysmon 11)
-     - Query: `search_events_by_content` for 'Reflection.Assembly', 'VirtualAlloc'
+       - Unusual memory allocations
+       - No corresponding file creation
+     - Query: `search_events_by_content` for assembly loading patterns
      - Red flags: DLL loading without file writes
   
   5. **Registry-Resident Malware**
+     - **Registry Value Set** (event_type='evtx_sysmon_13'): Registry modifications
      - Storing malicious code in registry keys
-     - Common locations:
-       - HKCU\Software\Classes\CLSID
-       - HKLM\Software\Microsoft\Windows\CurrentVersion\Run (with encoded payload)
-     - Fields: event_data.TargetObject, event_data.Details (Sysmon 13)
-     - Query: `query_jsonb_field` for registry keys with large values (>1KB)
-     - Red flags: Base64-encoded data in registry, unusual CLSID entries
+     - Fields: event_data.TargetObject, event_data.Details
+     - Query: `query_jsonb_field` for registry keys with large values
+     - Red flags: Encoded data in registry, unusual entries
   
   6. **Scheduled Task with Inline Script**
+     - **Scheduled Task Created** (event_type='evtx_security_4698'): Scheduled task creation
      - Tasks that execute scripts without file artifacts
-     - Event ID 4698: Scheduled task created
      - Fields: event_data.TaskContent (contains XML with script)
-     - Query: event_type='evtx_security_4698'
-     - Red flags: Tasks with PowerShell inline scripts, encoded commands
+     - Red flags: Tasks with inline scripts, encoded commands
   
   7. **Office Macro In-Memory Execution**
+     - **Process Creation** (event_type='evtx_sysmon_1' or 'evtx_security_4688')
      - Macros executing PowerShell or scripts without dropping files
-     - Process chain: WINWORD.EXE/EXCEL.EXE → powershell.exe
      - Fields: event_data.ParentProcessName, event_data.CommandLine
-     - Query: `query_jsonb_field` with jsonb_path='event_data.ParentProcessName', value='%WINWORD%' or '%EXCEL%'
-     - Red flags: Office apps spawning PowerShell, cmd, wscript
+     - Query: `query_jsonb_field` with jsonb_path='event_data.ParentProcessName' for Office applications
+     - Red flags: Office apps spawning scripting engines
   
   8. **LSASS Memory Dumping (Fileless Credential Theft)**
+     - **ProcessAccess** (event_type='evtx_sysmon_10'): ProcessAccess to lsass.exe
      - Dumping credentials from memory without writing dump files
-     - Sysmon 10: ProcessAccess to lsass.exe
-     - Fields: event_data.TargetImage='lsass.exe', event_data.GrantedAccess
+     - Fields: event_data.TargetImage, event_data.GrantedAccess
      - Query: `query_jsonb_field` with jsonb_path='event_data.TargetImage', value='lsass.exe'
      - Red flags: Non-system processes accessing LSASS memory
   
   9. **JavaScript/VBScript In-Memory Execution**
+     - **Process Creation** (event_type='evtx_sysmon_1' or 'evtx_security_4688')
      - Scripts executed via wscript/cscript without file artifacts
-     - Commands:
-       - `wscript.exe //E:vbscript //B "malicious code"`
-       - `cscript.exe //E:jscript //nologo inline_script`
-     - Query: `search_events_by_content` for 'wscript', 'cscript' with '//E:'
-     - Red flags: Inline script execution, no .vbs/.js file arguments
+     - Query: `search_events_by_content` for inline script execution patterns
+     - Red flags: Inline script execution, no file arguments
   
   10. **PsExec In-Memory Execution**
+     - **Service Installed** (event_type='evtx_system_7045'): Service installation
      - Remote execution without dropping files
-     - Service creation: PSEXESVC with inline commands
-     - Event ID 7045: Service installed
-     - Query: event_type='evtx_system_7045' with ServiceName='PSEXESVC'
-     - Red flags: PSEXESVC service with unusual ImagePath
+     - Query: event_type='evtx_system_7045' for remote execution service patterns
+     - Red flags: Remote execution services with unusual ImagePath
   
   ### Investigation Strategy:
   
   **Phase 1 - Identify Fileless Execution**
-  - Look for PowerShell with IEX, DownloadString, Reflection.Assembly
-  - Check for WMI event subscriptions (Sysmon 19/20/21)
-  - Query for process injection (Sysmon 8/10)
+  - Look for PowerShell with in-memory execution patterns
+  - Check for WMI event subscriptions (event_type='evtx_sysmon_19/20/21')
+  - Query for process injection (event_type='evtx_sysmon_8/10')
   - Search for Office apps spawning scripting engines
   
   **Phase 2 - Analyze Memory-Resident Artifacts**
-  - Check registry for large encoded values (Sysmon 13)
-  - Look for scheduled tasks with inline scripts (Event 4698)
+  - Check registry for large encoded values (event_type='evtx_sysmon_13')
+  - Look for scheduled tasks with inline scripts (event_type='evtx_security_4698')
   - Identify WMI consumers with embedded scripts
   
   **Phase 3 - Correlate with Network Activity**
-  - Did PowerShell make network connections? (Sysmon 3)
+  - Did PowerShell make network connections? (event_type='evtx_sysmon_3')
   - Were remote scripts downloaded? (Check URLs in CommandLine)
   - Is there C2 beaconing from injected processes?
   
@@ -137,11 +129,10 @@ playbook: |
   
   # Find process injection
   search_events_by_type(event_type='evtx_sysmon_8', description='CreateRemoteThread injection')
-  query_jsonb_field(jsonb_path='event_data.TargetImage', operator='ILIKE', value='%explorer.exe%')
+  query_jsonb_field(jsonb_path='event_data.TargetImage', operator='ILIKE', description='Process injection targets')
   
   # Find Office apps spawning scripts
-  query_jsonb_field(jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%WINWORD%')
-  query_jsonb_field(jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%EXCEL%')
+  query_jsonb_field(jsonb_path='event_data.ParentProcessName', operator='ILIKE', description='Office macro execution')
   
   # Find Reflection.Assembly usage
   search_events_by_content(value='Reflection.Assembly', description='In-memory assembly loading')
@@ -160,19 +151,19 @@ playbook: |
   
   ```
   # Typical WMI persistence pattern
-  1. WmiEventFilter (Sysmon 19): Trigger condition (e.g., every 60 seconds)
-  2. WmiEventConsumer (Sysmon 20): Action (e.g., execute PowerShell script)
-  3. FilterToConsumerBinding (Sysmon 21): Links filter to consumer
+  1. WmiEventFilter (event_type='evtx_sysmon_19'): Trigger condition
+  2. WmiEventConsumer (event_type='evtx_sysmon_20'): Action
+  3. FilterToConsumerBinding (event_type='evtx_sysmon_21'): Links filter to consumer
   
   # Detection
-  Query for ANY Sysmon 19/20/21 events - legitimate use is extremely rare
+  Query for ANY WMI events - legitimate use is extremely rare
   Check event_data.Query (filter condition)
   Check event_data.Destination or event_data.CommandLineTemplate (consumer action)
   ```
   
   ### Process Injection Techniques:
   
-  - **CreateRemoteThread** (Sysmon 8): Classic injection
+  - **CreateRemoteThread** (event_type='evtx_sysmon_8'): Classic injection
   - **Process Hollowing**: Create suspended process, replace memory, resume
   - **Atom Bombing**: Use Windows Atom tables for injection
   - **Thread Execution Hijacking**: Suspend thread, modify context, resume
@@ -189,7 +180,7 @@ playbook: |
   
   ### Recovery Artifacts:
   
-  - **PowerShell Logging**: Event 4104 (ScriptBlock logging) may contain full scripts
+  - **PowerShell Logging**: event_type='evtx_powershell_4104' (ScriptBlock logging) may contain full scripts
   - **WMI Persistence**: Query WMI repository for consumers/filters
   - **Memory Dumps**: Capture process memory for analysis
   - **Registry**: Check for encoded payloads in registry keys

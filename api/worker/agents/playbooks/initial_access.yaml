@@ -13,7 +13,7 @@ playbook: |
   1. **Phishing / Malicious Email Artifacts**
      - Look for: Email client process spawning unusual children
      - Fields: event_data.ParentProcessName, event_data.NewProcessName, event_data.CommandLine
-     - Query: `query_jsonb_field` with jsonb_path='event_data.ParentProcessName', operator='ILIKE', value='%outlook%'
+     - Tool: `query_jsonb_field` with jsonb_path='event_data.ParentImage', operator='ILIKE', value='%outlook%', event_type='evtx_sysmon_1', description='Email client spawned processes'
      - Red flags: outlook.exe → powershell.exe, cmd.exe, wscript.exe
      - Follow-up: Check CommandLine for encoded commands, suspicious URLs
   
@@ -21,34 +21,35 @@ playbook: |
      - Successful logons (4624): Unusual times, locations, accounts
      - Failed logons (4625): Brute force patterns, password spraying
      - Fields: event_data.TargetUserName, event_data.IpAddress, event_data.LogonType, event_data.WorkstationName
-     - Query: Aggregate by IpAddress to find multiple failed attempts
+     - Tool: `aggregate_jsonb_field` with jsonb_path='event_data.IpAddress', event_type='evtx_security_4625', description='Failed logon source analysis'
      - Look for: Geographic anomalies, service accounts logging on interactively
   
   3. **Web Application Exploitation**
      - IIS/Apache logs showing exploitation attempts
      - Sysmon 1: Web server processes spawning cmd.exe, powershell.exe
      - Fields: event_data.ParentProcessName, event_data.CommandLine
-     - Query: event_type='evtx_sysmon_1' with ParentProcessName='w3wp.exe' or 'httpd.exe'
+     - Tool: `query_jsonb_field` with jsonb_path='event_data.ParentImage', operator='ILIKE', value='%w3wp.exe%', event_type='evtx_sysmon_1', description='Web server exploitation'
      - Red flags: Web shells, reverse shells, unusual child processes
   
   4. **External Remote Services (RDP, VPN)**
      - Event ID 4624 LogonType 10 (RDP)
      - Event ID 4778/4779 (Session connect/disconnect)
      - Fields: event_data.IpAddress, event_data.TargetUserName
-     - Query: `search_events_by_timerange` for RDP logons from external IPs
+     - Tool: `query_jsonb_field` with jsonb_path='event_data.LogonType', value='10', event_type='evtx_security_4624', description='RDP logon detection'
+     - Follow-up: `aggregate_jsonb_field` with jsonb_path='event_data.IpAddress', event_type='evtx_security_4624', description='RDP source IPs'
      - Look for: First-time IPs, unusual hours, dormant accounts
   
   5. **Drive-by Compromise / Browser Exploitation**
      - Browser processes spawning unusual children
      - Fields: event_data.ParentProcessName (chrome.exe, firefox.exe, iexplore.exe)
-     - Query: `query_jsonb_field` for browser parent processes
+     - Tool: `search_events_by_content` with search_text='chrome.exe' or 'firefox.exe' or 'iexplore.exe', description='Browser process activity'
      - Red flags: Browsers spawning powershell, cmd, regsvr32, rundll32
   
   6. **Exploit Public-Facing Application**
      - Look for: Vulnerability exploitation patterns in logs
      - Common targets: Exchange, SharePoint, VPN appliances
      - Check MFT for: Webshells in wwwroot directories
-     - Query: `search_events_by_content` for paths like '%\\inetpub\\wwwroot\\%'
+     - Tool: `search_events_by_content` with search_text='\\inetpub\\wwwroot\\', event_type='mft_entry', description='Webshell file creation'
   
   ### Investigation Strategy:
   

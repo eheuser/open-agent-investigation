@@ -180,11 +180,16 @@ class PrefetchParser(BaseParser):
             )
             return 0
 
+        # Restore original path from sanitized filename
+        # Archive parser replaces / with __ to preserve directory structure
+        original_path = str(file_path.name).replace('__', '\\')
+        
         # Create event
         payload = {
             "executable_name": exe_name,
             "file_size": len(data),
-            "file_path": str(file_path.name),
+            "file_path": str(file_path.name),  # Sanitized filename on disk
+            "original_path": original_path,  # Reconstructed original path
             "last_execution_time": event_ts.isoformat(),
         }
         

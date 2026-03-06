@@ -780,13 +780,14 @@ async def list_analysis_modules_wrapper(
     investigation_id : str
         Investigation identifier.
     stats : Dict[str, Any]
-        Statistics dictionary.
+        Statistics dictionary (unused, kept for signature compatibility).
 
     Returns
     -------
     Dict[str, Any]
         List of available modules with metadata.
     """
+    # Note: stats parameter is unused but kept for wrapper signature consistency
     return await analysis_tools.list_analysis_modules(
         db=db,
         investigation_id=investigation_id,
@@ -892,7 +893,6 @@ def register_all_tools():
                     },
                 },
                 "required": ["search_text", "description"],
-                "additionalProperties": False,
             },
             impl=search_events_by_content_wrapper,
         )
@@ -1212,13 +1212,13 @@ def register_all_tools():
     tool_registry.register(
         ToolSpec(
             name="execute_sql",
-            description="Execute a read-only SQL SELECT query against the events table. Queries are scoped to this investigation and have a 5-second timeout. Max 1000 rows returned. Must include 'WHERE investigation_id = :investigation_id' for security.",
+            description="Execute a read-only SQL SELECT query against the events table. Queries are scoped to this investigation and have a 30-second timeout. Max 1000 rows returned. Must include 'WHERE investigation_id = :investigation_id' for security. \n\nEVENTS TABLE SCHEMA:\n- event_id (BIGINT): Unique event identifier\n- investigation_id (UUID): Investigation identifier (REQUIRED in WHERE clause)\n- event_ts (TIMESTAMPTZ): Event timestamp (NOT 'timestamp')\n- artifact_id (BIGINT): Source artifact ID\n- event_type (TEXT): Event type (e.g., 'evtx_security_4624')\n- payload (JSONB): Full event data\n\nIMPORTANT: Use 'event_ts' for timestamps, NOT 'timestamp'. Use JSONB operators for payload queries: ->, ->>, @>, etc.",
             parameters={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "SQL SELECT query. Must filter by investigation_id. Example: SELECT event_type, COUNT(*) FROM events WHERE investigation_id = :investigation_id GROUP BY event_type",
+                        "description": "SQL SELECT query. Must filter by investigation_id. Use 'event_ts' for timestamps. Examples: SELECT event_type, COUNT(*) FROM events WHERE investigation_id = :investigation_id GROUP BY event_type | SELECT * FROM events WHERE investigation_id = :investigation_id AND event_ts BETWEEN '2022-11-15T21:00:00Z' AND '2022-11-15T22:00:00Z' ORDER BY event_ts ASC",
                     }
                 },
                 "required": ["query"],
@@ -1288,8 +1288,8 @@ def register_all_tools():
                 "properties": {
                     "module_id": {
                         "type": "string",
-                        "enum": ["autoruns", "execution_evidence", "browsed_urls", "logons"],
-                        "description": "Analysis module: 'autoruns' (persistence), 'execution_evidence' (program execution), 'browsed_urls' (browser history), 'logons' (logon/logoff events)",
+                        "enum": ["autoruns", "execution_evidence", "browsed_urls", "logons", "user_activity"],
+                        "description": "Analysis module: 'autoruns' (persistence), 'execution_evidence' (program execution), 'browsed_urls' (browser history), 'logons' (logon/logoff events), 'user_activity' (ShellBags, RecentDocs, OpenSaveMRU, TypedPaths, RunMRU, WordWheelQuery)",
                     },
                     "page": {
                         "type": "integer",
@@ -1303,7 +1303,7 @@ def register_all_tools():
                     },
                     "filters": {
                         "type": "object",
-                        "description": "Module-specific filters. For autoruns/execution_evidence: {\"categories\": [\"Logon\", \"Services\"]}. For browsed_urls: {\"browsers\": [\"chrome_chromium\"]}. For logons: {\"logon_types\": [\"Interactive\"], \"source_ips\": [\"192.168.1.100\"], \"usernames\": [\"admin\"]}",
+                        "description": "Module-specific filters. For autoruns/execution_evidence/user_activity: {\"categories\": [\"Logon\", \"Services\"]} or {\"categories\": [\"shellbags\", \"recentdocs\", \"runmru\"]}. For browsed_urls: {\"browsers\": [\"chrome_chromium\"]}. For logons: {\"logon_types\": [\"Interactive\"], \"source_ips\": [\"192.168.1.100\"], \"usernames\": [\"admin\"]}",
                         "additionalProperties": True,
                     },
                     "description": {
