@@ -258,6 +258,15 @@ class BaseAgent:
                 self.last_status_update = now
                 logger.info(f"Job {self.job_id} status: {status_message}")
             except Exception as e:
+                # CRITICAL: Rollback on error to prevent poisoning the transaction for tool calls
+                try:
+                    await self.db.rollback()
+                    logger.debug(f"Rolled back session after job status update failure")
+                except Exception as rollback_error:
+                    logger.warning(
+                        f"Failed to rollback after job status update: "
+                        f"{sanitize_log_message(str(rollback_error))}"
+                    )
                 logger.warning(f"Failed to update job status: {sanitize_log_message(str(e))}")
 
     async def call_llm(

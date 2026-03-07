@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import struct
 
 from .base_parser import BaseParser
+from .utils import sanitize_for_jsonb
 
 from app.utils.log_setup import get_logger
 
@@ -67,15 +68,73 @@ class PrefetchParser(BaseParser):
             logger.debug(f"Prefetch file too small: {file_path}")
             return 0
 
-        # Extract executable name (Unicode string at offset 16)
-        # This is a simplified version - full parsing would use proper library
+        # Extract executable name from prefetch file
+        # Prefetch format varies by Windows version:
+        # - SCCA (Win7/8): Uncompressed, executable name at offset 16
+        # - MAM (Win10+): Compressed, need to decompress first
+        
+        magic = data[:4]
+        exe_name = None
+        
         try:
-            exe_name_offset = 16
-            exe_name_bytes = data[exe_name_offset : exe_name_offset + 60]
-            exe_name = exe_name_bytes.decode("utf-16-le").split("\x00")[0]
+            if magic == b'SCCA':
+                # Uncompressed format (Windows 7/8)
+                # Executable name is at offset 16, UTF-16-LE encoded, max 60 bytes
+                exe_name_offset = 16
+                exe_name_bytes = data[exe_name_offset : exe_name_offset + 60]
+                
+                # Decode UTF-16-LE
+                exe_name = exe_name_bytes.decode("utf-16-le", errors='ignore')
+                
+                # Split on null terminator
+                if '\x00' in exe_name:
+                    exe_name = exe_name.split('\x00')[0]
+                    
+            elif magic == b'MAM\x04':
+                # Compressed format (Windows 10+)
+                # The file is compressed, so we can't easily extract the name
+                # Use the filename instead (prefetch files are named after the executable)
+                exe_name = None
+            else:
+                # Unknown format
+                exe_name = None
+            
+            # Clean up the extracted name
+            if exe_name:
+                # Remove null bytes and strip whitespace
+                exe_name = exe_name.replace('\x00', '').strip()
+                
+                # Validate that it's actually text (not binary garbage)
+                # Check if at least 50% of characters are printable ASCII/Latin
+                if exe_name:
+                    printable_count = sum(1 for c in exe_name if c.isprintable() and ord(c) < 256)
+                    if len(exe_name) > 0 and printable_count / len(exe_name) < 0.5:
+                        # Likely binary garbage, not a real name
+                        logger.debug(f"Extracted name appears to be binary garbage: {exe_name[:20]}")
+                        exe_name = None
+                    else:
+                        # Keep only printable characters
+                        exe_name = ''.join(char for char in exe_name if char.isprintable())
+            
+            # Fall back to filename if extraction failed
+            if not exe_name:
+                # Prefetch files are named: EXECUTABLE-HASH.pf
+                # Extract just the executable name part
+                filename_parts = file_path.stem.split('-')
+                if len(filename_parts) > 1:
+                    # Remove the hash suffix
+                    exe_name = '-'.join(filename_parts[:-1]) + '.exe'
+                else:
+                    exe_name = file_path.stem + '.exe'
+                    
         except Exception as e:
             logger.debug(f"Failed to extract executable name: {e}")
-            exe_name = file_path.stem
+            # Fall back to filename
+            filename_parts = file_path.stem.split('-')
+            if len(filename_parts) > 1:
+                exe_name = '-'.join(filename_parts[:-1]) + '.exe'
+            else:
+                exe_name = file_path.stem + '.exe'
 
         # Extract last execution time from prefetch file
         # Prefetch files store FILETIME timestamps (64-bit value representing
@@ -121,13 +180,21 @@ class PrefetchParser(BaseParser):
             )
             return 0
 
+        # Restore original path from sanitized filename
+        # Archive parser replaces / with __ to preserve directory structure
+        original_path = str(file_path.name).replace('__', '\\')
+        
         # Create event
         payload = {
             "executable_name": exe_name,
             "file_size": len(data),
-            "file_path": str(file_path.name),
+            "file_path": str(file_path.name),  # Sanitized filename on disk
+            "original_path": original_path,  # Reconstructed original path
             "last_execution_time": event_ts.isoformat(),
         }
+        
+        # Sanitize payload to handle any remaining encoding issues
+        payload = sanitize_for_jsonb(payload)
 
         event = {
             "event_ts": event_ts,

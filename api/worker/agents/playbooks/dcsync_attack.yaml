@@ -12,79 +12,72 @@ playbook: |
   
   ### Key Indicators to Investigate:
   
-  1. **Directory Service Replication (Event ID 4662)**
-     - Primary DCSync detection event
+  1. **Directory Service Replication**
+     - **Directory Service Access** (event_type='evtx_security_4662'): Primary DCSync detection event
      - Fields: event_data.SubjectUserName, event_data.ObjectName, event_data.Properties
-     - Query: event_type='evtx_security_4662'
      - Critical GUIDs in Properties field:
        - **1131f6aa-9c07-11d1-f79f-00c04fc2dcd2**: DS-Replication-Get-Changes
        - **1131f6ad-9c07-11d1-f79f-00c04fc2dcd2**: DS-Replication-Get-Changes-All
        - **89e95b76-444d-4c62-991a-0facbeda640c**: DS-Replication-Get-Changes-In-Filtered-Set
      - Red flags: Non-DC computers with these replication rights
   
-  2. **Unusual Replication Source (Event ID 4662)**
-     - DCSync from workstations or member servers
+  2. **Unusual Replication Source**
+     - **Directory Service Access** (event_type='evtx_security_4662'): DCSync from workstations or member servers
      - Fields: event_data.SubjectUserName, event_data.SubjectLogonId
      - Query: `query_jsonb_field` with jsonb_path='event_data.Properties', operator='ILIKE', value='%1131f6aa%'
      - Cross-reference: Check SubjectUserName - should only be domain controllers
      - Red flags: 
-       - Replication from WORKSTATION* or SERVER* (not DC)
-       - Replication by user accounts (not computer accounts ending in $)
+       - Replication from non-DC systems
+       - Replication by user accounts (not computer accounts)
   
-  3. **Mimikatz DCSync Usage (Event ID 4688, Sysmon 1)**
-     - Mimikatz is the most common DCSync tool
-     - Commands:
-       - `lsadump::dcsync /user:krbtgt`
-       - `lsadump::dcsync /user:Administrator`
-       - `lsadump::dcsync /domain:corp.local /all`
-     - Query: `search_events_by_content` for 'lsadump::dcsync', 'mimikatz'
-     - Red flags: Mimikatz execution with dcsync module
+  3. **DCSync Tool Usage**
+     - **Process Creation** (event_type='evtx_security_4688' or 'evtx_sysmon_1')
+     - Look for DCSync tool execution patterns
+     - Query: `search_events_by_content` for DCSync command patterns
+     - Red flags: DCSync tool execution with replication commands
   
-  4. **Network Replication Traffic (Sysmon 3)**
-     - DCSync generates RPC traffic to domain controllers
+  4. **Network Replication Traffic**
+     - **Network Connection** (event_type='evtx_sysmon_3'): DCSync generates RPC traffic to domain controllers
      - Destination port: 135 (RPC), then dynamic high port
      - Fields: event_data.DestinationPort, event_data.DestinationIp, event_data.Image
      - Query: `query_jsonb_field` with jsonb_path='event_data.DestinationPort', value='135'
      - Cross-reference: Check if source is a workstation connecting to DC
      - Red flags: Workstations making RPC connections to DCs
   
-  5. **Privileged Account Usage (Event ID 4672)**
-     - DCSync requires special privileges
+  5. **Privileged Account Usage**
+     - **Special Privileges Assigned** (event_type='evtx_security_4672'): DCSync requires special privileges
      - Required rights: DS-Replication-Get-Changes permissions
      - Fields: event_data.SubjectUserName, event_data.PrivilegeList
-     - Query: event_type='evtx_security_4672'
      - Red flags: Non-admin accounts with replication privileges
   
-  6. **Explicit Credential Usage (Event ID 4648)**
-     - Attacker may use stolen credentials for DCSync
+  6. **Explicit Credential Usage**
+     - **Logon with Explicit Credentials** (event_type='evtx_security_4648'): Attacker may use stolen credentials for DCSync
      - Fields: event_data.TargetUserName, event_data.TargetServerName
-     - Query: event_type='evtx_security_4648'
      - Red flags: Credentials used for replication from non-DC
   
-  7. **Account Enumeration (Event ID 4662)**
-     - Attackers may enumerate accounts before DCSync
+  7. **Account Enumeration**
+     - **Directory Service Access** (event_type='evtx_security_4662'): Attackers may enumerate accounts before DCSync
      - Fields: event_data.ObjectName (user accounts)
      - Query: Aggregate by SubjectUserName to find bulk enumeration
      - Red flags: Rapid access to multiple user objects
   
-  8. **Kerberos Ticket Requests (Event ID 4769)**
-     - DCSync requires Kerberos ticket to DC
-     - Fields: event_data.ServiceName (LDAP or cifs), event_data.TargetUserName
+  8. **Kerberos Ticket Requests**
+     - **Service Ticket Request** (event_type='evtx_security_4769'): DCSync requires Kerberos ticket to DC
+     - Fields: event_data.ServiceName, event_data.TargetUserName
      - Query: event_type='evtx_security_4769' with ServiceName='ldap'
      - Red flags: LDAP service tickets from unusual accounts
   
-  9. **LDAP Queries (Event ID 1644)**
-     - DCSync uses LDAP to request replication data
+  9. **LDAP Queries**
+     - **LDAP Query** (event_type='evtx_directory_service_1644'): DCSync uses LDAP to request replication data
      - Fields: LDAP query details (requires LDAP diagnostic logging)
-     - Query: event_type='evtx_directory_service_1644'
      - Red flags: Unusual LDAP queries for password data
   
   10. **Post-DCSync Activity**
      - What happens after DCSync?
      - Look for:
-       - Golden ticket creation (Event 4768 anomalies)
-       - Pass-the-hash attacks (Event 4624 LogonType 9)
-       - Lateral movement (Event 4648, 4624 LogonType 3)
+       - Golden ticket creation (event_type='evtx_security_4768' anomalies)
+       - Pass-the-hash attacks (event_type='evtx_security_4624' LogonType 9)
+       - Lateral movement (event_type='evtx_security_4648' or 'evtx_security_4624' LogonType 3)
      - Timeline correlation: DCSync followed by privileged access
   
   ### Investigation Strategy:
@@ -101,9 +94,9 @@ playbook: |
   - How many accounts were replicated? (Single user or /all)
   
   **Phase 3 - Identify Attack Tools**
-  - Check for Mimikatz execution (Event 4688, Sysmon 1)
-  - Look for PowerShell Empire, Covenant, or other frameworks
-  - Search for custom DCSync tools
+  - Check for DCSync tool execution (event_type='evtx_security_4688' or 'evtx_sysmon_1')
+  - Look for post-exploitation frameworks
+  - Search for DCSync tool patterns
   
   **Phase 4 - Determine Scope**
   - Which accounts were replicated? (krbtgt, Domain Admins, all users)
@@ -149,11 +142,10 @@ playbook: |
   aggregate_jsonb_field(jsonb_path='event_data.SubjectUserName', aggregation='top_values',
                         event_type='evtx_security_4662', description='Replication accounts')
   
-  # Find Mimikatz DCSync commands
-  search_events_by_content(value='lsadump::dcsync', description='Mimikatz DCSync')
+  # Find DCSync tool commands
   search_events_by_content(value='dcsync', description='DCSync tool usage')
   
-  # Find RPC connections to DCs (Sysmon 3)
+  # Find RPC connections to DCs
   query_jsonb_field(jsonb_path='event_data.DestinationPort', operator='=', value='135',
                     event_type='evtx_sysmon_3', description='RPC connections to DCs')
   ```

@@ -106,14 +106,6 @@ const Login: React.FC = () => {
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
           </div>
-
-          <div className="text-center text-xs text-gray-500 dark:text-gray-400">
-            Default credentials: admin / admin123
-            <br />
-            <span className="text-red-600 dark:text-red-400">
-              ⚠ Change password immediately in production
-            </span>
-          </div>
         </form>
       </div>
     </div>
@@ -121,3 +113,4 @@ const Login: React.FC = () => {
 };
 
 export default Login;
+

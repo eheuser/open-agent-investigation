@@ -635,6 +635,7 @@ CREATE TRIGGER update_playbooks_updated_at
 -- This provides <5 minute staleness while avoiding trigger overhead
 
 -- Analysis results cache table (for analysis modules like Autoruns, Execution Evidence, etc.)
+-- Cache is permanent until event count changes (no time-based expiration)
 CREATE TABLE IF NOT EXISTS analysis_results (
     result_id BIGSERIAL PRIMARY KEY,
     investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
@@ -644,13 +645,36 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     results JSONB NOT NULL,  -- Cached analysis results
     entry_count INTEGER,  -- Number of entries in results
     categories_analyzed TEXT[],  -- Categories/filters that were analyzed
+    event_count_when_cached BIGINT,  -- Event count at cache time (for invalidation)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ,  -- NULL = never expires, or timestamp for cache expiration
+    expires_at TIMESTAMPTZ,  -- Deprecated: kept for backward compatibility, but no longer used
     CONSTRAINT uq_analysis_cache_key UNIQUE (investigation_id, analysis_type, parameters)
 );
 
 CREATE INDEX idx_analysis_results_investigation ON analysis_results(investigation_id, analysis_type);
 CREATE INDEX idx_analysis_results_expires ON analysis_results(expires_at) WHERE expires_at IS NOT NULL;
+
+-- Event field metadata cache (Tier 3: Field Schema Cache)
+-- Pre-computed field statistics per event type for instant field discovery
+-- Refreshed asynchronously after artifact parsing
+CREATE TABLE IF NOT EXISTS event_field_metadata (
+    metadata_id BIGSERIAL PRIMARY KEY,
+    investigation_id UUID NOT NULL REFERENCES investigations(investigation_id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    field_path TEXT NOT NULL,  -- Dotted path (e.g., 'event_data.TargetUserName')
+    frequency_count INTEGER NOT NULL DEFAULT 0,  -- How many events have this field
+    frequency_pct NUMERIC(5,2) NOT NULL DEFAULT 0.0,  -- Percentage of events with this field
+    sample_values TEXT[] DEFAULT '{}',  -- Up to 3 sample values
+    value_types TEXT[] DEFAULT '{}',  -- Data types observed (e.g., ['str', 'int'])
+    last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    event_count_when_cached BIGINT NOT NULL,  -- Event count at cache time (for invalidation)
+    CONSTRAINT uq_field_metadata UNIQUE (investigation_id, event_type, field_path)
+);
+
+CREATE INDEX idx_field_metadata_investigation ON event_field_metadata(investigation_id);
+CREATE INDEX idx_field_metadata_event_type ON event_field_metadata(investigation_id, event_type);
+CREATE INDEX idx_field_metadata_frequency ON event_field_metadata(investigation_id, event_type, frequency_pct DESC);
+CREATE INDEX idx_field_metadata_updated ON event_field_metadata(last_updated DESC);
 
 -- ============================================================================
 -- PERFORMANCE OPTIMIZATION: MATERIALIZED VIEWS & AGGREGATES
@@ -771,10 +795,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- NOTE: Field metadata cache is populated by Python worker code, not SQL triggers
+-- The get_enhanced_jsonb_fields() function in worker/tools/event_tools.py handles:
+-- - Nested field extraction (up to 3 levels deep)
+-- - Proper type detection
+-- - Sample value collection
+-- - Frequency calculation
+-- 
+-- The event_field_metadata table is available for future optimization where
+-- field metadata can be pre-computed and cached during parsing jobs.
+
 -- Composite indexes for faster aggregation queries
 CREATE INDEX IF NOT EXISTS idx_events_investigation_id_only ON events(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_timeline_entries_investigation_id_only ON timeline_entries(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_tool_type_only ON embeddings(owner_type) WHERE owner_type = 'tool';
+
+-- Index for efficient field metadata cache queries
+CREATE INDEX IF NOT EXISTS idx_events_type_ts_sample ON events(investigation_id, event_type, event_ts DESC);
 
 -- Index for job status aggregations (covers all status values)
 CREATE INDEX IF NOT EXISTS idx_jobs_parsing_status_all ON jobs_parsing(status);

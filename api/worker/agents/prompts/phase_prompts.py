@@ -40,6 +40,7 @@ Just execute tool calls directly. Your analysis will happen in Phase 2.
 **Available Tool Categories**:
 - query_jsonb_field: Query specific JSONB fields with operators (PREFERRED - focused results, supports event_type filter)
 - aggregate_jsonb_field: Aggregate and count field values (good for overview, ONLY supports event_type filter - NO time filtering)
+- discover_jsonb_fields: Discover what fields exist in specific event types (use when unsure about field names)
 - search_events_by_content: Search event data using text/patterns
 - hybrid_search: Advanced semantic search (for complex queries)
 - get_event_by_id: Retrieve specific events
@@ -62,10 +63,11 @@ Just execute tool calls directly. Your analysis will happen in Phase 2.
 - Combine multiple field conditions for precision
 
 **AVAILABLE FIELDS USAGE**:
-- Review the available JSONB fields provided in context
-- Identify which fields contain the data you need
+- Review the available JSONB fields provided in context (shows top fields by frequency with examples)
+- If you need more detail about a specific event type, use discover_jsonb_fields(event_type="...")
 - Use exact field paths in query_jsonb_field
 - Example: event_data.TargetUserName, event_data.IpAddress, etc.
+- Field examples show you what kind of data to expect (usernames, IPs, process names, etc.)
 
 **REQUIREMENTS**:
 - Each tool MUST have a 'description' argument (shown in UI)

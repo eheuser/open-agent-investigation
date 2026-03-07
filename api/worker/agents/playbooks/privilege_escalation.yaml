@@ -7,15 +7,29 @@ playbook: |
 
   ### What to Look For:
 
-  1. **Special Privilege Assignment (Event ID 4672)**
-     - Token elevation events
+  1. **Privilege Escalation Tool Detection**
+     - **PRIORITY**: Use `query_analysis_module` with module_id='execution_evidence' for comprehensive execution view
+     - **Process Creation** (event_type='evtx_sysmon_1' or 'evtx_security_4688'):
+       - Look for: IntegrityLevel elevation, unusual parent-child relationships
+       - Fields: event_data.Image, event_data.CommandLine, event_data.IntegrityLevel
+       - Tool: `discover_jsonb_fields` with event_type='evtx_sysmon_1', description='Discover available process fields for privilege escalation analysis'
+
+  2. **Special Privilege Assignment**
+     - **Special Privileges Assigned** (event_type='evtx_security_4672'): Token elevation events
      - Fields: event_data.SubjectUserName, event_data.PrivilegeList
+     - Look for: SeDebugPrivilege, SeTcbPrivilege, SeBackupPrivilege
 
-  2. **UAC Bypass Indicators**
-     - Unusual process elevation
-     - Registry modifications to UAC settings
+  3. **UAC Bypass Indicators**
+     - **Registry Value** (event_type='registry_value'): Registry modifications
+     - **Registry Value Set** (event_type='evtx_sysmon_13'): Registry value changes
+     - Search for UAC-related registry keys
+     - **Sysmon 1**: Unusual process elevation without UAC prompt
+     - **Sysmon 13**: Registry modifications to UAC settings
 
-  3. **Credential Dumping**
-     - LSASS access (Sysmon 10)
-     - Mimikatz indicators
-     - SAM/SECURITY registry access
+  4. **Credential Dumping**
+     - **LSASS access** (Sysmon 10):
+       - event_type='evtx_sysmon_10'
+       - Fields: event_data.TargetImage (must contain 'lsass.exe'), event_data.SourceImage
+       - Look for: Non-system processes accessing lsass.exe
+     - **Prefetch**: Search for 'mimikatz', 'procdump', 'comsvcs'
+     - **Registry access**: SAM/SECURITY hive access (Sysmon 12, 13)

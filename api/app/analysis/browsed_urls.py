@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from app.utils.log_setup import get_logger
 from app.utils.security import sanitize_log_message
+from app.core.database import async_session_factory
 
 logger = get_logger(__name__)
 
@@ -313,9 +314,70 @@ class BrowsedURLsAnalyzer:
         if search_term:
             return None
         
-        # TODO: Implement caching logic
-        # For now, return None to always run fresh analysis
-        return None
+        try:
+            async with async_session_factory() as db:
+                # Build parameters for cache key
+                params_dict = {"browsers": sorted(browsers) if browsers else None}
+                params_json = json.dumps(params_dict, sort_keys=True)
+
+                query = """
+                    SELECT results, created_at, event_count_when_cached
+                    FROM analysis_results
+                    WHERE investigation_id = :investigation_id
+                      AND analysis_type = 'browsed_urls'
+                      AND analysis_version = :version
+                      AND parameters = CAST(:parameters AS jsonb)
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """
+
+                result = await db.execute(
+                    text(query),
+                    {
+                        "investigation_id": str(investigation_id),
+                        "version": self.ANALYSIS_VERSION,
+                        "parameters": params_json,
+                    },
+                )
+
+                row = result.fetchone()
+                if not row:
+                    return None
+
+                results_json = row[0]
+                created_at = row[1]
+                cached_event_count = row[2]
+
+                # Check if event count has changed since caching
+                current_count_query = text(
+                    """
+                        SELECT COUNT(*) as count
+                        FROM events
+                        WHERE investigation_id = :investigation_id
+                    """
+                )
+                count_result = await db.execute(current_count_query, {"investigation_id": str(investigation_id)})
+                current_event_count = count_result.scalar() or 0
+
+                if cached_event_count != current_event_count:
+                    logger.debug(
+                        f"Cache stale: event count changed from {cached_event_count} to {current_event_count}. "
+                        f"Returning None to trigger refresh."
+                    )
+                    return None
+
+                logger.debug(f"Found cached browsed URLs results from {created_at} ({len(results_json)} entries, event count: {cached_event_count})")
+
+                # Convert JSON back to BrowsedURLEntry objects
+                entries = []
+                for entry_dict in results_json:
+                    entries.append(BrowsedURLEntry(**entry_dict))
+
+                return entries
+
+        except Exception as e:
+            logger.warning(f"Failed to retrieve cached results: {sanitize_log_message(str(e))}")
+            return None
     
     async def _cache_results(
         self,
@@ -324,16 +386,72 @@ class BrowsedURLsAnalyzer:
         entries: List[BrowsedURLEntry],
     ) -> None:
         """
-        Cache analysis results.
+        Cache analysis results permanently.
         
         Args:
             investigation_id: Investigation UUID
             browsers: Browser filter
             entries: Entries to cache
         """
-        # TODO: Implement caching logic
-        # For now, skip caching
-        pass
+        try:
+            async with async_session_factory() as cache_db:
+                # Build parameters for cache key
+                params_dict = {"browsers": sorted(browsers) if browsers else None}
+                params_json = json.dumps(params_dict, sort_keys=True)
+
+                # Convert entries to JSON
+                results_json = json.dumps([entry.to_dict() for entry in entries])
+
+                # Get current event count for cache invalidation tracking
+                count_query = text(
+                    """
+                        SELECT COUNT(*) as count
+                        FROM events
+                        WHERE investigation_id = :investigation_id
+                    """
+                )
+                count_result = await cache_db.execute(count_query, {"investigation_id": str(investigation_id)})
+                current_event_count = count_result.scalar() or 0
+
+                # Insert or update cache (no expiration - permanent until events change)
+                query = """
+                    INSERT INTO analysis_results (
+                        investigation_id, analysis_type, analysis_version, parameters,
+                        results, entry_count, categories_analyzed, event_count_when_cached
+                    )
+                    VALUES (
+                        :investigation_id, 'browsed_urls', :version, CAST(:parameters AS jsonb),
+                        CAST(:results AS jsonb), :entry_count, :categories_analyzed, :event_count_when_cached
+                    )
+                    ON CONFLICT (investigation_id, analysis_type, parameters)
+                    DO UPDATE SET
+                        analysis_version = EXCLUDED.analysis_version,
+                        results = EXCLUDED.results,
+                        entry_count = EXCLUDED.entry_count,
+                        categories_analyzed = EXCLUDED.categories_analyzed,
+                        event_count_when_cached = EXCLUDED.event_count_when_cached,
+                        created_at = NOW()
+                """
+
+                await cache_db.execute(
+                    text(query),
+                    {
+                        "investigation_id": str(investigation_id),
+                        "version": self.ANALYSIS_VERSION,
+                        "parameters": params_json,
+                        "results": results_json,
+                        "entry_count": len(entries),
+                        "categories_analyzed": list(set(entry.browser for entry in entries)),
+                        "event_count_when_cached": current_event_count,
+                    },
+                )
+                await cache_db.commit()
+
+                logger.debug(f"Cached {len(entries)} browsed URLs entries permanently (event count: {current_event_count})")
+
+        except Exception as e:
+            logger.error(f"Failed to cache results: {sanitize_log_message(str(e))}", exc_info=True)
+            # Don't fail the analysis if caching fails
 
 
 __all__ = ["BrowsedURLsAnalyzer", "BrowsedURLEntry"]

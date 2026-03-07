@@ -27,7 +27,7 @@ class TestListAnalysisModules:
         assert "modules" in result
         assert "total" in result
         assert result["total"] == len(ANALYSIS_MODULES)
-        assert len(result["modules"]) == 4  # autoruns, execution_evidence, browsed_urls, logons
+        assert len(result["modules"]) == 5  # autoruns, execution_evidence, browsed_urls, logons, user_activity
 
         # Check module structure
         module_ids = [m["id"] for m in result["modules"]]
@@ -35,6 +35,7 @@ class TestListAnalysisModules:
         assert "execution_evidence" in module_ids
         assert "browsed_urls" in module_ids
         assert "logons" in module_ids
+        assert "user_activity" in module_ids
 
         # Check each module has required fields
         for module in result["modules"]:

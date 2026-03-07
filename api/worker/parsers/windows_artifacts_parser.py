@@ -11,7 +11,7 @@ import pyesedb
 import xml.etree.ElementTree as ET
 
 from .base_parser import BaseParser
-from .utils import flatten_dict
+from .utils import flatten_dict, sanitize_for_jsonb
 from app.utils.log_setup import get_logger
 
 logger = get_logger(__name__)
@@ -172,7 +172,7 @@ class WindowsArtifactsParser(BaseParser):
                     # Try to decode the URL (match original logic exactly)
                     url_bytes = header[116:116+url_size]
                     url_chars = struct.unpack(f"{url_size}c", url_bytes)
-                    url = b"".join(url_chars).decode("utf-16-le")[0:-1]  # Slice off last char
+                    url = b"".join(url_chars).decode("utf-16-le", errors='ignore')[0:-1]  # Slice off last char
                     
                     # URL should be non-empty
                     if url and len(url) > 0:
@@ -304,13 +304,21 @@ class WindowsArtifactsParser(BaseParser):
                 
                 event_ts = datetime.fromtimestamp(last_download_time, tz=timezone.utc)
                 
+                # Restore original path from sanitized filename
+                # Archive parser replaces / with __ to preserve directory structure
+                original_path = str(file_path.name).replace('__', '\\')
+                
                 payload = flatten_dict({
                     "artifact_type": "cryptnet_url_cache",
                     "url": url,
                     "last_download_time": last_download_time,
                     "last_modification_time": last_modification_time_header,
-                    "file_path": str(file_path.name)
+                    "file_path": str(file_path.name),  # Sanitized filename on disk
+                    "original_path": original_path  # Reconstructed original path
                 })
+                
+                # Sanitize payload
+                payload = sanitize_for_jsonb(payload)
                 
                 events.append({
                     "timestamp": event_ts,
@@ -331,14 +339,54 @@ class WindowsArtifactsParser(BaseParser):
             with open(file_path, "rb") as f:
                 data = f.read()
             
-            event_ts = datetime.fromtimestamp(file_path.stat().st_mtime)
+            event_ts = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
+            
+            # Try to extract executable path from PCA filename
+            # PCA files are typically named like: PROGRAM.EXE-GUID.pca
+            executable_name = None
+            if file_path.name.lower().endswith('.pca'):
+                # Extract program name from filename (before the first dash)
+                parts = file_path.stem.split('-')
+                if parts:
+                    executable_name = parts[0]
+            
+            # Try to extract strings from the binary data to find executable paths
+            # PCA files contain .NET serialized data with embedded strings
+            executable_path = None
+            try:
+                # Look for common executable path patterns in the data
+                text = data.decode('utf-16-le', errors='ignore')
+                # Remove null bytes
+                text = text.replace('\x00', '')
+                
+                # Search for common path patterns
+                import re
+                # Match paths like C:\Program Files\...\.exe or C:\Users\...\program.exe
+                path_pattern = r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]+\.exe'
+                matches = re.findall(path_pattern, text, re.IGNORECASE)
+                
+                if matches:
+                    # Use the first match as the executable path
+                    executable_path = matches[0]
+                elif executable_name:
+                    # Fall back to just the executable name from filename
+                    executable_path = executable_name
+            except Exception:
+                # If string extraction fails, use filename-based name
+                if executable_name:
+                    executable_path = executable_name
             
             payload = flatten_dict({
                 "artifact_type": "pca_launch",
                 "file_name": file_path.name,
                 "file_size": len(data),
-                "file_path": str(file_path)
+                "file_path": str(file_path),
+                "executable_name": executable_name,
+                "executable_path": executable_path,  # Add this field for analyzer
             })
+            
+            # Sanitize payload
+            payload = sanitize_for_jsonb(payload)
             
             events.append({
                 "timestamp": event_ts,
@@ -378,6 +426,9 @@ class WindowsArtifactsParser(BaseParser):
                 "file_size": len(data),
                 "file_path": str(file_path)
             })
+            
+            # Sanitize payload
+            payload = sanitize_for_jsonb(payload)
             
             events.append({
                 "timestamp": event_ts,
@@ -476,6 +527,9 @@ class WindowsArtifactsParser(BaseParser):
                 "file_path": str(file_path)
             })
             
+            # Sanitize payload
+            payload = sanitize_for_jsonb(payload)
+            
             events.append({
                 "timestamp": event_ts,
                 "event_type": "scheduled_task",
@@ -549,8 +603,23 @@ class WindowsArtifactsParser(BaseParser):
                                     # Store value
                                     if value is not None:
                                         if isinstance(value, bytes):
+                                            # Try to decode as UTF-16-LE, but validate result
                                             try:
-                                                record_data[col_name] = value.decode('utf-16-le', errors='ignore').strip('\x00')
+                                                decoded = value.decode('utf-16-le', errors='ignore').strip('\x00')
+                                                
+                                                # Validate that it's actually text (not binary garbage)
+                                                # Check if at least 70% of characters are printable
+                                                if decoded and len(decoded) > 0:
+                                                    printable_count = sum(1 for c in decoded if c.isprintable())
+                                                    if printable_count / len(decoded) >= 0.7:
+                                                        # Looks like valid text
+                                                        record_data[col_name] = decoded
+                                                    else:
+                                                        # Binary garbage - use hex
+                                                        record_data[col_name] = value.hex()
+                                                else:
+                                                    # Empty after decode - use hex
+                                                    record_data[col_name] = value.hex()
                                             except:
                                                 record_data[col_name] = value.hex()
                                         else:
@@ -642,8 +711,23 @@ class WindowsArtifactsParser(BaseParser):
                                         
                                         if value is not None:
                                             if isinstance(value, bytes):
+                                                # Try to decode as UTF-16-LE, but validate result
                                                 try:
-                                                    record_data[col_name] = value.decode('utf-16-le', errors='ignore').strip('\x00')
+                                                    decoded = value.decode('utf-16-le', errors='ignore').strip('\x00')
+                                                    
+                                                    # Validate that it's actually text (not binary garbage)
+                                                    # Check if at least 70% of characters are printable
+                                                    if decoded and len(decoded) > 0:
+                                                        printable_count = sum(1 for c in decoded if c.isprintable())
+                                                        if printable_count / len(decoded) >= 0.7:
+                                                            # Looks like valid text
+                                                            record_data[col_name] = decoded
+                                                        else:
+                                                            # Binary garbage - use hex
+                                                            record_data[col_name] = value.hex()
+                                                    else:
+                                                        # Empty after decode - use hex
+                                                        record_data[col_name] = value.hex()
                                                 except:
                                                     record_data[col_name] = value.hex()
                                             else:
@@ -726,6 +810,9 @@ class WindowsArtifactsParser(BaseParser):
                 "note": "Bitmap cache contains thumbnail/icon images"
             })
             
+            # Sanitize payload
+            payload = sanitize_for_jsonb(payload)
+            
             events.append({
                 "timestamp": event_ts,
                 "event_type": "bitmap_cache",
@@ -785,6 +872,9 @@ class WindowsArtifactsParser(BaseParser):
                     "expiry_time": expiry,
                     "source_file": file_path.name
                 })
+                
+                # Sanitize payload
+                payload = sanitize_for_jsonb(payload)
                 
                 events.append({
                     "timestamp": timestamp,

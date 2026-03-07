@@ -10,10 +10,11 @@ playbook: |
   
   ### Key Indicators to Investigate:
   
-  1. **Registry Run Keys (Sysmon 13)**
-     - Most common persistence mechanism
+  1. **Registry Run Keys**
+     - **PRIORITY**: Use `query_analysis_module` with module_id='autoruns' for comprehensive persistence analysis
+     - **Registry Value Set** (event_type='evtx_sysmon_13'): Most common persistence mechanism
      - Fields: event_data.TargetObject, event_data.Details
-     - Query: `query_jsonb_field` with jsonb_path='event_data.TargetObject', operator='ILIKE', value='%\\Run%'
+     - Tool: `query_jsonb_field` with jsonb_path='event_data.TargetObject', operator='ILIKE', value='%\\Run%', event_type='evtx_sysmon_13', description='Registry run keys'
      - Key paths to check:
        - HKLM\Software\Microsoft\Windows\CurrentVersion\Run
        - HKCU\Software\Microsoft\Windows\CurrentVersion\Run
@@ -21,17 +22,17 @@ playbook: |
        - HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce
      - Red flags: Unusual executables, encoded commands, suspicious paths (Temp, AppData)
   
-  2. **Scheduled Tasks (Event ID 4698)**
-     - Powerful persistence with flexible scheduling
+  2. **Scheduled Tasks**
+     - **Scheduled Task Created** (event_type='evtx_security_4698'): Powerful persistence with flexible scheduling
      - Fields: event_data.TaskName, event_data.TaskContent
-     - Query: event_type='evtx_security_4698'
+     - Tool: `search_events_by_type` with event_type='evtx_security_4698', description='Scheduled task creation'
      - Look for: Unusual task names, suspicious executables, frequent execution
-     - Follow-up: Aggregate by SubjectUserName to find who created tasks
+     - Follow-up: `aggregate_jsonb_field` with jsonb_path='event_data.SubjectUserName', event_type='evtx_security_4698', description='Task creators'
   
-  3. **Service Creation (Event ID 7045, 4697)**
-     - Services run with SYSTEM privileges and auto-start
+  3. **Service Creation**
+     - **Service Installed** (event_type='evtx_system_7045' or 'evtx_security_4697'): Services run with SYSTEM privileges and auto-start
      - Fields: event_data.ServiceName, event_data.ImagePath, event_data.ServiceType
-     - Query: event_type='evtx_system_7045' or 'evtx_security_4697'
+     - Tool: `search_events_by_type` with event_type='evtx_system_7045', description='Service installation'
      - Red flags: Unusual service names, suspicious ImagePath, manual start type
      - Common malware: Services with random names, paths in Temp/AppData
   
@@ -39,48 +40,61 @@ playbook: |
      - Stealthy persistence, rarely used by legitimate software
      - Event IDs: 19 (WmiEventFilter), 20 (WmiEventConsumer), 21 (WmiEventConsumerToFilter)
      - Fields: event_data.EventNamespace, event_data.Query, event_data.Destination
-     - Query: event_type='evtx_sysmon_19' or 'evtx_sysmon_20' or 'evtx_sysmon_21'
+     - Tool: `count_events` with event_type='evtx_sysmon_19', description='WMI event filter count'
+     - Tool: `search_events_by_type` with event_type='evtx_sysmon_19', description='WMI event filters'
      - Red flags: ANY WMI event subscription is suspicious
   
   5. **Startup Folder Items**
      - Files placed in user/system startup folders
      - Check MFT for: %AppData%\Microsoft\Windows\Start Menu\Programs\Startup
-     - Query: `search_events_by_content` with value='%\\Startup\\%'
+     - Tool: `search_events_by_content` with search_text='\\Startup\\', description='Startup folder items'
      - Look for: LNK files, executables, scripts
   
   6. **DLL Hijacking / Image File Execution Options**
      - Registry modifications to hijack legitimate processes
      - Fields: event_data.TargetObject (Sysmon 13)
-     - Query: `query_jsonb_field` for 'Image File Execution Options' or 'AppInit_DLLs'
+     - Tool: `search_events_by_content` with search_text='Image File Execution Options' or 'AppInit_DLLs', event_type='evtx_sysmon_13', description='IFEO/DLL hijacking'
      - Red flags: Debugger values, unusual DLL paths
   
   7. **Accessibility Features Hijacking**
      - Replacing sethc.exe, utilman.exe with cmd.exe
      - Fields: event_data.TargetFilename (Sysmon 11)
-     - Query: `search_events_by_content` for 'sethc.exe' or 'utilman.exe'
+     - Tool: `search_events_by_content` with search_text='sethc.exe' or 'utilman.exe', description='Accessibility feature hijacking'
      - Red flags: File modifications in System32 for accessibility tools
   
   8. **User Account Creation (Event ID 4720)**
      - Attackers create backdoor accounts
      - Fields: event_data.TargetUserName, event_data.SubjectUserName
-     - Query: event_type='evtx_security_4720'
+     - Tool: `search_events_by_type` with event_type='evtx_security_4720', description='User account creation'
      - Look for: Unusual account names, creation times, privilege escalation
      - Follow-up: Check Event ID 4732 (user added to privileged group)
   
   ### Investigation Strategy:
   
   **Phase 1 - Identify All Persistence Mechanisms**
+  - **PRIORITY**: Use Autoruns analysis module: `query_analysis_module` with module_id='autoruns'
+  - This provides comprehensive autostart analysis:
+    - Registry Run keys (event_type='registry_value')
+    - Scheduled tasks (event_type='scheduled_task')
+    - Services (event_type='evtx_system_7045')
+    - WMI subscriptions
+    - Startup folders
   - Query each persistence type systematically
   - Aggregate by timestamp to find when persistence was established
   - Look for multiple persistence mechanisms (defense in depth)
   
-  **Phase 2 - Correlate with Initial Access**
+  **Phase 2 - Correlate with Execution Evidence**
+  - **Use execution artifacts** to identify what was executed:
+    - **Prefetch** (event_type='prefetch_execution') - Proves execution, run count
+    - **AmCache** (event_type='registry_amcache') - SHA-1 hashes for threat intel lookup
+    - **ShimCache** (event_type='registry_shimcache') - File presence verification
   - Check if persistence was created shortly after initial compromise
   - Identify which account created the persistence
-  - Look for parent process that created persistence
+  - **Sysmon 1** (NOT Security 4688) for parent process analysis
   
   **Phase 3 - Validate Legitimacy**
   - Cross-reference with known software installations
+  - **AmCache for signatures**: Check event_type='registry_amcache' for publisher, version, binary type
   - Check digital signatures (Sysmon 1 - Signature field)
   - Investigate any unsigned or suspicious executables
   

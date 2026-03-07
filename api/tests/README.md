@@ -15,7 +15,7 @@ The test suite uses a three-tier strategy:
 2. **Integration Tests** (~1000 tests) - Database and API endpoint tests
 3. **End-to-End Tests** (planned) - Full workflow tests
 
-**Current Status:** 1837 tests, 71.14% coverage (targeting 80%)
+**Current Status:** 1919 tests, 70.50% coverage (targeting 80%)
 
 ## Structure
 
@@ -27,10 +27,17 @@ tests/
 ├── factories.py                 # Data factories for test data generation
 ├── README.md                    # This file
 │
-├── unit/                        # Unit tests (~783 tests, no database)
+├── unit/                        # Unit tests (~900 tests, no database)
+│   ├── analysis/                # Analysis module tests
+│   │   ├── test_execution_evidence.py  # Execution evidence analyzer (40 tests)
+│   │   └── test_user_activity.py       # User activity analyzer (82 tests)
 │   ├── auth/                    # Authentication module tests
 │   │   ├── test_auth_module.py  # JWT token creation/verification
 │   │   └── test_password_hashing.py  # Argon2 password hashing
+│   ├── parsers/                 # Parser utility tests
+│   │   └── test_utils.py        # Parser sanitization and encoding (15 tests)
+│   ├── tools/                   # Tool tests
+│   │   └── test_analysis_tools.py  # Analysis tools (5 tests)
 │   ├── core/
 │   │   ├── test_config.py       # Settings and environment variables
 │   │   ├── test_security.py     # Security utilities
@@ -201,7 +208,7 @@ docker compose -f docker-compose.test.yml down -v
 
 ## Coverage
 
-**Current Coverage**: 71.14% (1837 tests)
+**Current Coverage**: 70.50% (1919 tests)
 **Target**: 80% line coverage
 
 The test suite aims for:
@@ -280,7 +287,8 @@ The test suite aims for:
 - `app/routers/investigations.py` - 48% (44 statements) - Investigation CRUD
 - `app/routers/investigation_choices.py` - 52% (40 statements) - Agent choices
 - `app/routers/mcp.py` - 57% (42 statements) - MCP server management
-- `app/analysis/execution_evidence.py` - 59% (222 statements) - Execution artifact analysis
+- `app/analysis/execution_evidence.py` - 61% (226 statements) - Execution artifact analysis
+- `app/analysis/user_activity.py` - 66% (222 statements) - User activity artifacts (ShellBags, RecentDocs, etc.)
 - `app/routers/chat_messages.py` - 59% (144 statements) - Message CRUD
 - `app/services/handlers/timeline_handler.py` - 60% (292 statements) - Timeline operations
 - `app/services/chat_broadcast.py` - 69% (479 statements) - WebSocket broadcasting
@@ -597,6 +605,58 @@ When adding features:
 - [Factory Boy](https://factoryboy.readthedocs.io/)
 
 ## Recent Test Additions
+
+### User Activity Analysis Test Coverage (Mar 2026)
+
+**Added 82 new tests** for the user activity analyzer:
+
+**User Activity Analyzer Tests** (`test_user_activity.py` - 82 tests):
+- Analyzer initialization and configuration (2 tests)
+- Category metadata validation (4 tests)
+- Activity description extraction for all 7 categories (10 tests)
+- User context extraction from various sources (3 tests)
+- Additional data extraction per category (4 tests)
+- Entry creation and validation (3 tests)
+- Analysis workflow with caching (3 tests)
+- Error handling and edge cases (3 tests)
+- Data model serialization (3 tests)
+
+**Categories Tested**:
+- ShellBags - Windows Explorer folder browsing history
+- RecentDocs - Recently opened documents
+- OpenSaveMRU - Open/Save dialog history
+- LastVisitedMRU - Application file access locations
+- TypedPaths - Manually typed paths in Explorer
+- RunMRU - Run dialog command history
+- WordWheelQuery - Windows Search queries
+
+**Coverage Impact**:
+- `user_activity.py`: 15% → 66% (+51%)
+- **Overall**: Added 82 tests, improved overall coverage from 69.23% to 70.50%
+
+### Execution Evidence Analysis Test Updates (Mar 2026)
+
+**Updated tests** to match new execution evidence categories:
+- Expanded from 4 to 8 categories (added ShimCache, AmCache, UserAssist, PCA, BAM/DAM)
+- Updated all test assertions to reflect new category count
+- Fixed payload field extraction tests to match actual parser output
+- Updated additional data extraction tests for new field structures
+
+**Coverage Impact**:
+- `execution_evidence.py`: 59% → 61% (+2%)
+- Tests now accurately reflect production parser behavior
+
+### Parser Utils Encoding Tests (Mar 2026)
+
+**Updated tests** for new `sanitize_for_jsonb()` behavior:
+- Updated byte handling tests to reflect UTF-8 decode-first approach
+- Added tests for valid UTF-8 bytes vs invalid bytes
+- Added tests for null byte removal after decoding
+- Tests now validate proper encoding safety for PostgreSQL JSONB
+
+**Coverage Impact**:
+- All parser utils tests passing with new encoding logic
+- Validates critical JSONB compatibility fixes
 
 ### Embedding System Test Coverage (Feb 2026)
 

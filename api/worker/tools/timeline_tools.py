@@ -188,7 +188,7 @@ async def register_timeline_entry(
 
         # If entry_id is None, it means ON CONFLICT triggered (duplicate)
         if entry_id is None:
-            await db.rollback()
+            # Don't rollback - let savepoint handle it
             logger.warning(
                 f"Concurrent insert detected for event {event_id}, fetching existing entry"
             )
@@ -221,10 +221,10 @@ async def register_timeline_entry(
             else:
                 return {"error": "Failed to create or retrieve timeline entry"}
 
-        await db.commit()
+        # Don't commit here - savepoint will handle it
 
     except Exception as e:
-        await db.rollback()
+        # Don't rollback - savepoint will handle it
         logger.error(f"Failed to insert timeline entry: {sanitize_log_message(str(e))}")
         return {"error": f"Failed to create timeline entry: {sanitize_log_message(str(e))}"}
 
@@ -356,13 +356,10 @@ async def register_finding(
         )
 
         entry_id = result.scalar()
-        await db.commit()
+        # Don't commit here - savepoint will handle it
     except Exception as e:
         logger.error(f"Failed to register finding: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {"error": f"Failed to register finding: {sanitize_log_message(str(e))}"}
 
     # Update stats if provided
@@ -454,10 +451,7 @@ async def batch_generate_embeddings(
 
     except Exception as e:
         logger.error(f"Failed to batch generate embeddings: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - let caller handle it
         return 0
 
 
@@ -516,7 +510,7 @@ async def link_to_event(
         )
 
         updated_row = result.fetchone()
-        await db.commit()
+        # Don't commit here - savepoint will handle it
 
         if not updated_row:
             logger.error(f"Failed to link entry {sanitize_log_message(str(entry_id))} to event {sanitize_log_message(str(event_id))}")
@@ -527,8 +521,5 @@ async def link_to_event(
         return {"entry_id": entry_id, "event_id": event_id, "status": "linked"}
     except Exception as e:
         logger.error(f"Failed to link timeline entry: {sanitize_log_message(str(e))}", exc_info=True)
-        try:
-            await db.rollback()
-        except Exception as rollback_error:
-            logger.error(f"Rollback failed: {sanitize_log_message(str(rollback_error))}")
+        # Don't rollback - savepoint will handle it
         return {"error": f"Failed to link timeline entry: {sanitize_log_message(str(e))}"}

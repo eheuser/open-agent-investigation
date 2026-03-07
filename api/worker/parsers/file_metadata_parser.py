@@ -128,9 +128,12 @@ def _extract_strings(file_path: Path, max_size: int = MAX_STRINGS_SIZE) -> Dict[
                     if total_bytes_extracted >= max_size:
                         break
                     try:
-                        s = match.group().decode('ascii')
-                        ascii_strings.append(s)
-                        total_bytes_extracted += len(s)
+                        s = match.group().decode('ascii', errors='ignore')
+                        # Remove null bytes and control characters
+                        s = s.replace('\x00', '').strip()
+                        if s:  # Only add non-empty strings
+                            ascii_strings.append(s)
+                            total_bytes_extracted += len(s)
                     except:
                         continue
                 
@@ -139,9 +142,12 @@ def _extract_strings(file_path: Path, max_size: int = MAX_STRINGS_SIZE) -> Dict[
                     if total_bytes_extracted >= max_size:
                         break
                     try:
-                        s = match.group().decode('utf-16-le')
-                        unicode_strings.append(s)
-                        total_bytes_extracted += len(s)
+                        s = match.group().decode('utf-16-le', errors='ignore')
+                        # Remove null bytes and control characters
+                        s = s.replace('\x00', '').strip()
+                        if s:  # Only add non-empty strings
+                            unicode_strings.append(s)
+                            total_bytes_extracted += len(s)
                     except:
                         continue
                 

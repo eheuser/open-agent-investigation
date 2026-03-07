@@ -41,7 +41,13 @@ RUN uv pip install --system --no-cache -r requirements.txt
 # Copy application code (the Docker context is the ./api directory)
 COPY . .
 
+# Make entrypoint script executable
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8000
+
+# Use entrypoint to apply LLM config before starting API
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 # The package root inside the container is "app", not "api"
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

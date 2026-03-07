@@ -611,6 +611,188 @@ async def parse_<artifact_type>(
 
 ## Adding Parsers
 
+### Critical Encoding Considerations
+
+**Before implementing any parser, understand these encoding requirements:**
+
+#### 1. **Always Use Error Handling in Decode Operations**
+
+Windows artifacts often contain non-ASCII characters (Chinese, Japanese, Korean, Cyrillic, etc.) in filenames, registry values, and binary data.
+
+```python
+# ❌ WRONG - Will crash on non-ASCII data
+text = bytes_data.decode('utf-16-le')
+text = bytes_data.decode('ascii')
+
+# ✅ CORRECT - Handles encoding errors gracefully
+text = bytes_data.decode('utf-16-le', errors='ignore')  # Skip invalid bytes
+text = bytes_data.decode('utf-16-le', errors='replace')  # Replace with �
+text = bytes_data.decode('ascii', errors='ignore')
+```
+
+**Common encoding scenarios:**
+- **UTF-16-LE**: Windows uses this for most Unicode strings (registry, NTFS, executables)
+- **ASCII**: Legacy systems, some binary formats
+- **UTF-8**: Modern formats, JSON, XML
+
+#### 2. **Sanitize ALL Data Before JSONB Storage**
+
+PostgreSQL JSONB cannot handle:
+- Null bytes (`\x00`, `\u0000`)
+- Unpaired UTF-16 surrogates
+- Invalid Unicode sequences
+- Certain control characters
+
+```python
+from .utils import sanitize_for_jsonb
+
+# After creating payload, ALWAYS sanitize
+payload = flatten_dict({
+    "key_path": registry_key_path,
+    "value_data": decoded_value,
+    "file_name": extracted_filename
+})
+
+# ✅ CRITICAL - Sanitize before JSON serialization
+payload = sanitize_for_jsonb(payload)
+
+event = {
+    "event_ts": event_ts,
+    "artifact_id": artifact_id,
+    "event_type": "my_event",
+    "payload": json.dumps(payload)  # Now safe for JSONB
+}
+```
+
+**What `sanitize_for_jsonb()` does:**
+- Removes null bytes (`\x00`)
+- Re-encodes strings as UTF-8 to remove surrogate pairs
+- Strips control characters (except `\n`, `\r`, `\t`)
+- Converts bytes to hex or UTF-8
+- Recursively processes nested dicts/lists
+
+#### 3. **Handle Filenames with Non-ASCII Characters**
+
+Extracted files may have Unicode filenames that need special handling:
+
+```python
+# When extracting from archives or parsing paths
+try:
+    # Use Path.as_posix() for consistent separators
+    path_str = file_path.as_posix()
+    
+    # Encode/decode to handle invalid sequences
+    safe_filename = path_str.encode('utf-8', errors='replace').decode('utf-8')
+except (UnicodeDecodeError, UnicodeEncodeError):
+    # Fallback to ASCII representation
+    safe_filename = path_str.encode('ascii', errors='replace').decode('ascii')
+```
+
+#### 4. **Remove Null Bytes from Strings**
+
+Many Windows artifacts contain null-terminated strings. Remove nulls before storage:
+
+```python
+# After decoding UTF-16-LE strings
+decoded = value_bytes.decode('utf-16-le', errors='ignore')
+
+# ✅ Remove null bytes and strip whitespace
+cleaned = decoded.replace('\x00', '').strip()
+
+# For split operations on null-terminated strings
+text = decoded.split('\x00')[0]  # Get first null-terminated string
+```
+
+#### 5. **Validate Timestamps Before Use**
+
+Invalid timestamps can cause crashes. Always validate:
+
+```python
+try:
+    # Windows FILETIME (100-nanosecond intervals since 1601-01-01)
+    if filetime > 0 and filetime < 200000000000000000:  # Sanity check
+        epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+        timestamp = epoch + timedelta(microseconds=filetime / 10)
+    else:
+        timestamp = None  # Invalid timestamp
+except (ValueError, OverflowError):
+    timestamp = None  # Parsing failed
+
+# Skip events without valid timestamps (forensically invalid)
+if timestamp is None:
+    logger.debug("Skipping event without valid timestamp")
+    continue
+```
+
+#### 6. **Use Sanitized Logging**
+
+User-controlled data in logs can cause log injection attacks:
+
+```python
+from app.utils.security import sanitize_log_message
+
+# ❌ WRONG - Allows log injection
+logger.error(f"Failed to parse {filename}: {error}")
+
+# ✅ CORRECT - Sanitizes newlines and control characters
+logger.error(
+    f"Failed to parse {sanitize_log_message(filename)}: "
+    f"{sanitize_log_message(str(error))}",
+    exc_info=True
+)
+```
+
+**What to sanitize in logs:**
+- Filenames (user-controlled)
+- Error messages (may contain user data)
+- Registry keys/values
+- URLs, paths, command lines
+
+**What NOT to sanitize:**
+- Integer IDs (investigation_id, artifact_id, event_id)
+- Counters (len(), count)
+- Internal constants
+
+#### 7. **Handle Bytes Objects Properly**
+
+When encountering bytes in parsed data:
+
+```python
+if isinstance(value, bytes):
+    try:
+        # Try UTF-16-LE first (common in Windows)
+        decoded = value.decode('utf-16-le', errors='ignore').strip('\x00')
+        if decoded:  # Only use if non-empty
+            result = decoded
+        else:
+            # Fall back to hex representation
+            result = value.hex()
+    except:
+        # Last resort: hex representation
+        result = value.hex()
+```
+
+#### 8. **Test with Non-ASCII Data**
+
+Always test parsers with:
+- Chinese/Japanese/Korean filenames
+- Cyrillic characters
+- Emoji and special symbols
+- Null bytes in strings
+- Very long strings (>10KB)
+- Corrupted/truncated data
+
+```python
+# Example test fixture
+test_cases = [
+    b'\xe4\xb8\xad\xe6\x96\x87',  # Chinese (UTF-8)
+    b'\x2d\x4e\x87\x65',  # Chinese (UTF-16-LE)
+    b'test\x00\x00string',  # Null bytes
+    b'\xff\xfe\x00\x00',  # Invalid UTF-16-LE
+    b'\xf0\x9f\x98\x80',  # Emoji (UTF-8)
+]
+```
+
 ### Step 1: Create Parser File
 
 ```python
@@ -624,8 +806,9 @@ import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-from .utils import flatten_dict
+from .utils import flatten_dict, sanitize_for_jsonb
 from app.utils.log_setup import get_logger
+from app.utils.security import sanitize_log_message
 
 logger = get_logger(__name__)
 
@@ -636,23 +819,54 @@ async def parse_my_artifact(
     artifact_id: int,
     file_path: Path,
 ) -> int:
-    """Parse custom artifact type."""
-    logger.info(f"Parsing custom artifact: {file_path}")
+    """
+    Parse custom artifact type.
+    
+    ENCODING CONSIDERATIONS:
+    - All string decoding uses errors='ignore' or errors='replace'
+    - All payloads are sanitized with sanitize_for_jsonb() before storage
+    - Null bytes are removed from strings
+    - Timestamps are validated before use
+    - Log messages are sanitized
+    """
+    logger.debug(f"Parsing custom artifact: {sanitize_log_message(str(file_path))}")
     
     try:
-        # Your parsing logic here
         events = []
         
         # Extract data
         with open(file_path, "rb") as f:
             data = f.read()
         
-        # Create events
-        event_ts = datetime.now()
+        # Example: Parse binary data with proper encoding handling
+        # Assume data contains UTF-16-LE encoded strings
+        try:
+            # ✅ Use error handling in decode
+            text = data.decode('utf-16-le', errors='ignore')
+            # ✅ Remove null bytes
+            text = text.replace('\x00', '').strip()
+        except Exception as e:
+            logger.debug(f"Failed to decode data: {sanitize_log_message(str(e))}")
+            text = data.hex()  # Fallback to hex representation
+        
+        # Validate timestamp (example: extract from file metadata)
+        try:
+            event_ts = datetime.fromtimestamp(file_path.stat().st_mtime)
+        except (OSError, ValueError):
+            # Skip events without valid timestamps
+            logger.debug("Skipping artifact without valid timestamp")
+            return 0
+        
+        # Create payload
         payload = flatten_dict({
             "artifact_type": "my_custom_type",
-            "data": "extracted_value"
+            "data": text,
+            "file_name": file_path.name,
+            "file_size": len(data)
         })
+        
+        # ✅ CRITICAL - Sanitize payload before JSONB storage
+        payload = sanitize_for_jsonb(payload)
         
         events.append({
             "timestamp": event_ts,
@@ -671,12 +885,16 @@ async def parse_my_artifact(
         
         await _insert_event_batch(db, investigation_id, db_events)
         
-        logger.info(f"Parsed {len(db_events)} events from: {file_path.name}")
+        logger.debug(f"Parsed {len(db_events)} events from: {sanitize_log_message(file_path.name)}")
         return len(db_events)
     
     except Exception as e:
-        logger.error(f"Failed to parse artifact {file_path}: {e}", exc_info=True)
-        raise RuntimeError(f"Parsing failed: {e}")
+        logger.error(
+            f"Failed to parse artifact {sanitize_log_message(str(file_path))}: "
+            f"{sanitize_log_message(str(e))}",
+            exc_info=True
+        )
+        raise RuntimeError(f"Parsing failed: {sanitize_log_message(str(e))}")
 
 
 async def _insert_event_batch(
@@ -848,12 +1066,30 @@ brew install unar
 - Never use `datetime.now()` unless artifact lacks timestamps
 - Preserve original timestamp formats in payload
 - Convert to UTC for `event_ts` column
+- **Validate timestamps before use** - check for overflow, underflow, and invalid values
+- **Skip events without valid timestamps** - forensically invalid to fabricate timestamps
 
 ### Data Integrity
 - Store complete raw data in payload when possible
 - Use `flatten_dict()` for consistent structure
 - Preserve original field names
 - Document any transformations in payload
+- **Always sanitize data with `sanitize_for_jsonb()`** before storage
+- **Remove null bytes** from strings before insertion
+
+### Encoding Safety (CRITICAL)
+- **Use `errors='ignore'` or `errors='replace'`** in ALL decode operations
+- **Sanitize ALL payloads** with `sanitize_for_jsonb()` before JSON serialization
+- **Remove null bytes** (`\x00`) from strings - PostgreSQL JSONB cannot handle them
+- **Handle bytes objects** - try UTF-8/UTF-16-LE decode, fall back to hex
+- **Test with non-ASCII data** - Chinese, Japanese, Korean, Cyrillic, emoji
+- **Validate string lengths** - very long strings (>1MB) should be truncated
+
+### Logging Safety
+- **Sanitize user-controlled data** in log messages with `sanitize_log_message()`
+- **Never log raw filenames, paths, or error messages** without sanitization
+- **Log integer IDs directly** - no sanitization needed for investigation_id, artifact_id, etc.
+- **Use `exc_info=True`** for exception logging to capture stack traces
 
 ### Event Types
 - Use descriptive, consistent event type names
@@ -864,7 +1100,8 @@ brew install unar
 - Log warnings for partial parsing failures
 - Continue processing remaining data
 - Return count of successfully parsed events
-- Include error context in logs
+- Include error context in logs (sanitized)
+- **Rollback database transactions** on failure to prevent poisoned sessions
 
 ---
 
@@ -887,10 +1124,68 @@ brew install unar
 ### Debug Logging
 
 ```python
-# Enable debug logging in parser
-logger.debug(f"Processing {len(data)} bytes from {file_path}")
-logger.debug(f"Extracted {len(events)} events")
-logger.debug(f"Event payload sample: {events[0] if events else 'None'}")
+from app.utils.security import sanitize_log_message
+
+# ✅ CORRECT - Sanitize user-controlled data
+logger.debug(
+    f"Processing {len(data)} bytes from {sanitize_log_message(str(file_path))}"
+)
+logger.debug(f"Extracted {len(events)} events")  # Count is safe
+
+# For payload samples, limit size and sanitize
+if events:
+    sample = str(events[0])[:500]  # Limit length
+    logger.debug(f"Event payload sample: {sanitize_log_message(sample)}")
+
+# ❌ WRONG - Allows log injection
+logger.debug(f"Processing {file_path}")  # Unsanitized filename
+logger.error(f"Error: {error_message}")  # Unsanitized error
+```
+
+### Encoding Test Cases
+
+Test your parser with these challenging inputs:
+
+```python
+import pytest
+from pathlib import Path
+
+@pytest.mark.asyncio
+async def test_parser_with_unicode(db_session):
+    """Test parser handles Unicode filenames and content."""
+    # Create test file with Chinese characters
+    test_file = Path("tests/fixtures/测试文件.dat")
+    test_file.write_bytes(b'\xe4\xb8\xad\xe6\x96\x87\x00\x00')  # Chinese + nulls
+    
+    events = await parse_my_artifact(db_session, investigation_id, artifact_id, test_file)
+    assert events > 0  # Should not crash
+
+@pytest.mark.asyncio
+async def test_parser_with_null_bytes(db_session):
+    """Test parser handles null bytes in data."""
+    test_file = Path("tests/fixtures/null_bytes.dat")
+    test_file.write_bytes(b'test\x00\x00string\x00')
+    
+    events = await parse_my_artifact(db_session, investigation_id, artifact_id, test_file)
+    assert events > 0
+    
+    # Verify no null bytes in database
+    result = await db.execute(
+        "SELECT payload FROM events WHERE artifact_id = :id",
+        {"id": artifact_id}
+    )
+    payload = result.fetchone()[0]
+    assert '\x00' not in json.dumps(payload)
+
+@pytest.mark.asyncio
+async def test_parser_with_invalid_utf16(db_session):
+    """Test parser handles invalid UTF-16 sequences."""
+    test_file = Path("tests/fixtures/invalid_utf16.dat")
+    test_file.write_bytes(b'\xff\xfe\x00\xd8\x00\x00')  # Unpaired surrogate
+    
+    events = await parse_my_artifact(db_session, investigation_id, artifact_id, test_file)
+    # Should not crash, even if no events extracted
+    assert events >= 0
 ```
 
 ---

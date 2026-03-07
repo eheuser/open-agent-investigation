@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import pyesedb
 
 from .base_parser import BaseParser
-from .utils import flatten_dict
+from .utils import flatten_dict, sanitize_for_jsonb
 from app.utils.log_setup import get_logger
 
 logger = get_logger(__name__)
@@ -187,6 +187,9 @@ class BrowserHistoryParser(BaseParser):
                     "source_file": file_path.name
                 })
                 
+                # Sanitize payload to handle encoding issues
+                payload = sanitize_for_jsonb(payload)
+                
                 events.append({
                     "timestamp": timestamp,
                     "payload": payload
@@ -249,6 +252,9 @@ class BrowserHistoryParser(BaseParser):
                     "visit_type": visit_type,
                     "source_file": file_path.name
                 })
+                
+                # Sanitize payload to handle encoding issues
+                payload = sanitize_for_jsonb(payload)
                 
                 events.append({
                     "timestamp": timestamp,
@@ -331,6 +337,9 @@ class BrowserHistoryParser(BaseParser):
                                         "table_name": table_name,
                                         "source_file": file_path.name
                                     })
+                                    
+                                    # Sanitize payload to handle encoding issues
+                                    payload = sanitize_for_jsonb(payload)
                                     
                                     events.append({
                                         "timestamp": access_time,

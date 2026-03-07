@@ -53,6 +53,7 @@ coverage/
 .env
 .env.local
 .env.*.local
+.llm_config.env
 
 # Data
 data/

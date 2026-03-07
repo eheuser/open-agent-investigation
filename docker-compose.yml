@@ -25,6 +25,8 @@ services:
       retries: 5
     ports:
       - "5432:5432"
+    # Increase shared memory for PostgreSQL (fixes "could not resize shared memory segment" errors)
+    shm_size: 512mb
 
   api:
     container_name: oai-api
@@ -52,6 +54,8 @@ services:
       - ./api/data/policies:/app/data/policies:ro
       - ./api/data/agents:/app/data/agents:ro
       - investigations_data:/data/investigations
+      # Mount .llm_config.env if it exists (optional - for auto-configuration)
+      - ./.llm_config.env:/app/.llm_config.env:ro
 
   worker:
     container_name: oai-worker
