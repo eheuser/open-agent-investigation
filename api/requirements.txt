@@ -1,5 +1,5 @@
 # Core FastAPI dependencies
-fastapi==0.110.*
+fastapi==0.135.*
 uvicorn[standard]==0.41.*
 python-multipart==0.0.*
 
@@ -13,7 +13,7 @@ pydantic==2.7.*
 pydantic-settings==2.2.*
 
 # Authentication & Security
-PyJWT==2.8.*
+PyJWT==2.11.*
 passlib[argon2]==1.7.*
 argon2-cffi==23.1.*
 
@@ -31,13 +31,13 @@ aiofiles==25.1.*
 prometheus-client==0.20.*
 
 # Utilities
-python-dotenv==1.0.*
+python-dotenv==1.2.*
 tiktoken==0.7.*
 python-dateutil==2.9.*
 
 # RAG & Embeddings (lightweight - no torch/transformers)
 pgvector==0.2.*
-numpy==1.26.*
+numpy==2.4.*
 
 # Report Generation
 markdown==3.10.*
@@ -46,7 +46,7 @@ pydyf==0.11.*  # Pin pydyf for WeasyPrint compatibility
 
 # Windows Artifact Parsers
 evtx==0.11.0
-mft==0.6.1
+mft==0.7.0
 git+https://github.com/strozfriedberg/notatin.git#subdirectory=pynotatin
 regipy[full]==5.2.0  # Includes pyfwsi for ShellBags and MRU PIDL parsing
 python-registry==1.3.1
