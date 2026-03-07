@@ -37,7 +37,7 @@ python-dateutil==2.9.*
 
 # RAG & Embeddings (lightweight - no torch/transformers)
 pgvector==0.2.*
-numpy==1.26.*
+numpy==2.4.*
 
 # Report Generation
 markdown==3.10.*
