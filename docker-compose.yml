@@ -6,11 +6,29 @@ networks:
     driver: bridge
 
 services:
+  # Init container for volume permissions and SSL certificates
+  # Auto-removes after completion to avoid container litter
+  init:
+    container_name: oai-init
+    image: alpine:latest
+    command: sh /init-setup.sh
+    volumes:
+      - ./init-setup.sh:/init-setup.sh:ro
+      - investigations_data:/data/investigations
+      - pg_data:/data/postgres
+      - ./certs:/certs
+    networks:
+      - oai-network
+
   db:
     container_name: oai-db
     image: pgvector/pgvector:pg15
+    user: "999:999"  # Run as postgres user (standard UID/GID)
     networks:
       - oai-network
+    depends_on:
+      init:
+        condition: service_completed_successfully
     environment:
       POSTGRES_PASSWORD: example
       POSTGRES_DB: open_agent_inv
@@ -34,9 +52,12 @@ services:
       context: ./api
       platforms:
         - "linux/amd64"
+    user: "1000:1000"  # Run as oai user
     networks:
       - oai-network
     depends_on:
+      init:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
     environment:
@@ -64,9 +85,12 @@ services:
       dockerfile: worker/Dockerfile
       platforms:
         - "linux/amd64"
+    user: "1000:1000"  # Run as oai user
     networks:
       - oai-network
     depends_on:
+      init:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
     environment:
@@ -93,9 +117,12 @@ services:
       platforms:
         - "linux/amd64"
     command: python -m worker.embedding_background_worker
+    user: "1000:1000"  # Run as oai user
     networks:
       - oai-network
     depends_on:
+      init:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
     environment:
@@ -117,14 +144,18 @@ services:
       context: ./ui
       platforms:
         - "linux/amd64"
+    user: "101:101"  # Run as nginx user (nginx-unprivileged default UID/GID)
     networks:
       - oai-network
     ports:
-      - "443:443"
+      - "443:8443"  # Map host port 443 to container port 8443 (unprivileged)
     depends_on:
-      - api
+      init:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
     volumes:
-      - ./certs:/certs  # Persistent SSL certificates
+      - ./certs:/certs:ro  # Read-only mount of SSL certificates
 
 volumes:
   pg_data:
