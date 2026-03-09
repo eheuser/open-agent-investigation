@@ -9,7 +9,7 @@ asyncpg==0.29.*
 psycopg2-binary==2.9.*
 
 # Pydantic for data validation
-pydantic==2.7.*
+pydantic==2.12.*
 pydantic-settings==2.2.*
 
 # Authentication & Security
