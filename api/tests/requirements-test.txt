@@ -20,7 +20,7 @@ responses==0.25.*
 ruff==0.15.*
 mypy==1.10.*
 black==26.1.*
-isort==5.13.*
+isort==8.0.*
 
 # Type stubs
 types-PyYAML==6.0.*
