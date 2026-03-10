@@ -566,7 +566,6 @@ class RegistryParser(BaseParser):
                     return (decoded, True)
         except (ValueError, UnicodeDecodeError) as e:
             logger.debug(f"MRU parsing raised {e}")
-            pass
         
         # Fallback: Scan for embedded UTF-16-LE strings in binary data
         # This handles cases where PIDL structures contain file paths
