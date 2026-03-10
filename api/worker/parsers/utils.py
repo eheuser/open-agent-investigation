@@ -1,6 +1,9 @@
 from typing import Dict, Any, Optional
 import json
 
+from app.utils.log_setup import get_logger
+
+logger = get_logger(__name__)
 
 def flatten_dict(
     data: Dict[str, Any],
@@ -116,7 +119,8 @@ def sanitize_for_jsonb(obj: Any) -> Any:
             decoded = obj.decode('utf-8', errors='ignore')
             # Recursively sanitize the decoded string
             return sanitize_for_jsonb(decoded)
-        except:
+        except Exception as e:
+            logger.debug(f"sanitize_for_jsonb raised {e}")
             # If decoding fails, return hex representation
             return obj.hex()
     elif obj is None or isinstance(obj, (bool, int, float)):

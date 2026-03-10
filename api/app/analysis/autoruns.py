@@ -3,7 +3,6 @@ from pathlib import Path
 from uuid import UUID
 import yaml
 import json
-from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -14,7 +13,7 @@ from app.core.database import async_session_factory
 
 logger = get_logger(__name__)
 
-ANALYSIS_VERSION = "1.0"  # Increment when query logic changes to invalidate cache
+ANALYSIS_VERSION = "1.0"
 
 
 class AutorunEntry:

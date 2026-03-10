@@ -1,11 +1,9 @@
 import pytest
-from pathlib import Path
 from uuid import uuid4
-from datetime import datetime, timedelta
-import json
-from unittest.mock import AsyncMock, MagicMock, patch, ANY
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.analysis.autoruns import AutorunsAnalyzer, AutorunEntry, ANALYSIS_VERSION
+from app.analysis.autoruns import AutorunsAnalyzer, AutorunEntry
 
 
 class TestAutorunEntry:

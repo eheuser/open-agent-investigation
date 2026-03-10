@@ -208,24 +208,6 @@ const AutorunsViewer: React.FC<Props> = ({ investigationId }) => {
     }
   };
 
-  // Group entries by category or location
-  const getGroupedEntries = () => {
-    if (groupBy === 'none') {
-      return { 'All Entries': filteredEntries };
-    }
-
-    const grouped: { [key: string]: AutorunEntry[] } = {};
-    filteredEntries.forEach((entry) => {
-      const key = groupBy === 'category' ? entry.category : entry.location;
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-      grouped[key].push(entry);
-    });
-
-    return grouped;
-  };
-
   // Calculate pagination
   const totalPages = Math.ceil(filteredEntries.length / pageSize);
   const paginatedEntries = filteredEntries.slice(page * pageSize, (page + 1) * pageSize);

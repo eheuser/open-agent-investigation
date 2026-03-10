@@ -513,7 +513,8 @@ class WindowsArtifactsParser(BaseParser):
             if date_elem is not None and date_elem.text:
                 try:
                     event_ts = datetime.fromisoformat(date_elem.text.replace('Z', '+00:00'))
-                except:
+                except Exception as e:
+                    logger.debug(f"Raised {e}")
                     event_ts = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
             else:
                 event_ts = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
@@ -597,8 +598,8 @@ class WindowsArtifactsParser(BaseParser):
                                                 filetime = struct.unpack('<Q', value)[0]
                                                 epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
                                                 timestamp = epoch + timedelta(microseconds=filetime / 10)
-                                        except:
-                                            pass
+                                        except Exception as e:
+                                            logger.debug(f"Not a valid timestamp: {value}, failed with {e}")
                                     
                                     # Store value
                                     if value is not None:
@@ -620,12 +621,13 @@ class WindowsArtifactsParser(BaseParser):
                                                 else:
                                                     # Empty after decode - use hex
                                                     record_data[col_name] = value.hex()
-                                            except:
+                                            except Exception as e:
+                                                logger.debug(f"Raised {e}")
                                                 record_data[col_name] = value.hex()
                                         else:
                                             record_data[col_name] = value
-                                except:
-                                    pass
+                                except Exception as e:
+                                    logger.debug(f"Raised {e}")
                             
                             if not timestamp:
                                 timestamp = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
@@ -728,7 +730,8 @@ class WindowsArtifactsParser(BaseParser):
                                                     else:
                                                         # Empty after decode - use hex
                                                         record_data[col_name] = value.hex()
-                                                except:
+                                                except Exception as e:
+                                                    logger.debug(f"Raised {e}")
                                                     record_data[col_name] = value.hex()
                                             else:
                                                 record_data[col_name] = value
@@ -743,10 +746,10 @@ class WindowsArtifactsParser(BaseParser):
                                                         filetime = struct.unpack('<Q', value)[0]
                                                         epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
                                                         timestamp = epoch + timedelta(microseconds=filetime / 10)
-                                                except:
-                                                    pass
-                                except:
-                                    pass
+                                                except Exception as e:
+                                                    logger.debug(f"Raised {e}")
+                                except Exception as e:
+                                    logger.debug(f"Raised {e}")
                             
                             if not timestamp:
                                 timestamp = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
