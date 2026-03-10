@@ -1,7 +1,6 @@
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 import json
-from datetime import datetime, timedelta
 import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +12,7 @@ from app.core.database import async_session_factory
 
 logger = get_logger(__name__)
 
-ANALYSIS_VERSION = "1.0"  # Increment when query logic changes to invalidate cache
+ANALYSIS_VERSION = "1.0"
 
 
 class LogonEntry:

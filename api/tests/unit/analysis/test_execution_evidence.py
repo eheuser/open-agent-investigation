@@ -1,7 +1,6 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
-from datetime import datetime, timezone
 
 from app.analysis.execution_evidence import ExecutionEvidenceAnalyzer, ExecutionEntry
 

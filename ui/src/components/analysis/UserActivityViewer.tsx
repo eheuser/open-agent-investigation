@@ -202,23 +202,6 @@ const UserActivityViewer: React.FC<Props> = ({ investigationId }) => {
     return String(text).replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-700">$1</mark>');
   };
 
-  const getGroupedEntries = () => {
-    if (groupBy === 'none') {
-      return { 'All Entries': filteredEntries };
-    }
-
-    const grouped: { [key: string]: UserActivityEntry[] } = {};
-    filteredEntries.forEach((entry) => {
-      const key = entry.category;
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-      grouped[key].push(entry);
-    });
-
-    return grouped;
-  };
-
   const totalPages = Math.ceil(filteredEntries.length / pageSize);
   const paginatedEntries = filteredEntries.slice(page * pageSize, (page + 1) * pageSize);
 

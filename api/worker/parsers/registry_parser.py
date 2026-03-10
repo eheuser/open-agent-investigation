@@ -512,22 +512,22 @@ class RegistryParser(BaseParser):
                     if hasattr(item, 'get_name'):
                         try:
                             item_name = item.get_name()
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"item_name raised {e}")
                     
                     # Some items have long_name
                     if not item_name and hasattr(item, 'get_long_name'):
                         try:
                             item_name = item.get_long_name()
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"item_name raised {e}")
                     
                     # Network location items
                     if not item_name and hasattr(item, 'get_location'):
                         try:
                             item_name = item.get_location()
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"item_name raised {e}")
                     
                     # Validate the component before adding it
                     if item_name and self._is_valid_path_component(item_name):
@@ -603,8 +603,8 @@ class RegistryParser(BaseParser):
                                 printable = sum(1 for c in string if c.isprintable())
                                 if printable / len(string) >= 0.8:
                                     extracted_strings.append(string)
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"extracting strings raised {e}")
                 
                 i = string_end + 2
             else:
@@ -969,8 +969,6 @@ class RegistryParser(BaseParser):
                                     # Binary data - parse based on artifact type
                                     # RecentDocs, OpenSaveMRU, LastVisitedMRU use Shell Item (PIDL) structures
                                     # RunMRU, TypedPaths, WordWheelQuery typically use plain UTF-16-LE strings
-                                    
-                                    artifact_type = mru_config["artifact_name"].lower()
                                     
                                     # Determine parsing strategy based on artifact type
                                     artifact_type = mru_config["artifact_name"].lower()

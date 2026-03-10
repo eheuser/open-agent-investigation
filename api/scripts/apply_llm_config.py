@@ -1,24 +1,3 @@
-#!/usr/bin/env python3
-"""
-Apply LLM configuration from .llm_config.env file to admin user.
-
-This script reads LLM provider settings from a .llm_config.env file
-and applies them to the admin user's configuration in the database.
-
-It is designed to run automatically on container startup to enable
-headless configuration without using the UI.
-
-Usage:
-    python apply_llm_config.py [--config-file PATH]
-
-Environment Variables:
-    DATABASE_URL: PostgreSQL connection string (required)
-
-Exit Codes:
-    0: Success (config applied or skipped)
-    1: Error (database connection, validation, etc.)
-"""
-
 import os
 import sys
 import asyncio
@@ -26,7 +5,6 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-# Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -36,7 +14,6 @@ from sqlalchemy import select
 from app.models.user import User
 from app.crud.llm_config import create_llm_config, get_active_llm_config, update_llm_config
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -176,19 +153,18 @@ def load_llm_config(config_file: Path) -> Optional[Dict[str, Any]]:
         'is_active': True,
     }
     
-    # Log configuration summary (mask API keys)
-    logger.info("LLM Configuration loaded:")
-    logger.info(f"  Provider: {config['provider_name']}")
-    logger.info(f"  Endpoint: {config['api_endpoint']}")
-    logger.info(f"  Model: {config['model_name']}")
-    logger.info(f"  Max Context: {config['max_context_length']} tokens")
-    logger.info(f"  Temperature: {config['temperature']}")
-    logger.info(f"  API Key: {'***' if config['api_key'] else 'None'}")
+    #logger.info("LLM Configuration loaded:")
+    #logger.info(f"  Provider: {config['provider_name']}")
+    #logger.info(f"  Endpoint: {config['api_endpoint']}")
+    #logger.info(f"  Model: {config['model_name']}")
+    #logger.info(f"  Max Context: {config['max_context_length']} tokens")
+    #logger.info(f"  Temperature: {config['temperature']}")
+    #logger.info(f"  API Key: {'***' if config['api_key'] else 'None'}")
     
-    if config['embedding_provider']:
-        logger.info(f"  Embedding Provider: {config['embedding_provider']}")
-        logger.info(f"  Embedding Model: {config['embedding_model_name']}")
-        logger.info(f"  Embedding API Key: {'***' if config['embedding_api_key'] else 'None'}")
+    #if config['embedding_provider']:
+    #    logger.info(f"  Embedding Provider: {config['embedding_provider']}")
+    #    logger.info(f"  Embedding Model: {config['embedding_model_name']}")
+    #    logger.info(f"  Embedding API Key: {'***' if config['embedding_api_key'] else 'None'}")
     
     return config
 
