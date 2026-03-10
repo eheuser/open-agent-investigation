@@ -138,7 +138,7 @@ class BaseParser(ABC):
             logger.debug(f"{parser_name} inserted {events_inserted} events from {sanitize_log_message(str(file_path))}")
             return events_inserted
         except Exception as e:
-            logger.info(f"{parser_name} failed to parse {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
+            #logger.info(f"{parser_name} failed to parse {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}")
             logger.debug(f"{parser_name} failed to parse {sanitize_log_message(str(file_path))}: {sanitize_log_message(str(e))}", exc_info=True)
             raise RuntimeError(f"{parser_name} parsing failed: {sanitize_log_message(str(e))}")
     
