@@ -114,7 +114,7 @@
     animation: fadeIn 0.15s ease-in;
   }
 
-  /* Markdown prose styling overrides */
+      /* Markdown prose styling overrides */
   .prose code {
     @apply text-sm;
   }

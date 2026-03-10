@@ -1,12 +1,5 @@
-"""
-Unit tests for apply_llm_config.py script.
-
-Tests the LLM configuration file parsing and application logic.
-"""
-
 import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 import sys
 
 # Add scripts directory to path

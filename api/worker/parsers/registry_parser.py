@@ -564,7 +564,8 @@ class RegistryParser(BaseParser):
                 printable_count = sum(1 for c in decoded if c.isprintable() or c in '\r\n\t')
                 if printable_count / len(decoded) >= 0.5:  # At least 50% printable
                     return (decoded, True)
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError) as e:
+            logger.debug(f"MRU parsing raised {e}")
             pass
         
         # Fallback: Scan for embedded UTF-16-LE strings in binary data
