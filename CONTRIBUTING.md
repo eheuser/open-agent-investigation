@@ -310,11 +310,10 @@ Fixes #456
 1. **Update documentation** for any user-facing changes
 2. **Add/update tests** to maintain coverage
 3. **Ensure all tests pass** locally
-4. **Update CHANGELOG.md** if applicable
-5. **Fill out the PR template** completely
-6. **Request review** from maintainers
-7. **Address feedback** promptly and professionally
-8. **Keep PR focused**: One feature/fix per PR
+4. **Fill out the PR template** completely
+5. **Request review** from maintainers
+6. **Address feedback** promptly and professionally
+7. **Keep PR focused**: One feature/fix per PR
 
 ### PR Review Criteria
 
