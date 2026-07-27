@@ -34,7 +34,7 @@ jobs:
           COMPOSE_INTERACTIVE_NO_CLI: 1
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         if: always() && secrets.CODECOV_TOKEN != ''
         with:
           files: ./test-results/coverage.xml
