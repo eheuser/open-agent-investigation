@@ -19,7 +19,7 @@ responses==0.25.*
 # Code quality
 ruff==0.15.*
 mypy==1.10.*
-black==26.1.*
+black==26.5.*
 isort==8.0.*
 
 # Type stubs
