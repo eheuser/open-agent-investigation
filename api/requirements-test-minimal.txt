@@ -28,7 +28,7 @@ PyYAML==6.0.*
 aiofiles==25.1.*
 
 # Observability
-prometheus-client==0.20.*
+prometheus-client==0.26.*
 
 # Utilities
 python-dotenv==1.2.*
