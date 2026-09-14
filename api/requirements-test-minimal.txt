@@ -1,6 +1,6 @@
 # Core FastAPI dependencies
 fastapi==0.135.*
-uvicorn[standard]==0.41.*
+uvicorn[standard]==0.52.*
 python-multipart==0.0.*
 
 # Database
