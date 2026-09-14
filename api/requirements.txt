@@ -41,7 +41,7 @@ numpy==2.4.*
 
 # Report Generation
 markdown==3.10.*
-weasyprint==68.*
+weasyprint==70.*
 pydyf==0.11.*  # Pin pydyf for WeasyPrint compatibility
 
 # Windows Artifact Parsers
